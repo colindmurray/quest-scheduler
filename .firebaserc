@@ -1,0 +1,13 @@
+{
+  "projects": {
+    "default": "studio-473406021-87ead"
+  },
+  "targets": {},
+  "etags": {
+    "studio-473406021-87ead": {
+      "extensionInstances": {
+        "firestore-send-email": "578e1bd3d04246634fafacfd68181115d9fe41676ed52870d3a60d12c0771473"
+      }
+    }
+  }
+}

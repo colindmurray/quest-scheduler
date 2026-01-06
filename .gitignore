@@ -1,0 +1,24 @@
+# Node
+**/node_modules/
+
+# Vite build output
+web/dist/
+web/.vite/
+
+# Logs
+*.log
+
+# Firebase local files
+.firebase/
+
+# Extension secrets
+extensions/*.secret.local
+
+# Env files
+**/.env
+**/.env.*
+!**/.env.example
+
+# OS files
+.DS_Store
+Thumbs.db

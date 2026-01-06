@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userEmail() {
+      return request.auth.token.email;
+    }
+
+    function isCreator(data) {
+      return isSignedIn() && data.creatorId == request.auth.uid;
+    }
+
+    function isParticipant(data) {
+      return isSignedIn() && userEmail() in data.participants;
+    }
+
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /schedulers/{schedulerId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.creatorId == request.auth.uid;
+
+      allow update: if isCreator(resource.data)
+        || (
+          isSignedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["participants"])
+          && request.resource.data.participants.hasAll(resource.data.participants)
+          && userEmail() in request.resource.data.participants
+        );
+
+      allow delete: if isCreator(resource.data);
+
+      match /slots/{slotId} {
+        allow read: if isSignedIn();
+        allow write: if isCreator(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data);
+      }
+
+      match /votes/{userId} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
+    match /mail/{docId} {
+      allow create: if isSignedIn();
+      allow read, update, delete: if false;
+    }
+  }
+}

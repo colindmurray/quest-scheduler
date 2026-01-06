@@ -1,0 +1,101 @@
+@import url('https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "PT Sans", ui-sans-serif, system-ui, sans-serif;
+  background: hsl(210 20% 95%);
+  color: #0f172a;
+}
+
+.dark body {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.dark body {
+  background: hsl(220 20% 10%);
+  color: #e2e8f0;
+}
+
+.dark .rbc-calendar {
+  color: #e2e8f0;
+}
+
+.dark .rbc-month-view,
+.dark .rbc-time-view,
+.dark .rbc-agenda-view,
+.dark .rbc-time-content,
+.dark .rbc-time-header,
+.dark .rbc-time-header-content {
+  background-color: #0f172a;
+  border-color: #334155;
+}
+
+.dark .rbc-header,
+.dark .rbc-day-bg,
+.dark .rbc-time-slot,
+.dark .rbc-time-header-gutter,
+.dark .rbc-timeslot-group,
+.dark .rbc-time-column,
+.dark .rbc-agenda-table,
+.dark .rbc-agenda-table th,
+.dark .rbc-agenda-table td {
+  border-color: #334155;
+}
+
+.dark .rbc-toolbar button {
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  background: #0f172a;
+}
+
+.dark .rbc-toolbar button:hover {
+  background: #1e293b;
+}
+
+.dark .rbc-toolbar button.rbc-active,
+.dark .rbc-toolbar button.rbc-active:hover {
+  background: hsl(210 70% 50%);
+  border-color: hsl(210 70% 50%);
+  color: #fff;
+}
+
+.dark .rbc-today {
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.dark .rbc-off-range-bg {
+  background: #0b1220;
+}
+
+.dark .rbc-event {
+  background: hsl(210 70% 50%);
+  border-color: transparent;
+  color: #fff;
+}
+
+.dark .rbc-selected {
+  background: hsl(210 70% 45%);
+}
+
+.dark .rbc-current-time-indicator {
+  background-color: hsl(180 80% 40%);
+}
