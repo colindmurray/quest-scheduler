@@ -6,10 +6,16 @@
 
 :root {
   color-scheme: light;
+  --past-day-bg: rgba(148, 163, 184, 0.15);
+  --past-slot-bg: rgba(148, 163, 184, 0.12);
+  --past-text-color: #94a3b8;
 }
 
 :root.dark {
   color-scheme: dark;
+  --past-day-bg: rgba(30, 41, 59, 0.7);
+  --past-slot-bg: rgba(30, 41, 59, 0.6);
+  --past-text-color: #475569;
 }
 
 html,
@@ -98,4 +104,97 @@ body {
 
 .dark .rbc-current-time-indicator {
   background-color: hsl(180 80% 40%);
+}
+
+.rbc-event-label {
+  display: none !important;
+}
+
+.rbc-show-more {
+  color: hsl(210 70% 35%);
+  background: rgba(226, 232, 240, 0.6);
+  border-radius: 999px;
+  padding: 2px 6px;
+}
+
+.rbc-show-more:hover {
+  background: rgba(226, 232, 240, 0.85);
+}
+
+.dark .rbc-show-more {
+  color: #e2e8f0;
+  background: rgba(148, 163, 184, 0.2);
+}
+
+.dark .rbc-show-more:hover {
+  background: rgba(148, 163, 184, 0.35);
+}
+
+/* Past day/slot styling for non-interactivity */
+.rbc-past-day {
+  position: relative;
+}
+
+.rbc-past-day::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 4px,
+    var(--past-day-bg) 4px,
+    var(--past-day-bg) 8px
+  );
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.rbc-past-day .rbc-button-link,
+.rbc-past-day .rbc-date-cell {
+  color: var(--past-text-color) !important;
+}
+
+.rbc-past-slot {
+  position: relative;
+}
+
+.rbc-past-slot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 3px,
+    var(--past-slot-bg) 3px,
+    var(--past-slot-bg) 6px
+  );
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* Ensure past day cells in month view have muted appearance */
+.rbc-day-bg.rbc-past-day {
+  background-color: var(--past-day-bg) !important;
+}
+
+/* Mute the date numbers in past days */
+.rbc-date-cell.rbc-past-day .rbc-button-link {
+  color: var(--past-text-color) !important;
+  opacity: 0.7;
+}
+
+/* Past time gutter label styling */
+.rbc-time-gutter .rbc-timeslot-group .rbc-past-slot .rbc-time-slot {
+  color: var(--past-text-color);
+}
+
+/* Subtle border for past day separation */
+.rbc-past-day {
+  border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+.dark .rbc-past-day {
+  border-color: rgba(51, 65, 85, 0.5) !important;
 }

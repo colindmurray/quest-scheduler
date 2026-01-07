@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
+import { Toaster } from "sonner";
 import LandingPage from "./features/landing/LandingPage";
 import DashboardPage from "./features/dashboard/DashboardPage";
 import SettingsPage from "./features/settings/SettingsPage";
@@ -8,6 +9,7 @@ import CreateSchedulerPage from "./features/scheduler/CreateSchedulerPage";
 import ProtectedRoute from "./app/ProtectedRoute";
 import { useAuth } from "./app/AuthProvider";
 import AppLayout from "./app/AppLayout";
+import { useTheme } from "./app/ThemeProvider";
 
 function RedirectWhenSignedIn({ children }) {
   const { user, loading } = useAuth();
@@ -29,8 +31,19 @@ function RedirectWhenSignedIn({ children }) {
 }
 
 export default function App() {
+  const { darkMode } = useTheme();
+
   return (
-    <Routes>
+    <>
+      <Toaster
+        theme={darkMode ? "dark" : "light"}
+        position="top-right"
+        toastOptions={{
+          className: "font-sans",
+          duration: 4000,
+        }}
+      />
+      <Routes>
       <Route
         path="/"
         element={
@@ -70,6 +83,16 @@ export default function App() {
         }
       />
       <Route
+        path="/scheduler/:id/edit"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <CreateSchedulerPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/create"
         element={
           <ProtectedRoute>
@@ -81,5 +104,6 @@ export default function App() {
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }

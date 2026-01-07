@@ -1,13 +1,17 @@
-import { addDoc, collection, doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
-import { format, parse, startOfWeek, getDay } from "date-fns";
+import { format, parse, startOfWeek, getDay, startOfDay, isBefore, isToday } from "date-fns";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { enUS } from "date-fns/locale";
+import { toast } from "sonner";
 import { useAuth } from "../../app/AuthProvider";
 import { useUserSettings } from "../../hooks/useUserSettings";
+import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useFirestoreDoc } from "../../hooks/useFirestoreDoc";
 import { db } from "../../lib/firebase";
+import { schedulerSlotsRef, schedulerVotesRef } from "../../lib/data/schedulers";
 import { isValidEmail } from "../../lib/utils";
 import {
   Select,
@@ -16,6 +20,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../components/ui/dialog";
+import { AvatarStack, buildColorMap, uniqueUsers } from "../../components/ui/voter-avatars";
+import { DatePicker } from "../../components/ui/date-picker";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
@@ -35,6 +49,8 @@ function normalizeEmail(value) {
 }
 
 export default function CreateSchedulerPage() {
+  const { id: editId } = useParams();
+  const isEditing = Boolean(editId);
   const { user } = useAuth();
   const { settings, addressBook, timezoneMode, timezone } = useUserSettings();
   const navigate = useNavigate();
@@ -46,21 +62,45 @@ export default function CreateSchedulerPage() {
   const [calendarView, setCalendarView] = useState("month");
   const [submitting, setSubmitting] = useState(false);
   const [createdId, setCreatedId] = useState(null);
-  const [error, setError] = useState(null);
   const [inviteError, setInviteError] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [draftDate, setDraftDate] = useState("");
+  const [draftDate, setDraftDate] = useState(null);
   const [draftTime, setDraftTime] = useState("18:00");
   const [draftDuration, setDraftDuration] = useState(240);
   const [selectedTimezone, setSelectedTimezone] = useState(
     Intl.DateTimeFormat().resolvedOptions().timeZone
   );
   const [timezoneInitialized, setTimezoneInitialized] = useState(false);
+  const [loadedFromPoll, setLoadedFromPoll] = useState(false);
+  const [initialSlotIds, setInitialSlotIds] = useState(new Set());
+
+  const schedulerRef = useMemo(
+    () => (isEditing ? doc(db, "schedulers", editId) : null),
+    [editId, isEditing]
+  );
+  const scheduler = useFirestoreDoc(schedulerRef);
+  const slotsRef = useMemo(
+    () => (isEditing ? schedulerSlotsRef(editId) : null),
+    [editId, isEditing]
+  );
+  const votesRef = useMemo(
+    () => (isEditing ? schedulerVotesRef(editId) : null),
+    [editId, isEditing]
+  );
+  const slotsSnapshot = useFirestoreCollection(slotsRef);
+  const votesSnapshot = useFirestoreCollection(votesRef);
 
   const inviteEmails = useMemo(() => invites, [invites]);
   const defaultDuration = settings?.defaultDurationMinutes ?? 60;
-  const effectiveTimezone =
-    timezoneMode === "manual" && timezone ? timezone : selectedTimezone;
+  const effectiveTimezone = selectedTimezone;
+  const invalidSlotIds = useMemo(() => {
+    if (!isEditing) return new Set();
+    const now = Date.now();
+    return new Set(
+      slots.filter((slot) => slot.start && new Date(slot.start).getTime() < now).map((slot) => slot.id)
+    );
+  }, [isEditing, slots]);
+  const hasInvalidSlots = isEditing && invalidSlotIds.size > 0;
 
   useEffect(() => {
     if (timezoneInitialized) return;
@@ -73,27 +113,85 @@ export default function CreateSchedulerPage() {
     setTimezoneInitialized(true);
   }, [timezoneInitialized, timezoneMode, timezone]);
 
-  // Handle Escape key to close modal
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === "Escape" && modalOpen) {
-        setModalOpen(false);
-      }
-    };
-    if (modalOpen) {
-      document.addEventListener("keydown", handleKeyDown);
-      return () => document.removeEventListener("keydown", handleKeyDown);
+    if (!isEditing || loadedFromPoll) return;
+    if (!scheduler.data || slotsSnapshot.loading) return;
+    if (scheduler.data.creatorId && scheduler.data.creatorId !== user?.uid) return;
+    setTitle(scheduler.data.title || "");
+    const creatorEmail = scheduler.data.creatorEmail || user?.email;
+    const participantList = scheduler.data.participants || [];
+    setInvites(participantList.filter((email) => email && email !== creatorEmail));
+    setSlots(
+      slotsSnapshot.data.map((slot) => ({
+        id: slot.id,
+        start: slot.start ? new Date(slot.start) : new Date(),
+        end: slot.end ? new Date(slot.end) : new Date(),
+        persisted: true,
+      }))
+    );
+    setInitialSlotIds(new Set(slotsSnapshot.data.map((slot) => slot.id)));
+    if (scheduler.data.timezone) {
+      setSelectedTimezone(scheduler.data.timezone);
+      setTimezoneInitialized(true);
     }
-  }, [modalOpen]);
+    setLoadedFromPoll(true);
+  }, [isEditing, loadedFromPoll, scheduler.data, slotsSnapshot.loading, slotsSnapshot.data, user?.uid, user?.email]);
+
+  const slotVoters = useMemo(() => {
+    if (!isEditing) return {};
+    const map = {};
+    votesSnapshot.data.forEach((voteDoc) => {
+      if (!voteDoc?.userEmail) return;
+      const userInfo = { email: voteDoc.userEmail, avatar: voteDoc.userAvatar };
+      Object.entries(voteDoc.votes || {}).forEach(([slotId, value]) => {
+        if (!map[slotId]) {
+          map[slotId] = { preferred: [], feasible: [] };
+        }
+        if (value === "PREFERRED") {
+          map[slotId].preferred = uniqueUsers([...map[slotId].preferred, userInfo]);
+          map[slotId].feasible = uniqueUsers([...map[slotId].feasible, userInfo]);
+        } else if (value === "FEASIBLE") {
+          map[slotId].feasible = uniqueUsers([...map[slotId].feasible, userInfo]);
+        }
+      });
+    });
+    return map;
+  }, [isEditing, votesSnapshot.data]);
+
+  const tallies = useMemo(() => {
+    if (!isEditing) return {};
+    const map = {};
+    votesSnapshot.data.forEach((voteDoc) => {
+      Object.entries(voteDoc.votes || {}).forEach(([slotId, value]) => {
+        if (!map[slotId]) map[slotId] = { feasible: 0, preferred: 0 };
+        if (value === "PREFERRED") {
+          map[slotId].preferred += 1;
+          map[slotId].feasible += 1;
+        } else if (value === "FEASIBLE") {
+          map[slotId].feasible += 1;
+        }
+      });
+    });
+    return map;
+  }, [isEditing, votesSnapshot.data]);
+
+  const colorMap = useMemo(() => {
+    if (!isEditing) return {};
+    const participantEmails = scheduler.data?.participants || [];
+    const voterEmails = votesSnapshot.data.map((voteDoc) => voteDoc.userEmail).filter(Boolean);
+    const set = new Set([...participantEmails, ...voterEmails]);
+    return buildColorMap(Array.from(set).sort((a, b) => a.localeCompare(b)));
+  }, [isEditing, scheduler.data?.participants, votesSnapshot.data]);
+
 
   const removeSlot = (slotId) => {
     setSlots((prev) => prev.filter((slot) => slot.id !== slotId));
   };
 
   const openModalForDate = (date) => {
-    const dateStr = format(date, "yyyy-MM-dd");
-    setDraftDate(dateStr);
-    const weekday = getDay(date);
+    const safeDate = date instanceof Date ? date : new Date(date);
+    setDraftDate(safeDate);
+    const weekday = getDay(safeDate);
     const defaultStart = settings?.defaultStartTimes?.[weekday] || "18:00";
     setDraftTime(defaultStart);
     setDraftDuration(defaultDuration);
@@ -102,10 +200,19 @@ export default function CreateSchedulerPage() {
 
   const saveDraftSlot = () => {
     if (!draftDate || !draftTime) {
-      setError("Select a date and time before adding a slot.");
+      console.error("Missing draft date/time", { draftDate, draftTime });
+      toast.error("Select a date and time before adding a slot");
       return;
     }
-    const startUtc = fromZonedTime(`${draftDate}T${draftTime}:00`, effectiveTimezone);
+    const dateStr = format(draftDate, "yyyy-MM-dd");
+    const startUtc = fromZonedTime(`${dateStr}T${draftTime}:00`, effectiveTimezone);
+
+    // Validate that the slot isn't in the past
+    if (startUtc < new Date()) {
+      toast.error("Cannot add a slot in the past. Please select a future time.");
+      return;
+    }
+
     const endUtc = new Date(
       startUtc.getTime() + Number(draftDuration || 0) * 60 * 1000
     );
@@ -118,8 +225,15 @@ export default function CreateSchedulerPage() {
 
   const addSlotFromSelection = (slotInfo) => {
     if (!slotInfo?.start) return;
+    const startDate = slotInfo.start instanceof Date ? slotInfo.start : new Date(slotInfo.start);
+
+    // Block adding slots in the past
+    if (startDate < new Date()) {
+      return; // Silently ignore - visual cues already indicate non-interactivity
+    }
+
     const start = fromZonedTime(
-      format(slotInfo.start, "yyyy-MM-dd'T'HH:mm:ss"),
+      format(startDate, "yyyy-MM-dd'T'HH:mm:ss"),
       effectiveTimezone
     );
     const selectedMinutes =
@@ -132,6 +246,7 @@ export default function CreateSchedulerPage() {
     setSlots((prev) => [...prev, { id: crypto.randomUUID(), start, end }]);
   };
 
+
   const updateSlotTimes = (slotId, start, end) => {
     setSlots((prev) =>
       prev.map((slot) => (slot.id === slotId ? { ...slot, start, end } : slot))
@@ -140,22 +255,27 @@ export default function CreateSchedulerPage() {
 
   const handleCreate = async (event) => {
     event.preventDefault();
-    setError(null);
 
     if (!user) {
-      setError("You must be signed in to create a scheduler.");
+      console.error("Create poll blocked: user not signed in");
+      toast.error("You must be signed in to create a session poll");
       return;
     }
 
     if (!slots.length) {
-      setError("Add at least one slot.");
+      console.error("Create poll blocked: no slots");
+      toast.error("Add at least one slot");
+      return;
+    }
+
+    if (hasInvalidSlots) {
+      console.error("Create poll blocked: past slots", { invalidSlotIds });
+      toast.error("Remove past slots before saving");
       return;
     }
 
     setSubmitting(true);
     try {
-      const schedulerId = crypto.randomUUID();
-      const schedulerRef = doc(db, "schedulers", schedulerId);
       const participants = Array.from(
         new Set([user.email, ...inviteEmails].filter(Boolean))
       );
@@ -164,8 +284,76 @@ export default function CreateSchedulerPage() {
       const timezoneModeForScheduler =
         selectedTimezone === detectedTimezone ? "auto" : "manual";
 
-      await setDoc(schedulerRef, {
-        title: title || "Untitled scheduler",
+      if (isEditing) {
+        await updateDoc(schedulerRef, {
+          title: title || "Untitled poll",
+          participants,
+          timezone: effectiveTimezone,
+          timezoneMode: timezoneModeForScheduler,
+        });
+
+        const currentSlotIds = new Set(slots.map((slot) => slot.id));
+        const removedIds = Array.from(initialSlotIds).filter(
+          (slotId) => !currentSlotIds.has(slotId)
+        );
+
+        await Promise.all(
+          slots.map((slot) => {
+            const slotRef = doc(db, "schedulers", editId, "slots", slot.id);
+            const data = {
+              start: slot.start.toISOString(),
+              end: slot.end.toISOString(),
+            };
+            if (!initialSlotIds.has(slot.id)) {
+              data.stats = { feasible: 0, preferred: 0 };
+            }
+            return setDoc(slotRef, data, { merge: true });
+          })
+        );
+
+        const participantSet = new Set(participants.map((email) => email.toLowerCase()));
+
+        if (removedIds.length > 0) {
+          await Promise.all(
+            removedIds.map((slotId) =>
+              deleteDoc(doc(db, "schedulers", editId, "slots", slotId))
+            )
+          );
+        }
+
+        await Promise.all(
+          votesSnapshot.data.map((voteDoc) => {
+            const userEmail = voteDoc.userEmail?.toLowerCase();
+            if (userEmail && !participantSet.has(userEmail)) {
+              return deleteDoc(doc(db, "schedulers", editId, "votes", voteDoc.id));
+            }
+            const votes = voteDoc.votes || {};
+            let changed = false;
+            const nextVotes = { ...votes };
+            removedIds.forEach((slotId) => {
+              if (nextVotes[slotId]) {
+                delete nextVotes[slotId];
+                changed = true;
+              }
+            });
+            if (!changed) return Promise.resolve();
+            return setDoc(
+              doc(db, "schedulers", editId, "votes", voteDoc.id),
+              { votes: nextVotes, updatedAt: serverTimestamp() },
+              { merge: true }
+            );
+          })
+        );
+
+        navigate(`/scheduler/${editId}`);
+        return;
+      }
+
+      const schedulerId = crypto.randomUUID();
+      const newSchedulerRef = doc(db, "schedulers", schedulerId);
+
+      await setDoc(newSchedulerRef, {
+        title: title || "Untitled poll",
         creatorId: user.uid,
         creatorEmail: user.email,
         status: "OPEN",
@@ -189,9 +377,11 @@ export default function CreateSchedulerPage() {
       );
 
       setCreatedId(schedulerId);
+      toast.success(isEditing ? "Session poll updated" : "Session poll created");
       navigate(`/scheduler/${schedulerId}`);
     } catch (err) {
-      setError(err.message || "Failed to create scheduler.");
+      console.error("Failed to save session poll:", err);
+      toast.error(err.message || "Failed to save session poll");
     } finally {
       setSubmitting(false);
     }
@@ -217,6 +407,38 @@ export default function CreateSchedulerPage() {
     setInvites((prev) => prev.filter((item) => item !== email));
   };
 
+  if (isEditing && scheduler.loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-sm text-slate-500 dark:text-slate-400">Loading session poll...</p>
+      </div>
+    );
+  }
+
+  if (isEditing && (!scheduler.data || scheduler.data?.status === "ARCHIVED")) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-slate-600 dark:text-slate-400">
+        Session poll not found.
+      </div>
+    );
+  }
+
+  if (isEditing && scheduler.data?.creatorId && scheduler.data.creatorId !== user?.uid) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-slate-600 dark:text-slate-400">
+        Only the creator can edit this poll.
+      </div>
+    );
+  }
+
+  if (isEditing && scheduler.data?.status === "FINALIZED") {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-slate-600 dark:text-slate-400">
+        This poll is finalized. Re-open it before editing.
+      </div>
+    );
+  }
+
   return (
     <>
       <form
@@ -225,14 +447,18 @@ export default function CreateSchedulerPage() {
       >
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-semibold">Create Scheduler</h2>
+              <h2 className="text-2xl font-semibold">
+                {isEditing ? "Edit Session Poll" : "Create Session Poll"}
+              </h2>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Add a few proposed session slots to kick off voting.
+                {isEditing
+                  ? "Update slots and invitees without losing existing votes."
+                  : "Add a few proposed session slots to kick off voting."}
               </p>
             </div>
             <button
               type="button"
-              onClick={() => navigate("/dashboard")}
+              onClick={() => navigate(isEditing ? `/scheduler/${editId}` : "/dashboard")}
               className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
             >
               Back
@@ -241,7 +467,7 @@ export default function CreateSchedulerPage() {
 
           <div className="mt-6 grid gap-4">
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              Scheduler title
+              Session poll title
               <input
                 className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 placeholder="Campaign 12 scheduling"
@@ -390,18 +616,79 @@ export default function CreateSchedulerPage() {
                 resizable
                 draggableAccessor={() => true}
                 onSelectSlot={(slotInfo) => {
-                  if (calendarView === "month") {
-                    openModalForDate(slotInfo.start);
-                  } else {
+                  try {
+                    const slotStart = slotInfo.start instanceof Date ? slotInfo.start : new Date(slotInfo.start);
+
+                    if (calendarView === "month") {
+                      // Block past days (not including today)
+                      const today = startOfDay(new Date());
+                      if (isBefore(startOfDay(slotStart), today)) {
+                        return; // Silently ignore - visual cues indicate non-interactivity
+                      }
+                      openModalForDate(slotInfo.start);
+                      return;
+                    }
+                    // Week/day views - addSlotFromSelection handles past time validation
                     addSlotFromSelection(slotInfo);
+                  } catch (err) {
+                    console.error("Failed to handle slot selection:", err, slotInfo);
+                    toast.error("Unable to add slot. Please try again.");
                   }
                 }}
-                onEventDrop={({ event, start, end }) =>
-                  updateSlotTimes(event.id, start, end)
-                }
-                onEventResize={({ event, start, end }) =>
-                  updateSlotTimes(event.id, start, end)
-                }
+                onEventDrop={({ event, start, end }) => {
+                  // Block dropping events to past times
+                  if (start < new Date()) {
+                    toast.error("Cannot move slot to a past time");
+                    return;
+                  }
+                  updateSlotTimes(event.id, start, end);
+                }}
+                onEventResize={({ event, start, end }) => {
+                  // Block resizing events to start in the past
+                  if (start < new Date()) {
+                    toast.error("Cannot resize slot to start in the past");
+                    return;
+                  }
+                  updateSlotTimes(event.id, start, end);
+                }}
+                dayPropGetter={(date) => {
+                  const today = startOfDay(new Date());
+                  const dayStart = startOfDay(date);
+                  if (isBefore(dayStart, today)) {
+                    return {
+                      className: "rbc-past-day",
+                      style: {
+                        backgroundColor: "var(--past-day-bg)",
+                        cursor: "not-allowed",
+                      },
+                    };
+                  }
+                  return {};
+                }}
+                slotPropGetter={(date) => {
+                  const now = new Date();
+                  if (date < now) {
+                    return {
+                      className: "rbc-past-slot",
+                      style: {
+                        backgroundColor: "var(--past-slot-bg)",
+                        cursor: "not-allowed",
+                      },
+                    };
+                  }
+                  return {};
+                }}
+                eventPropGetter={(event) => {
+                  if (!isEditing) return {};
+                  const isInvalid = invalidSlotIds.has(event.id);
+                  if (!isInvalid) return {};
+                  return {
+                    style: {
+                      backgroundColor: "#dc2626",
+                      borderColor: "#b91c1c",
+                    },
+                  };
+                }}
                 style={{ height: 420 }}
               />
             </div>
@@ -417,7 +704,11 @@ export default function CreateSchedulerPage() {
               {slots.map((slot) => (
                 <div
                   key={slot.id}
-                  className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900"
+                  className={`flex items-center justify-between rounded-2xl border px-4 py-3 dark:bg-slate-900 ${
+                    invalidSlotIds.has(slot.id)
+                      ? "border-red-300 bg-red-50/60 dark:border-red-700 dark:bg-red-900/20"
+                      : "border-slate-100 bg-white dark:border-slate-700"
+                  }`}
                 >
                   <div>
                     <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -430,6 +721,39 @@ export default function CreateSchedulerPage() {
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       Duration {Math.round((slot.end - slot.start) / 60000)} min
                     </p>
+                    {isEditing && (
+                      <div className="mt-2 flex flex-col gap-2">
+                        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                          <span className="font-semibold">★ Preferred</span>
+                          <AvatarStack
+                            users={(slotVoters[slot.id] || {}).preferred || []}
+                            max={6}
+                            size={20}
+                            colorMap={colorMap}
+                          />
+                          <span className="text-slate-400 dark:text-slate-500">
+                            {(tallies[slot.id]?.preferred || 0)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                          <span className="font-semibold">✓ Feasible</span>
+                          <AvatarStack
+                            users={(slotVoters[slot.id] || {}).feasible || []}
+                            max={6}
+                            size={20}
+                            colorMap={colorMap}
+                          />
+                          <span className="text-slate-400 dark:text-slate-500">
+                            {(tallies[slot.id]?.feasible || 0)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    {invalidSlotIds.has(slot.id) && (
+                      <p className="mt-2 text-xs font-semibold text-red-500 dark:text-red-400">
+                        This slot is in the past. Remove it to save.
+                      </p>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -443,11 +767,15 @@ export default function CreateSchedulerPage() {
             </div>
           </div>
 
-          {error && <p className="mt-4 text-sm text-red-500 dark:text-red-400">{error}</p>}
+          {hasInvalidSlots && (
+            <p className="mt-4 text-sm text-red-500 dark:text-red-400">
+              Remove past slots before saving changes.
+            </p>
+          )}
 
           {createdId && (
             <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/30 dark:text-emerald-200">
-              Scheduler created. Share link: {`${window.location.origin}/scheduler/${createdId}`}
+              Session poll created. Share link: {`${window.location.origin}/scheduler/${createdId}`}
             </div>
           )}
 
@@ -457,73 +785,74 @@ export default function CreateSchedulerPage() {
               disabled={submitting}
               className="rounded-full bg-brand-primary px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:opacity-50"
             >
-              {submitting ? "Creating..." : "Create scheduler"}
+              {submitting
+                ? isEditing
+                  ? "Saving..."
+                  : "Creating..."
+                : isEditing
+                  ? "Update poll"
+                  : "Create poll"}
             </button>
           </div>
       </form>
-      {modalOpen && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="slot-modal-title"
-            aria-describedby="slot-modal-desc"
-          >
-            <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl dark:bg-slate-900">
-              <h3 id="slot-modal-title" className="text-lg font-semibold">Add a slot</h3>
-              <p id="slot-modal-desc" className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Choose a date and time in {effectiveTimezone}.
-              </p>
-              <div className="mt-4 grid gap-3">
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  Date
-                  <input
-                    type="date"
-                    value={draftDate}
-                    onChange={(event) => setDraftDate(event.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                  />
-                </label>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  Start time
-                  <input
-                    type="time"
-                    value={draftTime}
-                    onChange={(event) => setDraftTime(event.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                  />
-                </label>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  Duration (min)
-                  <input
-                    type="number"
-                    min="30"
-                    step="30"
-                    value={draftDuration}
-                    onChange={(event) => setDraftDuration(event.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                  />
-                </label>
-              </div>
-              <div className="mt-6 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setModalOpen(false)}
-                  className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={saveDraftSlot}
-                  className="rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90"
-                >
-                  Add slot
-                </button>
-              </div>
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add a slot</DialogTitle>
+            <DialogDescription>
+              Choose a date and time in {effectiveTimezone}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 grid gap-3">
+            <div className="grid gap-1">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Date
+              </span>
+              <DatePicker
+                date={draftDate}
+                onSelect={setDraftDate}
+                placeholder="Select a date"
+              />
             </div>
+            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Start time
+              <input
+                type="time"
+                value={draftTime}
+                onChange={(event) => setDraftTime(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              />
+            </label>
+            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Duration (min)
+              <input
+                type="number"
+                min="30"
+                step="30"
+                value={draftDuration}
+                onChange={(event) => setDraftDuration(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              />
+            </label>
           </div>
-      )}
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setModalOpen(false)}
+              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={saveDraftSlot}
+              className="rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90"
+            >
+              Add slot
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

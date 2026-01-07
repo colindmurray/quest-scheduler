@@ -4,7 +4,7 @@ import { useAuth } from "../../app/AuthProvider";
 
 const features = [
   {
-    title: "Create a scheduler",
+    title: "Create a session poll",
     body: "Pick dates and add multiple time slots in one flow.",
   },
   {
@@ -32,9 +32,9 @@ export default function LandingPage() {
           <div className="h-10 w-10 rounded-xl bg-brand-primary/20 dark:bg-brand-primary/30" />
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">
-              D&D Scheduler
+              Session Forge
             </p>
-            <h1 className="text-xl font-bold">Next Session HQ</h1>
+            <h1 className="text-xl font-bold">Session Forge</h1>
           </div>
         </div>
         <button
@@ -74,7 +74,7 @@ export default function LandingPage() {
         <aside className="rounded-3xl bg-slate-900 p-8 text-white shadow-xl shadow-slate-300/60 dark:bg-slate-800">
           <h3 className="text-lg font-semibold">Session Pulse</h3>
           <p className="mt-2 text-sm text-slate-300">
-            Track open schedulers, recent votes, and calendar locks at a glance.
+            Track open session polls, recent votes, and calendar locks at a glance.
           </p>
           <div className="mt-6 space-y-4">
             {[
@@ -89,6 +89,20 @@ export default function LandingPage() {
                 </p>
               </div>
             ))}
+          </div>
+          <div className="mt-6">
+            <a
+              href="https://buymeacoffee.com/murraycolii"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex"
+            >
+              <img
+                src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png"
+                height="48"
+                alt="Buy Me A Coffee"
+              />
+            </a>
           </div>
         </aside>
       </main>

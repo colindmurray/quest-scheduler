@@ -1,8 +1,10 @@
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { useAuth } from "../../app/AuthProvider";
 import { useTheme } from "../../app/ThemeProvider";
+import { getStoredAccessToken, signInWithGoogle } from "../../lib/auth";
 import { db } from "../../lib/firebase";
 import { isValidEmail } from "../../lib/utils";
 import { LoadingState } from "../../components/ui/spinner";
@@ -25,7 +27,6 @@ export default function SettingsPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
   const [addressBook, setAddressBook] = useState([]);
   const [addressInput, setAddressInput] = useState("");
   const [addressError, setAddressError] = useState(null);
@@ -37,6 +38,11 @@ export default function SettingsPage() {
   const [timezone, setTimezone] = useState(
     Intl.DateTimeFormat().resolvedOptions().timeZone
   );
+  const [calendarId, setCalendarId] = useState("");
+  const [calendarName, setCalendarName] = useState("");
+  const [availableCalendars, setAvailableCalendars] = useState([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarError, setCalendarError] = useState(null);
   const [defaultTimes, setDefaultTimes] = useState({
     1: "18:00",
     2: "18:00",
@@ -63,20 +69,79 @@ export default function SettingsPage() {
           setEmailNotifications(data.settings?.emailNotifications ?? true);
           setDefaultTimes(data.settings?.defaultStartTimes ?? defaultTimes);
           setTimezoneMode(data.settings?.timezoneMode ?? "auto");
+          setCalendarId(data.settings?.googleCalendarId ?? "");
+          setCalendarName(data.settings?.googleCalendarName ?? "");
           setTimezone(
             data.settings?.timezone ??
               Intl.DateTimeFormat().resolvedOptions().timeZone
           );
         }
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => {
+        console.error("Failed to load settings:", err);
+        toast.error("Failed to load settings: " + err.message);
+      })
       .finally(() => setLoading(false));
   }, [userRef]);
+
+  const handleCalendarSelect = (nextId) => {
+    const selected = availableCalendars.find((item) => item.id === nextId);
+    setCalendarId(nextId);
+    setCalendarName(selected?.summary || nextId);
+  };
+
+  const fetchCalendars = async () => {
+    setCalendarLoading(true);
+    setCalendarError(null);
+    try {
+      let accessToken = getStoredAccessToken();
+      if (!accessToken) {
+        await signInWithGoogle();
+        accessToken = getStoredAccessToken();
+      }
+      if (!accessToken) {
+        throw new Error("Google access token missing. Please try again.");
+      }
+
+      const response = await fetch(
+        "https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=writer&showDeleted=false",
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+      if (!response.ok) {
+        const detail = await response.json();
+        throw new Error(detail?.error?.message || "Failed to load calendars.");
+      }
+      const payload = await response.json();
+      const calendars = (payload.items || [])
+        .filter((item) => item.id)
+        .sort((a, b) => {
+          if (a.primary) return -1;
+          if (b.primary) return 1;
+          return (a.summary || "").localeCompare(b.summary || "");
+        });
+      setAvailableCalendars(calendars);
+
+      if (!calendarId && calendars.length > 0) {
+        const primary = calendars.find((item) => item.primary) || calendars[0];
+        setCalendarId(primary.id);
+        setCalendarName(primary.summary || primary.id);
+      }
+    } catch (err) {
+      console.error("Failed to load calendars:", err);
+      setCalendarError(err.message || "Failed to load calendars.");
+      toast.error(err.message || "Failed to load calendars.");
+    } finally {
+      setCalendarLoading(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!userRef) return;
     setSaving(true);
-    setError(null);
     try {
       await setDoc(
         userRef,
@@ -93,13 +158,28 @@ export default function SettingsPage() {
             defaultStartTimes: defaultTimes,
             timezoneMode,
             timezone,
+            googleCalendarId: calendarId || null,
+            googleCalendarName: calendarName || null,
           },
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
+      await setDoc(
+        doc(db, "usersPublic", user.uid),
+        {
+          email: user.email,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          emailNotifications,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      toast.success("Settings saved successfully");
     } catch (err) {
-      setError(err.message || "Failed to save settings.");
+      console.error("Failed to save settings:", err);
+      toast.error(err.message || "Failed to save settings");
     } finally {
       setSaving(false);
     }
@@ -197,6 +277,61 @@ export default function SettingsPage() {
                   </Select>
                 </div>
               </div>
+            </section>
+            <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Google Calendar
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Connect a calendar with edit permissions for automatic session entries.
+              </p>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={fetchCalendars}
+                  className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
+                >
+                  {calendarLoading ? "Loading..." : "Connect / Refresh calendars"}
+                </button>
+                {calendarId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCalendarId("");
+                      setCalendarName("");
+                    }}
+                    className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+                  >
+                    Unlink calendar
+                  </button>
+                )}
+              </div>
+              {calendarError && (
+                <p className="mt-2 text-xs text-red-500 dark:text-red-400">{calendarError}</p>
+              )}
+              {availableCalendars.length > 0 && (
+                <div className="mt-4 grid gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  <span>Choose calendar</span>
+                  <Select value={calendarId} onValueChange={handleCalendarSelect}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a calendar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableCalendars.map((calendar) => (
+                        <SelectItem key={calendar.id} value={calendar.id}>
+                          {calendar.summary || calendar.id}
+                          {calendar.primary ? " (primary)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {!availableCalendars.length && calendarId && (
+                <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                  Linked calendar: {calendarName || calendarId}
+                </p>
+              )}
             </section>
             <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Address book</h3>
@@ -329,8 +464,6 @@ export default function SettingsPage() {
               </div>
             </section>
           </div>
-
-          {error && <p className="mt-4 text-sm text-red-500 dark:text-red-400">{error}</p>}
 
           <div className="mt-6 flex justify-end">
             <button
