@@ -123,3 +123,7 @@
 - [x] Persist questing group selection on edit + remove non-group participants on change
 - [x] Match poll view group styling to Create Poll group bubble + fix edit prefill
 - [x] Hide group members from duplicate participant list + align color fallback
+
+## Phase 15 — Discord Integration (Design)
+- [x] Draft Discord bot feature design doc (poll voting for questing groups)
+- [x] Add API contract + Mermaid sequence diagrams + verification notes
