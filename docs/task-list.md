@@ -1,19 +1,29 @@
-# D&D Scheduler — Task List
+# Quest Scheduler — Task List
 
 ## Phase 0 — Repo + Tooling
 - [x] Initialize Vite React app in repo root (web/)
 - [x] Add Tailwind CSS setup
 - [x] Add shadcn/ui setup (components.json + utils + base Button)
-- [ ] Add ESLint/Prettier (optional but recommended)
+- [x] Add ESLint config (`web/eslint.config.js`)
+- [ ] Add Prettier (optional but recommended)
+
+## Phase 0.5 — Branding
+- [x] Rebrand UI and docs to Quest Scheduler
+- [x] Add Privacy Policy + Terms of Service pages and link in app
+- [x] Add Contact us mailto link (support@questscheduler.cc)
+- [x] Replace app icon with new Quest Scheduler logo
 
 ## Phase 1 — Firebase Wiring
 - [x] Add Firebase config module
 - [x] Add Auth provider (Google)
 - [x] Set up Firestore client and base hooks
 - [x] Add Firebase CLI config (`firebase.json`, `.firebaserc`)
+- [x] Add local Google OAuth client secret file fallback for Cloud Functions
+- [x] Migrate Functions config from `functions.config()` to env variables
+- [x] Store Google OAuth client JSON in Secret Manager (defineJsonSecret)
 
 ## Phase 2 — Data Model + Rules
-- [ ] Define Firestore collections and document shapes
+- [x] Define Firestore collections and document shapes (`docs/implementation-plan.md`)
 - [x] Implement security rules
 - [ ] Seed minimal test data (local only)
 
@@ -28,15 +38,22 @@
 - [x] Slot creation + multi-slot per day
 - [x] Invitee selection (manual input placeholder)
 - [x] Create scheduler + shareable UUID link (basic flow)
+- [x] Add "Anyone with link" sharing option and gated access
+- [x] Restore calendar click selection for slot creation
 
 ## Phase 5 — Voting Experience
 - [x] Calendar view with slot chips
 - [x] Modal vote editor per day
 - [x] List view with Feasible/Preferred
 - [x] Submit/edit vote flows
+- [ ] Add pending poll invite flow (notifications + dashboard + accept/decline)
+- [x] Add pending poll invite flow (notifications + dashboard + accept/decline)
+- [x] Enforce accepted participants only; pending invites cannot vote
 
 ## Phase 6 — Results + Finalization
 - [x] Results view with sorting modes
+- [x] Add weekday labels to list/results slot rows
+- [x] Sort list slots by date and use date as results tie-breaker
 - [x] Creator finalization modal
 - [x] Google Calendar event creation (client-side)
 
@@ -45,16 +62,64 @@
 - [x] Re-finalize with delete-old-event checkbox
 
 ## Phase 8 — Settings
-- [x] Address Book management
 - [x] Default session times per weekday
 - [x] Default duration/title/description
 - [x] Notifications toggle
+- [x] Add delete profile flow with confirmation
+- [x] Delete profile removes outgoing friend requests and accepted links
+- [x] Update legal pages with account deletion language
 
 ## Phase 9 — Notifications
-- [ ] Install Firebase Trigger Email extension (SMTP placeholders, deploy pending)
+- [ ] Configure SMTP credentials + deploy Trigger Email extension (installed; placeholders in `extensions/firestore-send-email.env`)
+- [x] Wire questing group invites to create in-app notifications for existing users
+- [x] Backfill in-app notifications for pending group invites on login
+- [x] Send in-app finalization notifications to poll participants (exclude creator)
+- [x] Notify poll creator when someone joins via link or submits votes
+- [x] Send poll invite emails + notifications to new participants (exclude creator)
+- [x] Load friend/group notifications globally on login
+- [x] Remove friend/group invite notifications on accept/decline
+- [x] Notify inviter when a group invite is accepted
+
+## Phase 11 — Friends System
+- [x] Replace address book with friend requests + accept flow
+- [x] Friends page with pending requests + questing groups tab
+- [x] Friend invite link that auto-accepts after login
+- [x] Restrict questing group invites to existing friends
+- [x] Friend invite modal flow for email links
+- [x] Pending outgoing requests section + unfriend action
+- [x] Questing group invite revocation + accept/decline permissions
+- [x] Harden friend/group notifications and group leave/remove flows against permission edge cases
+- [x] Fix outgoing friend request list query to use sender UID
+- [x] Make notification actions update UI immediately (optimistic updates)
+- [x] Allow friend request reads/removals by sender email to prevent one-sided visibility
+- [x] Optimistically remove unfriended users from the friends list UI
+- [x] Delete all historical friend request docs on unfriend so re-requests work
+- [x] Auto-remove friend/group notifications when accepting/declining in Friends & Groups
 
 ## Phase 10 — QA + Deployment
 - [ ] Manual test plan + bug fixes
+- [x] Add unit tests for invite notification wiring
 - [x] Deploy setup config (hosting predeploy + runbook)
-- [ ] Deploy Firestore rules + hosting
+- [x] Deploy Firestore rules + hosting
 - [ ] Verify Google OAuth scopes in production
+- [x] Remove legacy App Hosting backend (`studio`) so only Hosting remains
+
+## Phase 14 — Calendar Auth Integrity
+- [x] Fix Settings permissions read regression
+- [x] Enforce calendar OAuth account matches signed-in email
+- [x] Surface expired calendar auth in Settings flow
+- [x] Deploy calendar auth fixes (functions + rules + hosting)
+
+## Phase 12 — Abuse Prevention + Invite Limits
+- [x] Define invite/abuse fields on user profiles (allowance, suspension, blocked list)
+- [x] Add Cloud Function endpoints to enforce invite limits and blocked users
+- [x] Wire friend request + poll invite flows through server enforcement
+- [x] Add blocked users UI in Friends & Groups
+- [x] Enforce suspension + banned email checks on login
+
+## Phase 13 — Questing Group Participants
+- [x] Highlight questing group on poll view and mark group members
+- [x] Prevent removal of participants added via questing group
+- [x] Persist questing group selection on edit + remove non-group participants on change
+- [x] Match poll view group styling to Create Poll group bubble + fix edit prefill
+- [x] Hide group members from duplicate participant list + align color fallback
