@@ -77,7 +77,7 @@ This file is the working contract for all agents (including Codex) contributing 
 - If any Discord/Firebase/API behavior is unclear, do web research (official docs first) and update the design doc to reflect corrections.
 - Commit at milestones (typically each Section 1.x group) after tests pass; message format: `discord: <milestone summary>`.
 - When all P0 tasks are complete and tests pass, stop and await user manual testing before continuing.
-- For long-running chunks, prefer `codex cloud exec` or split tasks into smaller prompts.
+- For long-running chunks, split tasks into smaller prompts and run everything locally in the CLI.
 
 ## 6) Deployment Notes
 - Target Firebase Hosting for frontend.

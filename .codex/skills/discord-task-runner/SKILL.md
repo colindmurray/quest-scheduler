@@ -39,9 +39,8 @@ description: Run the Discord bot MVP task list in dnd-scheduler (design doc + ta
    - When all P0 tasks (1–62) are complete and tests pass, stop and await further user instructions.
 
 ## Long-running execution guidance
-- Prefer **small, sequential tasks**; if a task grows beyond ~1 hour, split it or use Codex cloud tasks.
-- For large chunks, use `codex cloud exec --env <ENV_ID> "<prompt>"` to run work in the background, then apply changes locally.
-- Use `codex cloud` to browse active/finished tasks and apply results from the terminal.
+- Prefer **small, sequential tasks**; if a task grows beyond ~1 hour, split it into smaller prompts.
+- Run everything locally in the CLI (no Codex Cloud dependency).
 - For fully automated pipelines, consider orchestrating Codex CLI via MCP + Agents SDK (only if requested).
 
 ## Notes
