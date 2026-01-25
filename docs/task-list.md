@@ -129,3 +129,9 @@
 ## Phase 15 — Discord Integration (Design)
 - [x] Draft Discord bot feature design doc (poll voting for questing groups)
 - [x] Add API contract + Mermaid sequence diagrams + verification notes
+- [x] 2026-01-25: Review discord bot design doc; update for data-model alignment, security hardening, and rate-limit handling
+- [x] 2026-01-25: Finalize Discord design doc with bootstrap link flow, interaction response matrix, and reconciliation details
+- [x] 2026-01-25: Re-validate Discord bot design with current API constraints; refine UX, permissions, and runtime guidance
+- [x] 2026-01-25: Update Discord design doc with interaction response fixes, permissions checks, thread/channel metadata, and refreshed API constraints
+- [x] 2026-01-25: Refine Discord design doc for low-cost pagination fallback, permission bitfield correction, signature verification guidance, and safer post-response processing
+- [x] 2026-01-25: Reconcile external AI edits on Discord design doc; fix CPU allocation wording, task size limits, permissions bitfield, and add data integrity + idempotency checks

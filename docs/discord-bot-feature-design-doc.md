@@ -10,6 +10,7 @@ This design avoids Message Content privileged intent by using Discord Interactio
 - Allow authenticated users to cast and update poll votes directly in Discord.
 - Keep Discord state consistent with poll state, including edits, re-open, and finalization.
 - Avoid privileged intents and message content scraping; use Interactions and components.
+- **Zero-cost operation**: Leverage Firebase/Google Cloud free tiers (Cloud Functions, Cloud Tasks) to maintain $0/month running costs for typical usage, while still enabling billing (Blaze) for deployment.
 
 ## Non-Goals (for this phase)
 - Creating polls directly from Discord.
@@ -23,53 +24,61 @@ This design avoids Message Content privileged intent by using Discord Interactio
 - Votes sync to the poll in Quest Scheduler and are visible in the web UI.
 - When the poll is edited, reopened, or finalized, the bot edits or posts updates in Discord.
 
-## Discord Platform Constraints (Research Highlights)
-- Message content is a privileged intent for verified bots; Discord recommends using Interactions (slash commands, buttons, select menus) instead of reading message content. citeturn1search4
-- Privileged intents (presence, guild members, message content) are gated for verified apps; avoid them unless strictly needed. citeturn1search0
-- Message components provide interactive UI elements (e.g., buttons/select menus) and require `custom_id` for handling user interactions. citeturn0search3
+## Discord Platform Constraints & Architecture
+- **Message content is a privileged intent**: Avoid reading messages. Use Interactions.
+- **3-Second Response Deadline**: Discord requires an initial response within 3 seconds.
+- **Interaction token lifetime**: Follow-ups and edits must be sent within ~15 minutes.
+- **CPU Allocation**: Cloud Run request-based billing allocates CPU only during request processing, so background work after the response is not guaranteed.
+- **Solution**: The **"Always Defer + Async Task"** pattern.
+    1.  **Ingress Function**: Receives interaction -> Verifies Signature -> Enqueues Cloud Task -> Responds `DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE` (type 5) immediately.
+    2.  **Worker Function (Cloud Task)**: Executes the logic (DB writes, Discord API calls) -> Edits the original deferred message with the result.
 
-## Architecture
 ### High-Level Components
-1. **Discord Bot Service** (Cloud Function or separate service)
-   - Receives interactions (slash commands, component clicks).
-   - Sends/edits messages in Discord channels.
-   - Calls Quest Scheduler backend to read polls and record votes.
+1.  **Interaction Ingress (Cloud Function)**
+    - Public HTTPS endpoint.
+    - Verifies Ed25519 signature (CRITICAL security step).
+    - Enqueues a **Cloud Task** for the actual work.
+    - Returns `200 OK` with "Deferred" type immediately (< 500ms).
 
-2. **Quest Scheduler Backend**
-   - Stores Discord linkage (guild/channel/group mapping).
-   - Stores Discord user mappings (Quest Scheduler user -> Discord user ID).
-   - Exposes endpoints to create/update poll messages and apply votes.
+2.  **Async Worker (Cloud Function triggered by Cloud Task)**
+    - Processes the vote/command.
+    - Writes to Firestore.
+    - Calls Discord API to update the message or send a follow-up.
+    - Retries automatically on transient errors (built-in Cloud Task feature).
+    - Has full CPU access (not throttled like post-response code).
 
-3. **Quest Scheduler Web App**
-   - Adds UI in questing group settings to manage Discord integration.
-   - Provides a secure OAuth2-based Discord user linking flow.
+**Cloud Tasks Note**: Task payloads are billed in 32KB chunks and the maximum task size is 100KB. Keep payloads small:
+- Let Cloud Tasks auto-generate task IDs (don't use custom names)
+- Store only essential interaction fields in the task payload
 
-### Interaction Delivery Method
-Use an **Interaction webhook endpoint** (recommended) and keep the bot service stateless for commands and component interactions. Verify incoming requests using Discord’s public key before processing. citeturn0search5
+3.  **Quest Scheduler Backend**
+    - Stores Discord linkage (guild/channel/group mapping).
+    - Stores Discord user mappings.
+
+4.  **Quest Scheduler Web App**
+    - UI to manage Discord integration.
+    - OAuth2-based Discord user linking flow.
 
 ## Authentication + Identity Linking
 ### Server/Channel Link
 - Only questing group owners/admins can link a Discord channel.
-- They run `/qs link-group` in Discord or use a “Connect Discord” button in the web UI.
-- The bot verifies admin permissions on the guild/channel and stores:
-  - `discordGuildId`, `discordChannelId`, `discordChannelName`
-  - `discordApplicationId`, `discordBotId`
-  - `linkedAt`, `linkedByUserId`
+- **Bootstrap linking (required)**: Linking must start from a Quest Scheduler identity. Use a two-step flow:
+  1. In Quest Scheduler web UI, a group admin generates a **one-time link code** for the group.
+  2. In Discord, they run `/qs link-group <code>` in the target channel. The bot validates the code, checks channel permissions, and links the group.
+- The bot verifies admin permissions on the guild/channel (Manage Channels or Administrator).
 
 ### User Link
 Each Quest Scheduler user must link their Discord user ID so that votes can be attributed correctly.
 
-Options:
-- **OAuth2 link flow (recommended)**: user clicks “Link Discord” in settings, authorizes via Discord, and backend stores `discordUserId` and username. citeturn0search2
+- **OAuth2 link flow (recommended)**: user clicks "Link Discord" in settings, authorizes via Discord, and backend stores `discordUserId`.
 - **Slash command linking**: user runs `/qs link` and the bot returns a one-time code; user enters the code in Quest Scheduler to complete linking.
 
-Linked user mapping is stored on the user profile:
-```
-users/{uid}:
-  discordUserId
-  discordUsername
-  discordLinkedAt
-```
+**One-time code requirements (link + group link):**
+- TTL: 10 minutes.
+- Store hashed codes server-side.
+- Rate limit per user and per IP.
+- Max 5 attempts per code; delete on success or expiration.
+- OAuth2 scope: `identify` only. Use Authorization Code flow with a `state` parameter and store tokens server-side (never in the client).
 
 ## Data Model Additions
 ```
@@ -78,10 +87,10 @@ questingGroups/{groupId}:
     guildId
     channelId
     channelName
-    botAddedAt
+    linkedAt
     linkedByUserId
 
-polls/{pollId}:
+schedulers/{schedulerId}:
   discord:
     messageId
     channelId
@@ -89,247 +98,284 @@ polls/{pollId}:
     lastPostedAt
     lastUpdatedAt
     lastStatus
+    lastSyncedHash
 
-pollVotes/{pollId}/{userId}:
+schedulers/{schedulerId}/votes/{userId}:
   source: "web" | "discord"
+  lastVotedFrom: "web" | "discord"
+
+users/{uid}:
+  discord:
+    userId
+    username
+    globalName
+    linkedAt
+    linkSource   # "oauth" | "slash"
+
+discordUserLinks/{discordUserId}:
+  qsUserId
+  linkedAt
+
+discordLinkCodes/{codeId}:
+  codeHash
+  type: "user-link" | "group-link"
+  uid
+  groupId
+  createdAt
+  expiresAt
+  attempts
 ```
 
 ## API Contracts
-This section defines the external-facing endpoints (Discord → bot service) and internal Quest Scheduler APIs used by the bot service. Names are placeholders; final paths should follow existing Functions/Express conventions.
 
-### Discord → Bot Service (Interaction Webhook)
+### Discord → Bot Service (Interaction Ingress)
 **POST `/discord/interactions`**
-- Receives application commands and component interactions from Discord.
-- Must validate signatures before processing and respond quickly to avoid timeouts. citeturn0search5
 
-**Request (Discord Interaction payload)**
-```
-{
-  "type": "PING | APPLICATION_COMMAND | MESSAGE_COMPONENT | MODAL_SUBMIT | ...",
-  "data": {
-    "name": "qs",
-    "custom_id": "poll:vote:<pollId>",
-    "values": ["slotIdA", "slotIdB"]
-  },
-  "guild_id": "123",
-  "channel_id": "456",
-  "member": { "user": { "id": "discordUserId" } },
-  "token": "interactionToken",
-  "id": "interactionId"
+**Signature Verification (CRITICAL)**:
+Discord sends two headers that MUST be verified before processing:
+- `X-Signature-Ed25519`: The Ed25519 signature
+- `X-Signature-Timestamp`: Unix timestamp of the request
+
+```javascript
+import { verifyKey } from 'discord-interactions';
+
+// MUST use raw body (not parsed JSON) for verification
+const isValid = await verifyKey(
+  req.rawBody,
+  req.headers['x-signature-ed25519'],
+  req.headers['x-signature-timestamp'],
+  process.env.DISCORD_PUBLIC_KEY
+);
+
+if (!isValid) {
+  return res.status(401).send('Invalid signature');
 }
 ```
 
-**Response (initial)**
-```
-{
-  "type": "CHANNEL_MESSAGE_WITH_SOURCE | DEFERRED_UPDATE_MESSAGE | ...",
-  "data": {
-    "content": "Votes saved",
-    "embeds": [],
-    "components": []
-  }
-}
-```
+**Security notes**:
+- Discord periodically sends invalid signatures to test your endpoint
+- If signature verification fails, Discord can remove your interactions URL
+- 10,000 invalid requests in 10 minutes triggers a 24-hour Cloudflare ban
 
-Notes:
-- Interaction delivery is either gateway or webhook; this design uses the webhook endpoint only. citeturn0search5
-- Component interactions rely on `custom_id` routing. citeturn0search3
+**Response**: ALWAYS return a deferred response within 3 seconds.
+- Use `type: 5` (`DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE`) for most interactions.
+- Set `flags: 64` only when the response should be ephemeral.
+- For component interactions that only update the source message (non-ephemeral), `type: 6` (`DEFERRED_UPDATE_MESSAGE`) is acceptable.
+- `PING` must return `type: 1` (`Pong`) synchronously.
 
-### Quest Scheduler Internal APIs (Bot Service → App)
-**POST `/api/discord/link-channel`**
-Links a questing group to a Discord channel.
-```
-{
-  "groupId": "group_123",
-  "guildId": "123",
-  "channelId": "456",
-  "requestedByDiscordUserId": "999",
-  "requestedByUserId": "qsUid",
-  "nonce": "random"
-}
-```
-```
-{ "status": "ok", "channelName": "#raiders" }
-```
+**Action**: Enqueue `processDiscordInteraction` Cloud Task BEFORE sending response.
 
-**POST `/api/discord/unlink-channel`**
-```
-{ "groupId": "group_123", "guildId": "123", "channelId": "456" }
-```
+### Async Worker (Cloud Task)
+**Task Handler: `processDiscordInteraction`**
+- Payload: `{ interaction_id, token, application_id, data, guild_id, channel_id, member, user, ... }`
+- Logic:
+  - If `custom_id` == "vote_btn": Fetch slots -> Call Discord API to edit original response with Select Menus.
+  - If `custom_id` == "submit_vote": Write to Firestore -> Call Discord API to edit original response ("Votes saved").
+  - If token is older than 15 minutes, skip editing the original response and log a warning.
 
-**POST `/api/discord/poll-message`**
-Create or update the canonical poll card in Discord.
-```
-{
-  "pollId": "poll_123",
-  "groupId": "group_123",
-  "guildId": "123",
-  "channelId": "456",
-  "action": "create | update | finalize | reopen | delete"
-}
-```
-
-**POST `/api/discord/vote`**
-Write votes as if from the linked Quest Scheduler user.
-```
-{
-  "pollId": "poll_123",
-  "discordUserId": "999",
-  "preferredSlotIds": ["slotA"],
-  "feasibleSlotIds": ["slotA", "slotB"]
-}
-```
-
-**GET `/api/discord/poll-summary?pollId=...`**
-Returns the snapshot used to render the poll card in Discord (title, status, slots, counts).
-
-### Data Integrity Rules
-- Reject Discord votes if `discordUserId` is not linked to a Quest Scheduler user.
-- Reject votes if poll is finalized/locked.
-- Reject votes for slots removed from the poll.
-- Enforce **Preferred ⇒ Feasible** on write.
+## Data Integrity & Authorization Checks
+- Reject interactions where `application_id` does not match the configured Discord app.
+- Require `guild_id` + `channel_id` to match the linked questing group for the poll.
+- Require a linked Discord user; block if `discordUserId` already links to another QS user.
+- Require the linked user's email to be a participant on the poll.
+- Reject votes for removed slots or when the poll is finalized/locked.
+- Enforce **Preferred ⇒ Feasible** on every write.
 
 ## Discord Voting UX
 ### Posting the Poll Card
-- Post a single “canonical” poll message per poll per connected channel.
-- Include:
-  - Poll title, description, creator, status (Open / Finalized / Closed)
-  - A short summary of current slot count and current votes
-  - A “Vote” button that opens the voting UI
-  - A “View Poll” link back to the web UI
+- Post a single “canonical” poll message per poll.
+- **Timezones**: Use Discord timestamps `<t:unix:F>` for localized display.
 
 ### Voting Flow (Components)
-1. User clicks “Vote”.
-2. Bot responds with ephemeral UI containing:
-   - Multi-select for **Preferred** slots (max N)
-   - Multi-select for **Feasible** slots (max N)
-   - A “Submit” button
-3. Submit writes votes to Firestore as if the user voted in the web UI.
-4. Bot confirms with an ephemeral “Votes saved” response.
+1. User clicks "Vote" button.
+2. Bot responds "Thinking..." (Interaction Deferral).
+3. **Async Task** fetches data and edits the response to show the **Ephemeral Voting UI**:
+   - Multi-select **Preferred** (max 25).
+   - Multi-select **Feasible** (max 25).
+   - "Submit" Button.
+   - "Clear my votes" Button (Resets selection).
+   - "None work for me" Button (Explicit "No").
+4. User submits.
+5. Bot updates ephemeral message: "Votes saved! ✅"
 
-Rules:
-- **Preferred implies feasible**: when user selects preferred slots, we auto-add them to feasible on save.
-- If poll is finalized/locked, submit shows “Voting is closed” and does nothing.
+**Pagination**: If slots > 25, use "Next Page" buttons that replace the ephemeral content with the next set of options.
+**Component limits**:
+- `custom_id` must be unique per component (max 100 chars).
+- A message can have 5 action rows max.
+- A string select menu supports 25 options and `max_values` up to 25.
+**Pagination state**: Store per-user selections across pages in a short-lived Firestore doc keyed by `interaction_id` + `user_id`, and expire it after ~15 minutes.
 
-### Editing / Reopening / Finalizing
-- On **poll edit** (slots added/removed, title changes):
-  - Update the canonical message content (edit message) to reflect new slots.
-  - If a removed slot had votes, those votes are cleared in the backend (already required in web). Discord should mention “Removed slots cleared.”
-- On **poll re-open**:
-  - Edit message status to “Open”; voting UI re-enabled.
-- On **poll finalize**:
-  - Edit message to show selected date and status “Finalized”.
-  - Disable voting buttons.
-  - Post a short “Poll finalized” message in the channel.
+**Low-cost fallback**: If a poll exceeds UI limits by a large margin (e.g., >10 dates or >100 slots), show a single "Vote on Web" button to avoid heavy pagination and extra Firestore reads/writes.
 
 ## Event Handling Strategy
-Use Firestore triggers (or existing backend hooks) to notify the Discord bot service:
-- **poll created** → post poll card
-- **poll updated** → update poll card
-- **poll finalized** → update poll card + post final note
-- **poll reopened** → update poll card
-- **poll deleted** → delete or mark poll card as archived
+Use **Firestore Triggers** to enqueue Cloud Tasks for poll updates.
+- **Debounce**: Use a `lastSyncedHash` and a 5-second delay on the Cloud Task to prevent rapid-fire edits (e.g., during a drag-and-drop reorder).
 
-For user votes:
-- Discord vote interactions write directly to the same vote documents.
-- Web UI vote changes should not necessarily post Discord messages (avoid noise), but the bot can update the poll card counts periodically or on a debounce window.
-
-## Error Handling + Edge Cases
-- **User not linked**: clicking “Vote” shows an ephemeral prompt with a link to “Link Discord account”.
-- **User removed from questing group**: votes are ignored; user gets an ephemeral error.
-- **Poll finalized**: clicking “Vote” returns an ephemeral “Voting is closed.”
-- **Channel deleted / bot removed**: mark integration as invalid and show a warning in web UI.
-- **Rate limits**: queue message edits and avoid frequent updates; prefer a single canonical message per poll.
-
-## Permissions + Security
-- The bot only needs minimal permissions: send messages, embed links, read messages in the channel (if needed to edit its own posts), and use application commands.
-- Avoid message content intent entirely. Use only Interactions to capture user actions. citeturn1search4
-- Verify interaction signatures with the app’s public key before processing. citeturn0search5
-- All Discord user IDs in payloads must be mapped to Quest Scheduler users before any vote is recorded.
-
-## Discord App Verification & Approval Process
-- **App verification is required to scale past 100 servers.** Start in the Developer Portal under the **App Verification** tab and complete the checklist. citeturn3search5turn3search2
-- **Identity verification**: the developer team owner verifies identity via Stripe. citeturn3search5
-- **Privileged intents** (presence, guild members, message content) require additional approval for verified apps, and applications can be submitted once the app is in 75+ servers. Our design avoids these intents by relying on Interactions. citeturn1search0turn3search1
-
-## Abuse & Rate Limiting Considerations
-- A single poll card per channel per poll reduces bot spam.
-- Batch message edits (e.g., no more than once per 30 seconds) if multiple changes occur.
-- If Discord rate limits are hit, retry with backoff and log the failure.
+## Idempotency & Retries
+- Discord may retry interactions; Cloud Tasks will retry on transient failures.
+- Store processed `interaction_id` values for a short TTL to prevent double vote writes.
+- Design worker handlers to be idempotent (last-write-wins for votes).
 
 ## Implementation Phases
-1. **Phase 1: Link & Post**
-   - Slash command to link group to channel.
-   - Post poll card on creation.
+1. **Phase 1: Foundation**: Set up Cloud Functions V2 + Cloud Tasks. Implement `/qs link-group` and Poll Card posting.
+2. **Phase 2: Voting**: Implement the Voting UI (ephemeral components), Pagination, and Vote Writes.
+3. **Phase 3: Polish**: Error handling, "None work for me", and Debouncing.
 
-2. **Phase 2: Voting**
-   - Ephemeral voting UI via components.
-   - Vote write-through to Firestore.
+## Tech Stack & Cost
+- **Runtime**: Node.js 22 (Cloud Functions 2nd Gen).
+- **Libraries**:
+    - `discord-interactions` (v4.4.0+): Official Discord package for signature verification.
+    - `@discordjs/rest`: For API calls with automatic rate limit handling.
+    - `firebase-admin`: For Firestore/Auth.
+    - `firebase-functions` (v2): For Cloud Functions 2nd Gen + Cloud Tasks integration.
+- **Cost Analysis**:
+    - **Cloud Run (Functions 2nd gen)**: Free tier includes 2M requests/month.
+    - **Cloud Tasks**: Free tier (1M tasks/month).
+    - **Firestore**: Free tier (50k reads/20k writes per day).
+    - **Total**: **$0/month** for expected usage, but requires enabling billing (Blaze) to deploy functions and use Cloud Tasks.
+## Design Decisions
+- **Always Defer + Cloud Tasks**: Chosen to bypass Cold Start timeouts (3s limit) and CPU throttling issues in serverless, while maintaining $0 cost (avoiding "min instances").
+- **Ephemeral UI**: Prevents channel spam.
+- **Separate Ingress/Worker**: Decouples high-speed ingress (Discord requirement) from slower business logic.
 
-3. **Phase 3: Sync & Updates**
-   - Update poll card on edit/finalize/reopen.
-   - Clear votes on slot removal and reflect in Discord.
+## Error Handling
+All errors shown to Discord users should be actionable:
 
-4. **Phase 4: Quality**
-   - Error handling, rate limits, and resiliency.
+| Error Condition | User Message |
+|-----------------|--------------|
+| User not linked | "Link your Discord account to Quest Scheduler to vote. Visit questscheduler.cc/settings" |
+| Poll not found | "This poll no longer exists. It may have been deleted." |
+| Poll finalized | "Voting is closed for this session." |
+| Stale slots | "The poll was updated. Please tap Vote again to see the latest times." |
+| User not authorized | "You're not a participant in this poll. Ask the organizer to invite you." |
+| Generic error | "Something went wrong. Please try again or vote on the web." |
 
-## Future Work
-- Create polls from Discord.
-- Finalize polls from Discord (with permissions).
-- DM reminders for unvoted participants.
-- Richer analytics (who voted) in Discord.
+## Rate Limiting
+- **Use `@discordjs/rest`**: Handles Discord's bucket-based rate limits automatically.
+- **Global limits**: 50 requests/second per bot; 10,000 invalid requests in 10 min = 24h ban.
+- **Interaction webhooks**: Share the same rate limit properties as normal webhooks.
+- **Debounce poll updates**: Use Cloud Tasks with `scheduleDelaySeconds: 5` to coalesce rapid edits.
 
-## Open Questions
-- Should Discord voting UI be limited to a maximum number of slots (UI usability)?
-- Should Discord votes require a confirmation step (to reduce accidental clicks)?
+## Bot Permissions
+Minimal permissions bitfield: **2147568640**
 
-## Sequence Diagrams (Mermaid)
-GitHub renders Mermaid diagrams when they are placed in fenced code blocks with the `mermaid` language identifier. citeturn2search0
+| Permission | Bit | Purpose |
+|------------|-----|---------|
+| View Channel | 1024 | See the linked channel |
+| Send Messages | 2048 | Post poll cards |
+| Embed Links | 16384 | Rich poll card formatting |
+| Read Message History | 65536 | Edit own messages |
+| Use Application Commands | 2147483648 | Slash commands |
 
-### Poll Created → Discord Post
-```mermaid
-sequenceDiagram
-    autonumber
-    participant QS as Quest Scheduler (Firestore/Backend)
-    participant Bot as Discord Bot Service
-    participant Discord as Discord API
-    participant Channel as Discord Channel
+**Note**: "Use Application Commands" is a user permission. You can omit it from the bot's permission bitfield and instead configure `default_member_permissions` on each slash command to control who can invoke them.
 
-    QS->>Bot: PollCreated(groupId, pollId)
-    Bot->>QS: Fetch poll summary
-    Bot->>Discord: POST /channels/{id}/messages (poll card)
-    Discord-->>Channel: Poll card posted
-    Bot->>QS: Store messageId in poll.discord
+Install URL:
+```
+https://discord.com/api/oauth2/authorize?client_id={CLIENT_ID}&scope=bot%20applications.commands&permissions=2147568640
 ```
 
-### Vote from Discord
+## Environment Variables / Secrets
+Add to Firebase Secret Manager (use `defineSecret()` from `firebase-functions/params`):
+
+| Secret | Purpose |
+|--------|---------|
+| `DISCORD_APPLICATION_ID` | Bot application ID from Discord Developer Portal |
+| `DISCORD_PUBLIC_KEY` | For Ed25519 signature verification |
+| `DISCORD_BOT_TOKEN` | For Discord API calls |
+| `DISCORD_CLIENT_ID` | For OAuth2 flow |
+| `DISCORD_CLIENT_SECRET` | For OAuth2 token exchange |
+
+```javascript
+import { defineSecret } from 'firebase-functions/params';
+
+const discordPublicKey = defineSecret('DISCORD_PUBLIC_KEY');
+const discordBotToken = defineSecret('DISCORD_BOT_TOKEN');
+
+export const discordIngress = onRequest({
+  secrets: [discordPublicKey, discordBotToken],
+  // ...
+}, handler);
+```
+
+## Firestore Rules Updates
+Add to `firestore.rules`:
+```javascript
+// Discord user links - admin SDK only
+match /discordUserLinks/{discordUserId} {
+  allow read, write: if false;
+}
+
+// One-time link codes - admin SDK only
+match /discordLinkCodes/{codeId} {
+  allow read, write: if false;
+}
+
+// Protect discord fields on users (add to existing protectedUserFieldsUnchanged)
+// "discord" should be in the protected keys list
+```
+
+## Open Questions
+- **Threads**: Blocked for Phase 1.
+- **Multi-channel**: 1:1 mapping for Phase 1.
+
+## Codebase Integration
+- **`functions/src/discord/ingress.js`**: Interaction handler (signature verification, task enqueue, deferred response).
+- **`functions/src/discord/worker.js`**: Cloud Task handler (Firestore ops, Discord API calls).
+- **`functions/src/triggers/scheduler.js`**: Firestore triggers for poll updates.
+
+## Why Cloud Tasks (Not Inline Async)
+
+**The Problem**: Cloud Run request-based billing allocates CPU only while the request is being handled. Once the response is sent, background work is **not guaranteed** to run to completion.
+
+**The Solution**: Enqueue a Cloud Task BEFORE sending the response. The task runs in a separate function invocation with full CPU access.
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  Discord API    │────▶│ Ingress Function │────▶│  Cloud Tasks    │
+│                 │     │ (verify, enqueue,│     │  Queue          │
+│                 │◀────│  respond type:5) │     │                 │
+└─────────────────┘     └─────────────────┘     └────────┬────────┘
+                                                         │
+                                                         ▼
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  Discord API    │◀────│ Worker Function  │◀────│ Task Dispatch   │
+│ (edit message)  │     │ (Firestore ops,  │     │                 │
+│                 │     │  Discord API)    │     │                 │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+```
+
+**Alternatives considered**:
+- Cloud Run instance-based billing (always-allocated CPU): Works but adds ongoing cost
+- Pub/Sub: Similar reliability, slightly more complex
+
+## Sequence Diagram: Vote from Discord
+
 ```mermaid
 sequenceDiagram
     autonumber
     participant User as Discord User
     participant Discord as Discord API
-    participant Bot as Discord Bot Service
-    participant QS as Quest Scheduler Backend
+    participant Ingress as Ingress Function
+    participant Tasks as Cloud Tasks
+    participant Worker as Worker Function
+    participant QS as Firestore
 
-    User->>Discord: Click \"Vote\" button
-    Discord->>Bot: Interaction webhook (MESSAGE_COMPONENT)
-    Bot->>QS: Resolve discordUserId -> qsUserId
-    Bot->>QS: Write votes (preferred/feasible)
-    QS-->>Bot: Vote write OK
-    Bot-->>Discord: Interaction response (confirm)
-```
-
-### Poll Finalized
-```mermaid
-sequenceDiagram
-    autonumber
-    participant QS as Quest Scheduler (Creator)
-    participant Bot as Discord Bot Service
-    participant Discord as Discord API
-    participant Channel as Discord Channel
-
-    QS->>Bot: PollFinalized(pollId, winningSlot)
-    Bot->>Discord: PATCH message (status=Finalized, winning slot)
-    Bot->>Discord: POST message (finalized announcement)
-    Discord-->>Channel: Finalized update visible
+    User->>Discord: Click "Vote" button
+    Discord->>Ingress: POST /discord/interactions
+    Ingress->>Ingress: Verify Ed25519 signature
+    Ingress->>Tasks: Enqueue processInteraction task
+    Ingress-->>Discord: 200 OK {type: 5, flags: 64}
+    Note over Discord: Shows "Bot is thinking..."
+    Tasks->>Worker: Dispatch task
+    Worker->>QS: Fetch poll slots + user votes
+    QS-->>Worker: Poll data
+    Worker->>Discord: PATCH /webhooks/.../messages/@original
+    Note over User: Voting UI appears (ephemeral)
+    User->>Discord: Select slots, click Submit
+    Discord->>Ingress: POST /discord/interactions
+    Ingress->>Tasks: Enqueue processVote task
+    Ingress-->>Discord: 200 OK {type: 5, flags: 64}
+    Tasks->>Worker: Dispatch task
+    Worker->>QS: Write votes
+    Worker->>Discord: PATCH message: "Votes saved!"
 ```

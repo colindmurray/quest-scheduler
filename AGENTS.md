@@ -68,6 +68,17 @@ This file is the working contract for all agents (including Codex) contributing 
 - After each compact step, update `docs/task-list.md` with progress notes.
 - Prefer patching one feature at a time.
 
+### 5.1 Discord Bot MVP Workflow (Codex)
+- Use `docs/discord-bot-feature-design-doc.md` + `docs/discord-bot-feature-design-tasks-list.md` as source of truth.
+- Use the `discord-task-runner` skill when executing the Discord MVP task list.
+- Execute tasks in priority order (P0 → P1 → P2 → P3…), then numeric order.
+- Mark task `Status` as `[x]` only after the task is completed **and** validated (tests run or explicitly noted).
+- If a dependency mismatch appears, update the task list priority/order and explain in Notes.
+- If any Discord/Firebase/API behavior is unclear, do web research (official docs first) and update the design doc to reflect corrections.
+- Commit at milestones (typically each Section 1.x group) after tests pass; message format: `discord: <milestone summary>`.
+- When all P0 tasks are complete and tests pass, stop and await user manual testing before continuing.
+- For long-running chunks, prefer `codex cloud exec` or split tasks into smaller prompts.
+
 ## 6) Deployment Notes
 - Target Firebase Hosting for frontend.
 - Firebase Functions for email notifications.
