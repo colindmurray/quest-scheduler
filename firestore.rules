@@ -32,12 +32,14 @@ service cloud.firestore {
           ? !request.resource.data.keys().hasAny([
               "inviteAllowance",
               "suspended",
-              "suspendedAt"
+              "suspendedAt",
+              "discord"
             ])
           : !request.resource.data.diff(resource.data).affectedKeys().hasAny([
               "inviteAllowance",
               "suspended",
-              "suspendedAt"
+              "suspendedAt",
+              "discord"
             ]);
       }
 
@@ -95,6 +97,22 @@ service cloud.firestore {
     }
 
     match /oauthStates/{stateId} {
+      allow read, write: if false;
+    }
+
+    match /discordUserLinks/{discordUserId} {
+      allow read, write: if false;
+    }
+
+    match /discordLinkCodes/{codeId} {
+      allow read, write: if false;
+    }
+
+    match /discordVoteSessions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    match /discordInteractionIds/{interactionId} {
       allow read, write: if false;
     }
 

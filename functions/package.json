@@ -2,10 +2,13 @@
   "name": "functions",
   "private": true,
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "index.js",
   "dependencies": {
+    "@discordjs/rest": "^2.6.0",
+    "discord-api-types": "^0.38.37",
+    "discord-interactions": "^4.4.0",
     "firebase-admin": "^12.7.0",
     "firebase-functions": "^7.0.3",
     "googleapis": "^140.0.0"

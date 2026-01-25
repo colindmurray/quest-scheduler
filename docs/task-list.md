@@ -135,3 +135,8 @@
 - [x] 2026-01-25: Update Discord design doc with interaction response fixes, permissions checks, thread/channel metadata, and refreshed API constraints
 - [x] 2026-01-25: Refine Discord design doc for low-cost pagination fallback, permission bitfield correction, signature verification guidance, and safer post-response processing
 - [x] 2026-01-25: Reconcile external AI edits on Discord design doc; fix CPU allocation wording, task size limits, permissions bitfield, and add data integrity + idempotency checks
+
+## Phase 16 — Discord Integration (MVP)
+- [ ] 2026-01-25: Kickoff MVP implementation (infra + ingress/worker + OAuth + group link UI + poll posting/voting flows). Cloud Tasks API/queue/IAM + Functions deploy completed; Discord portal steps still pending.
+- [x] 2026-01-25: Reduce Discord interaction timeouts by replying before Cloud Task enqueue (redeployed discordInteractions).
+- [x] 2026-01-25: Clear Discord voting UI after submit to prevent repeated clicks (redeployed processDiscordInteraction).

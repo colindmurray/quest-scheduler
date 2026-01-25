@@ -124,6 +124,22 @@ discordLinkCodes/{codeId}:
   createdAt
   expiresAt
   attempts
+
+discordVoteSessions/{sessionId}:
+  schedulerId
+  discordUserId
+  qsUserId
+  preferredSlotIds
+  feasibleSlotIds
+  createdAt
+  updatedAt
+  expiresAt   # TTL ~15 minutes
+
+discordInteractionIds/{interactionId}:
+  createdAt
+  completedAt
+  status: "processing" | "done"
+  expiresAt   # TTL ~60 minutes
 ```
 
 ## API Contracts

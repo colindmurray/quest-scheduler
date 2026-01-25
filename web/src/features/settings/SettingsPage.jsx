@@ -7,6 +7,7 @@ import { useAuth } from "../../app/AuthProvider";
 import { useTheme } from "../../app/ThemeProvider";
 import { db } from "../../lib/firebase";
 import { signOutUser } from "../../lib/auth";
+import { startDiscordOAuth } from "../../lib/data/discord";
 import { LoadingState } from "../../components/ui/spinner";
 import { Switch } from "../../components/ui/switch";
 import {
@@ -26,9 +27,6 @@ import {
 } from "../../components/ui/dialog";
 
 const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
- 
-
 export default function SettingsPage() {
   const { user } = useAuth();
   const { darkMode, setDarkMode } = useTheme();
@@ -52,6 +50,8 @@ export default function SettingsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [discordInfo, setDiscordInfo] = useState(null);
+  const [discordLinking, setDiscordLinking] = useState(false);
   const [defaultTimes, setDefaultTimes] = useState({
     1: "18:00",
     2: "18:00",
@@ -90,6 +90,7 @@ export default function SettingsPage() {
           if (!data.settings?.googleCalendarNames && data.settings?.googleCalendarName) {
             setCalendarNames({ [data.settings.googleCalendarId]: data.settings.googleCalendarName });
           }
+          setDiscordInfo(data.discord || null);
         }
       })
       .catch((err) => {
@@ -98,6 +99,16 @@ export default function SettingsPage() {
       })
       .finally(() => setLoading(false));
   }, [userRef]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("discord") === "linked") {
+      toast.success("Discord linked successfully");
+      params.delete("discord");
+      const query = params.toString();
+      navigate(`/settings${query ? `?${query}` : ""}`, { replace: true });
+    }
+  }, [navigate]);
 
   const toggleCalendarSelection = (calendar) => {
     setCalendarIds((prev) => {
@@ -159,6 +170,23 @@ export default function SettingsPage() {
       toast.error(message);
     } finally {
       setCalendarLoading(false);
+    }
+  };
+
+  const handleDiscordLink = async () => {
+    setDiscordLinking(true);
+    try {
+      const authUrl = await startDiscordOAuth();
+      if (authUrl) {
+        window.location.assign(authUrl);
+        return;
+      }
+      toast.error("Failed to start Discord linking.");
+    } catch (err) {
+      console.error("Failed to start Discord auth:", err);
+      toast.error(err?.message || "Failed to start Discord linking.");
+    } finally {
+      setDiscordLinking(false);
     }
   };
 
@@ -412,6 +440,37 @@ export default function SettingsPage() {
                 <p className="text-xs text-slate-400 dark:text-slate-500">
                   If the calendar event was modified after finalization, choose which data to display on the dashboard.
                 </p>
+              </div>
+            </section>
+            <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Discord</h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Link your Discord account to vote directly from Discord.
+              </p>
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
+                {discordInfo?.userId ? (
+                  <>
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700 dark:border-emerald-700/60 dark:bg-emerald-900/30 dark:text-emerald-100">
+                      Linked as {discordInfo.globalName || discordInfo.username}
+                    </span>
+                    <button
+                      type="button"
+                      disabled
+                      className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-400 dark:border-slate-600 dark:text-slate-500"
+                    >
+                      Unlink (coming soon)
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleDiscordLink}
+                    disabled={discordLinking}
+                    className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+                  >
+                    {discordLinking ? "Linking..." : "Link Discord"}
+                  </button>
+                )}
               </div>
             </section>
             <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">

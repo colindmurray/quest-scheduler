@@ -5,6 +5,7 @@ import { GroupColorPicker } from "./GroupColorPicker";
 import { InviteMemberModal } from "./InviteMemberModal";
 import { AvatarBubble, AvatarStack, buildColorMap } from "../../../components/ui/voter-avatars";
 import { useUserProfiles } from "../../../hooks/useUserProfiles";
+import { generateDiscordLinkCode } from "../../../lib/data/discord";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +39,9 @@ export function GroupCard({
   const [saving, setSaving] = useState(false);
   const [revokeInviteEmail, setRevokeInviteEmail] = useState(null);
   const [revokeInviteOpen, setRevokeInviteOpen] = useState(false);
+  const [discordLinking, setDiscordLinking] = useState(false);
+  const [discordCode, setDiscordCode] = useState(null);
+  const [discordCodeExpiresAt, setDiscordCodeExpiresAt] = useState(null);
 
   const members = group.members || [];
   const pendingInvites = group.pendingInvites || [];
@@ -102,6 +106,21 @@ export function GroupCard({
       toast.error(err.message || "Failed to delete group");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleGenerateDiscordCode = async () => {
+    setDiscordLinking(true);
+    try {
+      const response = await generateDiscordLinkCode(group.id);
+      setDiscordCode(response?.code || null);
+      setDiscordCodeExpiresAt(response?.expiresAt || null);
+      toast.success("Discord link code generated");
+    } catch (err) {
+      console.error("Failed to generate Discord link code:", err);
+      toast.error(err?.message || "Failed to generate Discord link code");
+    } finally {
+      setDiscordLinking(false);
     }
   };
 
@@ -298,6 +317,49 @@ export function GroupCard({
                   checked={group.memberManaged}
                   onCheckedChange={handleToggleMemberManaged}
                 />
+              </div>
+            )}
+
+            {canManage && (
+              <div className="rounded-2xl border border-slate-100 px-4 py-3 dark:border-slate-700">
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  Discord channel
+                </p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Link a Discord channel to post poll updates for this group.
+                </p>
+                {group.discord?.channelName ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-emerald-700 dark:text-emerald-200">
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 dark:border-emerald-700/60 dark:bg-emerald-900/30">
+                      Connected to #{group.discord.channelName}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <span>No Discord channel linked yet.</span>
+                  </div>
+                )}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleGenerateDiscordCode}
+                    disabled={discordLinking}
+                    className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+                  >
+                    {discordLinking ? "Generating..." : "Generate link code"}
+                  </button>
+                  {discordCode && (
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200">
+                      {discordCode}
+                    </span>
+                  )}
+                </div>
+                {discordCodeExpiresAt && (
+                  <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
+                    Expires at {new Date(discordCodeExpiresAt).toLocaleTimeString()}.
+                    Run /qs link-group {discordCode} in the target Discord channel.
+                  </p>
+                )}
               </div>
             )}
           </div>
