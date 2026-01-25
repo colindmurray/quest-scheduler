@@ -22,15 +22,15 @@ Everything needed to get a fully working end-to-end experience that users can us
 | # | Task | Priority | Status | Dependencies | Notes |
 | --- | ------ | ---------- | --- | -------------- | ------- |
 | 1 | **Upgrade to Node.js 22** | P0 | [x] | None | Updated functions/package.json engines + firebase.json runtime. Validation: no automated tests. |
-| 2 | **Enable Blaze billing** | P0 | [ ] | None | Manual: enable Blaze billing in Firebase project. |
+| 2 | **Enable Blaze billing** | P0 | [x] | None | Manual: enable Blaze billing in Firebase project. Validation: gcloud billingEnabled=true. |
 | 3 | **Enable Cloud Tasks API** | P0 | [x] | #2 | Enabled via gcloud services. Validation: no automated tests. |
 | 4 | **Create Cloud Tasks queue (region-aligned)** | P0 | [x] | #3 | Queue `processDiscordInteraction` exists in us-central1. Validation: no automated tests. |
 | 5 | **Grant Cloud Tasks IAM** | P0 | [x] | #4 | Enqueuer + Run invoker granted to appspot SA. Validation: no automated tests. |
 | 6 | **Install Discord dependencies** | P0 | [x] | #1 | Installed Discord dependencies in functions package. Validation: no automated tests. |
-| 7 | **Create Discord Application** | P0 | [ ] | None | Manual: create Discord application and capture IDs/tokens. |
-| 8 | **Configure Discord secrets** | P0 | [ ] | #7 | Manual: store Discord secrets in Firebase Secret Manager. |
+| 7 | **Create Discord Application** | P0 | [x] | None | Manual: create Discord application and capture IDs/tokens. Validation: app ID/token provided during setup. |
+| 8 | **Configure Discord secrets** | P0 | [x] | #7 | Manual: store Discord secrets in Firebase Secret Manager. Validation: gcloud secrets list shows DISCORD_* entries. |
 | 9 | **Split `functions/index.js`** | P0 | [x] | None | Split functions entry into functions/src modules with Discord scaffolding. Validation: no automated tests. |
-| 10 | **Set up Cloud Tasks queue retry policy** | P0 | [ ] | #4 | Manual: set Cloud Tasks queue retry/backoff policy. |
+| 10 | **Set up Cloud Tasks queue retry policy** | P0 | [x] | #4 | Manual: set Cloud Tasks queue retry/backoff policy. Validation: queue shows retryConfig in gcloud describe. |
 
 ### 1.2 Interaction Ingress Function
 
@@ -43,7 +43,7 @@ Everything needed to get a fully working end-to-end experience that users can us
 | 15 | **Implement deferred response** | P0 | [x] | #13 | Ingress defers with type 5 + ephemeral flags. Validation: no automated tests. |
 | 16 | **Enqueue Cloud Task before response** | P0 | [x] | #10, #15 | Ingress enqueues Cloud Task before response. Validation: no automated tests. |
 | 17 | **Trim task payload** | P0 | [x] | #16 | Trimmed interaction payload to essential fields. Validation: no automated tests. |
-| 18 | **Register interactions endpoint URL** | P0 | [ ] | #14, deploy | Manual: set Interactions Endpoint URL in Discord Developer Portal. |
+| 18 | **Register interactions endpoint URL** | P0 | [x] | #14, deploy | Manual: set Interactions Endpoint URL in Discord Developer Portal. Validation: /link-group command responds in Discord. |
 
 ### 1.3 Cloud Task Worker Function
 
@@ -58,7 +58,7 @@ Everything needed to get a fully working end-to-end experience that users can us
 | # | Task | Priority | Status | Dependencies | Notes |
 | --- | ------ | ---------- | --- | -------------- | ------- |
 | 22 | **Create Discord OAuth start endpoint** | P0 | [x] | #8 | Implemented discordOAuthStart onCall endpoint. Validation: no automated tests. |
-| 23 | **Register OAuth redirect URI** | P0 | [ ] | #7 | Manual: register Discord OAuth redirect URI in Developer Portal. |
+| 23 | **Register OAuth redirect URI** | P0 | [x] | #7 | Manual: register Discord OAuth redirect URI in Developer Portal. Validation: OAuth flow no longer shows invalid redirect. |
 | 24 | **Create Discord OAuth callback** | P0 | [x] | #22, #23 | Implemented discordOAuthCallback handler. Validation: no automated tests. |
 | 25 | **Create `discordUserLinks` collection** | P0 | [x] | #24 | discordUserLinks collection used for Discord->QS mapping. Validation: no automated tests. |
 | 26 | **Update `users/{uid}` with discord info** | P0 | [x] | #24 | users/{uid}.discord updated on OAuth link. Validation: no automated tests. |
@@ -71,8 +71,8 @@ Everything needed to get a fully working end-to-end experience that users can us
 | # | Task | Priority | Status | Dependencies | Notes |
 | --- | ------ | ---------- | --- | -------------- | ------- |
 | 30 | **Create link code generation endpoint** | P0 | [x] | #9 | Added onCall link code generator for groups. Validation: no automated tests. |
-| 31 | **Register `/qs link-group` slash command** | P0 | [ ] | #7 | Script added (functions/scripts/register-discord-commands.js); run to register commands. |
-| 32 | **Set `default_member_permissions`** | P0 | [ ] | #31 | Script sets default_member_permissions=Manage Channels; run registration. |
+| 31 | **Register `/qs link-group` slash command** | P0 | [x] | #7 | Script added (functions/scripts/register-discord-commands.js); run to register commands. Validation: command visible in guild. |
+| 32 | **Set `default_member_permissions`** | P0 | [x] | #31 | Script sets default_member_permissions=Manage Channels; run registration. Validation: applied during command registration. |
 | 33 | **Implement link-group handler in worker** | P0 | [x] | #19, #30 | Worker handles /qs link-group and stores questingGroups.discord. Validation: no automated tests. |
 | 34 | **Add "Connect Discord" UI in Group Settings** | P0 | [x] | #30 | Group Settings UI exposes Discord link code + status. Validation: no automated tests. |
 

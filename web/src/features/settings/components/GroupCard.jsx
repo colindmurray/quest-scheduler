@@ -328,10 +328,12 @@ export function GroupCard({
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   Link a Discord channel to post poll updates for this group.
                 </p>
-                {group.discord?.channelName ? (
+                {group.discord?.channelId ? (
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-emerald-700 dark:text-emerald-200">
                     <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 dark:border-emerald-700/60 dark:bg-emerald-900/30">
-                      Connected to #{group.discord.channelName}
+                      {group.discord?.channelName
+                        ? `Connected to #${group.discord.channelName}`
+                        : "Connected to a Discord channel"}
                     </span>
                   </div>
                 ) : (

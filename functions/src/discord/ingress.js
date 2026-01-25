@@ -110,12 +110,15 @@ exports.discordInteractions = onRequest(
       });
     });
 
-    res.json({
-      type: 5,
-      data: {
-        flags: 64,
-      },
-    });
+    let responsePayload = { type: 5, data: { flags: 64 } };
+    if (body.type === 3 && body.data?.custom_id) {
+      const customId = body.data.custom_id;
+      if (!customId.startsWith("vote_btn:")) {
+        responsePayload = { type: 6 };
+      }
+    }
+
+    res.json(responsePayload);
 
     await enqueuePromise;
     return;

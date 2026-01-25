@@ -61,27 +61,36 @@ function buildSessionId(schedulerId, discordUserId) {
   return `${schedulerId}:${discordUserId}`;
 }
 
-function formatSlotLabel(startIso, endIso) {
+function formatSlotLabel(startIso, endIso, timezone) {
   const start = new Date(startIso);
   const end = new Date(endIso);
-  const datePart = start.toLocaleDateString("en-US", {
+  const dateOptions = {
     weekday: "short",
     month: "short",
     day: "numeric",
-  });
-  const timePart = `${start.toLocaleTimeString("en-US", {
+  };
+  const timeOptions = {
     hour: "numeric",
     minute: "2-digit",
-  })} - ${end.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  })}`;
+  };
+  if (timezone) {
+    dateOptions.timeZone = timezone;
+    timeOptions.timeZone = timezone;
+  }
+  const datePart = start.toLocaleDateString("en-US", dateOptions);
+  const timePart = `${start.toLocaleTimeString("en-US", timeOptions)} - ${end.toLocaleTimeString("en-US", timeOptions)}`;
   return `${datePart} ${timePart}`;
 }
 
-function buildVoteComponents({ schedulerId, slots, preferredIds, feasibleIds }) {
+function buildVoteComponents({
+  schedulerId,
+  slots,
+  preferredIds,
+  feasibleIds,
+  timezone,
+}) {
   const options = slots.slice(0, MAX_SELECT_OPTIONS).map((slot) => ({
-    label: formatSlotLabel(slot.start, slot.end),
+    label: formatSlotLabel(slot.start, slot.end, timezone),
     value: slot.id,
   }));
 
@@ -105,7 +114,7 @@ function buildVoteComponents({ schedulerId, slots, preferredIds, feasibleIds }) 
         {
           type: ComponentType.StringSelect,
           custom_id: `vote_pref:${schedulerId}`,
-          placeholder: "Preferred times",
+          placeholder: "Select preferred times",
           min_values: 0,
           max_values: Math.min(MAX_SELECT_OPTIONS, options.length),
           options: preferredOptions,
@@ -118,7 +127,7 @@ function buildVoteComponents({ schedulerId, slots, preferredIds, feasibleIds }) 
         {
           type: ComponentType.StringSelect,
           custom_id: `vote_feasible:${schedulerId}`,
-          placeholder: "Feasible times",
+          placeholder: "Select feasible times",
           min_values: 0,
           max_values: Math.min(MAX_SELECT_OPTIONS, options.length),
           options: feasibleOptions,
@@ -219,7 +228,18 @@ async function getLinkedUser(discordUserId) {
 async function ensureParticipant(scheduler, userEmail) {
   const normalizedEmail = String(userEmail || "").toLowerCase();
   const participants = scheduler.participants || [];
-  return participants.includes(normalizedEmail);
+  if (participants.includes(normalizedEmail)) {
+    return true;
+  }
+  if (!scheduler.questingGroupId) {
+    return false;
+  }
+  const groupSnap = await db.collection("questingGroups").doc(scheduler.questingGroupId).get();
+  if (!groupSnap.exists) {
+    return false;
+  }
+  const members = groupSnap.data()?.members || [];
+  return members.map((email) => String(email).toLowerCase()).includes(normalizedEmail);
 }
 
 async function handleLinkGroup(interaction) {
@@ -365,10 +385,14 @@ async function handleVoteButton(interaction, schedulerId) {
     slots,
     preferredIds,
     feasibleIds,
+    timezone: scheduler?.timezone || null,
   });
 
   return respondWithMessage(interaction, {
-    content: "Select your preferred and feasible times, then press Submit.",
+    content:
+      "Preferred times: use the first dropdown.\n" +
+      "Feasible times: use the second dropdown.\n" +
+      "Select your preferred and feasible times, then press Submit.",
     components,
   });
 }
@@ -405,6 +429,8 @@ async function handleVoteSelect(interaction, schedulerId, type) {
   await sessionRef.set(update, { merge: true });
 
   const schedulerRef = db.collection("schedulers").doc(schedulerId);
+  const schedulerSnap = await schedulerRef.get();
+  const scheduler = schedulerSnap.exists ? schedulerSnap.data() : {};
   const slotsSnap = await schedulerRef.collection("slots").get();
   const slots = slotsSnap.docs
     .map((doc) => ({ id: doc.id, ...doc.data() }))
@@ -419,10 +445,14 @@ async function handleVoteSelect(interaction, schedulerId, type) {
     slots,
     preferredIds,
     feasibleIds,
+    timezone: scheduler?.timezone || null,
   });
 
   return respondWithMessage(interaction, {
-    content: "Selections saved. Submit when ready.",
+    content:
+      "Preferred times: use the first dropdown.\n" +
+      "Feasible times: use the second dropdown.\n" +
+      "Selections saved. Submit when ready.",
     components,
   });
 }

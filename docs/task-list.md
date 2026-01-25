@@ -78,6 +78,7 @@
 - [x] Notify poll creator when someone joins via link or submits votes
 - [x] Send poll invite emails + notifications to new participants (exclude creator)
 - [x] Add Quest Scheduler logo header to outgoing emails
+- [x] 2026-01-25: Fix support email reference in invite email template
 - [x] Load friend/group notifications globally on login
 - [x] Remove friend/group invite notifications on accept/decline
 - [x] Notify inviter when a group invite is accepted
@@ -125,6 +126,7 @@
 - [x] Persist questing group selection on edit + remove non-group participants on change
 - [x] Match poll view group styling to Create Poll group bubble + fix edit prefill
 - [x] Hide group members from duplicate participant list + align color fallback
+- [x] 2026-01-25: Treat questing group members as implicit poll participants (rules + dashboard + Discord)
 
 ## Phase 15 — Discord Integration (Design)
 - [x] Draft Discord bot feature design doc (poll voting for questing groups)
@@ -140,3 +142,7 @@
 - [ ] 2026-01-25: Kickoff MVP implementation (infra + ingress/worker + OAuth + group link UI + poll posting/voting flows). Cloud Tasks API/queue/IAM + Functions deploy completed; Discord portal steps still pending.
 - [x] 2026-01-25: Reduce Discord interaction timeouts by replying before Cloud Task enqueue (redeployed discordInteractions).
 - [x] 2026-01-25: Clear Discord voting UI after submit to prevent repeated clicks (redeployed processDiscordInteraction).
+- [x] 2026-01-25: Show Discord link status when channel name is unavailable (fallback to channelId on group settings card).
+- [x] 2026-01-25: Render Discord vote slot labels in scheduler timezone instead of server default.
+- [x] 2026-01-25: Avoid duplicate ephemeral vote panels by deferring updates for select/submit interactions.
+- [x] 2026-01-25: Clarify Discord vote dropdown labels for preferred vs feasible selections.
