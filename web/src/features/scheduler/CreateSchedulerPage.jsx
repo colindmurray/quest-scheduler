@@ -1,18 +1,25 @@
-import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
+import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc, deleteDoc, getDocs, query, where } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
-import { format, parse, startOfWeek, getDay, startOfDay, isBefore, isToday } from "date-fns";
+import { format, parse, startOfWeek, getDay, startOfDay, isBefore } from "date-fns";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { enUS } from "date-fns/locale";
 import { toast } from "sonner";
 import { useAuth } from "../../app/AuthProvider";
 import { useUserSettings } from "../../hooks/useUserSettings";
+import { useFriends } from "../../hooks/useFriends";
+import { useQuestingGroups } from "../../hooks/useQuestingGroups";
+import { useUserProfiles } from "../../hooks/useUserProfiles";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { useFirestoreDoc } from "../../hooks/useFirestoreDoc";
 import { db } from "../../lib/firebase";
+import { APP_URL } from "../../lib/config";
 import { schedulerSlotsRef, schedulerVotesRef } from "../../lib/data/schedulers";
 import { isValidEmail } from "../../lib/utils";
+import { createSessionInviteNotification } from "../../lib/data/notifications";
+import { createEmailMessage } from "../../lib/emailTemplates";
+import { sendPendingPollInvites, revokePollInvite } from "../../lib/data/pollInvites";
 import {
   Select,
   SelectContent,
@@ -29,7 +36,9 @@ import {
   DialogTitle,
 } from "../../components/ui/dialog";
 import { AvatarStack, buildColorMap, uniqueUsers } from "../../components/ui/voter-avatars";
+import { UserAvatar } from "../../components/ui/avatar";
 import { DatePicker } from "../../components/ui/date-picker";
+import { Switch } from "../../components/ui/switch";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
@@ -52,10 +61,14 @@ export default function CreateSchedulerPage() {
   const { id: editId } = useParams();
   const isEditing = Boolean(editId);
   const { user } = useAuth();
-  const { settings, addressBook, timezoneMode, timezone } = useUserSettings();
+  const { settings, timezoneMode, timezone } = useUserSettings();
+  const { friends } = useFriends();
+  const { groups, getGroupColor } = useQuestingGroups();
   const navigate = useNavigate();
+  const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [title, setTitle] = useState("");
   const [invites, setInvites] = useState([]);
+  const [pendingInvites, setPendingInvites] = useState([]);
   const [inviteInput, setInviteInput] = useState("");
   const [slots, setSlots] = useState([]);
   const [calendarDate, setCalendarDate] = useState(new Date());
@@ -67,6 +80,7 @@ export default function CreateSchedulerPage() {
   const [draftDate, setDraftDate] = useState(null);
   const [draftTime, setDraftTime] = useState("18:00");
   const [draftDuration, setDraftDuration] = useState(240);
+  const [allowLinkSharing, setAllowLinkSharing] = useState(false);
   const [selectedTimezone, setSelectedTimezone] = useState(
     Intl.DateTimeFormat().resolvedOptions().timeZone
   );
@@ -91,6 +105,45 @@ export default function CreateSchedulerPage() {
   const votesSnapshot = useFirestoreCollection(votesRef);
 
   const inviteEmails = useMemo(() => invites, [invites]);
+  const selectedGroup = useMemo(() => {
+    if (!selectedGroupId) return null;
+    return groups.find((g) => g.id === selectedGroupId) || null;
+  }, [selectedGroupId, groups]);
+  const groupMemberEmails = useMemo(() => {
+    if (!selectedGroup?.members) return [];
+    return selectedGroup.members
+      .filter(Boolean)
+      .map((email) => normalizeEmail(email));
+  }, [selectedGroup]);
+  const groupMemberSet = useMemo(() => new Set(groupMemberEmails), [groupMemberEmails]);
+  const profileEmails = useMemo(() => {
+    const combined = new Set(
+      [...invites, ...pendingInvites, ...groupMemberEmails].filter(Boolean).map(normalizeEmail)
+    );
+    return Array.from(combined);
+  }, [invites, pendingInvites, groupMemberEmails]);
+  const { enrichUsers } = useUserProfiles(profileEmails);
+  const groupUsers = useMemo(() => enrichUsers(groupMemberEmails), [enrichUsers, groupMemberEmails]);
+  const inviteUsers = useMemo(() => enrichUsers(invites), [enrichUsers, invites]);
+  const pendingInviteUsers = useMemo(
+    () => enrichUsers(pendingInvites),
+    [enrichUsers, pendingInvites]
+  );
+  const friendSet = useMemo(
+    () => new Set(friends.map((email) => normalizeEmail(email)).filter(Boolean)),
+    [friends]
+  );
+  const recommendedEmails = useMemo(() => {
+    const userEmail = user?.email ? normalizeEmail(user.email) : null;
+    return friends
+      .map((email) => normalizeEmail(email))
+      .filter(Boolean)
+      .filter((email) => email !== userEmail)
+      .filter((email) => !invites.includes(email))
+      .filter((email) => !pendingInvites.includes(email))
+      .filter((email) => !groupMemberSet.has(email));
+  }, [friends, invites, pendingInvites, groupMemberSet, user?.email]);
+  const recommendedUsers = useMemo(() => enrichUsers(recommendedEmails), [enrichUsers, recommendedEmails]);
   const defaultDuration = settings?.defaultDurationMinutes ?? 60;
   const effectiveTimezone = selectedTimezone;
   const invalidSlotIds = useMemo(() => {
@@ -118,9 +171,17 @@ export default function CreateSchedulerPage() {
     if (!scheduler.data || slotsSnapshot.loading) return;
     if (scheduler.data.creatorId && scheduler.data.creatorId !== user?.uid) return;
     setTitle(scheduler.data.title || "");
+    setAllowLinkSharing(Boolean(scheduler.data.allowLinkSharing));
     const creatorEmail = scheduler.data.creatorEmail || user?.email;
     const participantList = scheduler.data.participants || [];
     setInvites(participantList.filter((email) => email && email !== creatorEmail));
+    const pendingList = (scheduler.data.pendingInvites || [])
+      .filter((email) => email && email !== creatorEmail)
+      .map((email) => normalizeEmail(email));
+    setPendingInvites(pendingList);
+    if (scheduler.data.questingGroupId && !selectedGroupId) {
+      setSelectedGroupId(scheduler.data.questingGroupId);
+    }
     setSlots(
       slotsSnapshot.data.map((slot) => ({
         id: slot.id,
@@ -136,6 +197,31 @@ export default function CreateSchedulerPage() {
     }
     setLoadedFromPoll(true);
   }, [isEditing, loadedFromPoll, scheduler.data, slotsSnapshot.loading, slotsSnapshot.data, user?.uid, user?.email]);
+
+  useEffect(() => {
+    if (!selectedGroup) return;
+    setInvites((prev) => prev.filter((email) => !groupMemberSet.has(normalizeEmail(email))));
+    setPendingInvites((prev) => prev.filter((email) => !groupMemberSet.has(normalizeEmail(email))));
+  }, [selectedGroup, groupMemberSet]);
+
+  useEffect(() => {
+    if (!isEditing) return;
+    const groupId = scheduler.data?.questingGroupId;
+    if (!groupId) {
+      setSelectedGroupId(null);
+      return;
+    }
+    if (selectedGroupId && selectedGroupId !== groupId) {
+      return;
+    }
+    if (!groups.length) return;
+    const exists = groups.find((group) => group.id === groupId);
+    if (exists) {
+      setSelectedGroupId(groupId);
+    } else {
+      setSelectedGroupId(null);
+    }
+  }, [isEditing, scheduler.data?.questingGroupId, groups, selectedGroupId]);
 
   const slotVoters = useMemo(() => {
     if (!isEditing) return {};
@@ -253,6 +339,96 @@ export default function CreateSchedulerPage() {
     );
   };
 
+  const sendAcceptedInvites = async (acceptedRecipients, schedulerId, pollTitle) => {
+    const accepted = acceptedRecipients || [];
+    if (accepted.length === 0) return;
+    const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
+    const chunks = [];
+    for (let i = 0; i < accepted.length; i += 10) {
+      chunks.push(accepted.slice(i, i + 10));
+    }
+    const userIdsByEmail = new Map();
+    for (const chunk of chunks) {
+      const snapshot = await getDocs(
+        query(collection(db, "usersPublic"), where("email", "in", chunk))
+      );
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data?.email) {
+          userIdsByEmail.set(data.email.toLowerCase(), docSnap.id);
+        }
+      });
+    }
+
+    await Promise.all(
+      accepted.map((email) =>
+        setDoc(doc(collection(db, "mail")), {
+          to: email,
+          message: createEmailMessage({
+            subject: `You're invited to vote on "${pollTitle}"`,
+            title: "Session Poll Invitation",
+            intro: `${user?.email} invited you to vote on "${pollTitle}".`,
+            ctaLabel: "Vote on poll",
+            ctaUrl: pollUrl,
+            extraLines: ["Pick Feasible and Preferred times to help decide."],
+          }),
+        })
+      )
+    );
+
+    await Promise.all(
+      accepted.map((email) => {
+        const userId = userIdsByEmail.get(email);
+        if (!userId) return null;
+        return createSessionInviteNotification(userId, {
+          schedulerId,
+          schedulerTitle: pollTitle,
+          inviterEmail: user?.email || "Someone",
+        });
+      })
+    );
+  };
+
+  const sendPendingInvites = async (pendingRecipients, schedulerId, pollTitle) => {
+    const pending = pendingRecipients || [];
+    if (pending.length === 0) return { added: [], rejected: [] };
+    const response = await sendPendingPollInvites(schedulerId, pending, pollTitle);
+    const added = response?.added || [];
+    const rejected = response?.rejected || [];
+    const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
+
+    if (added.length > 0) {
+      await Promise.all(
+        added.map((email) =>
+          setDoc(doc(collection(db, "mail")), {
+            to: email,
+            message: createEmailMessage({
+              subject: `You're invited to join "${pollTitle}"`,
+              title: "Session Poll Invite",
+              intro: `${user?.email} invited you to join the session poll "${pollTitle}".`,
+              ctaLabel: "Review invite",
+              ctaUrl: pollUrl,
+              extraLines: ["Accept the invite to participate and vote on times."],
+            }),
+          })
+        )
+      );
+    }
+
+    if (rejected.length > 0) {
+      const blocked = rejected.filter((item) => item.reason === "blocked").map((item) => item.email);
+      const limited = rejected.filter((item) => item.reason === "limit").map((item) => item.email);
+      if (blocked.length > 0) {
+        toast.error(`Couldn't invite: ${blocked.join(", ")} (blocked).`);
+      }
+      if (limited.length > 0) {
+        toast.error(`Invite limit reached for: ${limited.join(", ")}.`);
+      }
+    }
+
+    return response;
+  };
+
   const handleCreate = async (event) => {
     event.preventDefault();
 
@@ -276,20 +452,44 @@ export default function CreateSchedulerPage() {
 
     setSubmitting(true);
     try {
-      const participants = Array.from(
-        new Set([user.email, ...inviteEmails].filter(Boolean))
+      const acceptedParticipants = Array.from(
+        new Set([user.email, ...inviteEmails, ...groupMemberEmails].filter(Boolean).map(normalizeEmail))
       );
+      const pendingList = Array.from(
+        new Set(pendingInvites.filter(Boolean).map(normalizeEmail))
+      ).filter((email) => !acceptedParticipants.includes(email));
+      const creatorEmail = normalizeEmail(user.email);
+      const pollTitle = title || "Untitled poll";
 
       const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const timezoneModeForScheduler =
         selectedTimezone === detectedTimezone ? "auto" : "manual";
 
       if (isEditing) {
+        const previousParticipants = new Set(
+          (scheduler.data?.participants || []).map((email) => normalizeEmail(email))
+        );
+        const previousPending = new Set(
+          (scheduler.data?.pendingInvites || []).map((email) => normalizeEmail(email))
+        );
+        const newAcceptedRecipients = acceptedParticipants.filter(
+          (email) => !previousParticipants.has(email) && email !== creatorEmail
+        );
+        const newPendingRecipients = pendingList.filter(
+          (email) => !previousPending.has(email) && email !== creatorEmail
+        );
+        const removedPendingRecipients = Array.from(previousPending).filter(
+          (email) => !pendingList.includes(email)
+        );
         await updateDoc(schedulerRef, {
-          title: title || "Untitled poll",
-          participants,
+          title: pollTitle,
+          participants: acceptedParticipants,
+          allowLinkSharing,
           timezone: effectiveTimezone,
           timezoneMode: timezoneModeForScheduler,
+          questingGroupId: selectedGroup?.id || null,
+          questingGroupName: selectedGroup?.name || null,
+          updatedAt: serverTimestamp(),
         });
 
         const currentSlotIds = new Set(slots.map((slot) => slot.id));
@@ -311,7 +511,7 @@ export default function CreateSchedulerPage() {
           })
         );
 
-        const participantSet = new Set(participants.map((email) => email.toLowerCase()));
+        const participantSet = new Set(acceptedParticipants.map((email) => email.toLowerCase()));
 
         if (removedIds.length > 0) {
           await Promise.all(
@@ -345,6 +545,29 @@ export default function CreateSchedulerPage() {
           })
         );
 
+        if (removedPendingRecipients.length > 0) {
+          await Promise.allSettled(
+            removedPendingRecipients.map((email) => revokePollInvite(editId, email))
+          );
+        }
+
+        if (newAcceptedRecipients.length > 0) {
+          try {
+            await sendAcceptedInvites(newAcceptedRecipients, editId, pollTitle);
+          } catch (inviteErr) {
+            console.error("Failed to send accepted invites:", inviteErr);
+          }
+        }
+
+        if (newPendingRecipients.length > 0) {
+          try {
+            await sendPendingInvites(newPendingRecipients, editId, pollTitle);
+          } catch (inviteErr) {
+            console.error("Failed to send pending invites:", inviteErr);
+            toast.error(inviteErr?.message || "Failed to send pending invites.");
+          }
+        }
+
         navigate(`/scheduler/${editId}`);
         return;
       }
@@ -353,15 +576,19 @@ export default function CreateSchedulerPage() {
       const newSchedulerRef = doc(db, "schedulers", schedulerId);
 
       await setDoc(newSchedulerRef, {
-        title: title || "Untitled poll",
+        title: pollTitle,
         creatorId: user.uid,
         creatorEmail: user.email,
         status: "OPEN",
-        participants,
+        participants: acceptedParticipants,
+        pendingInvites: [],
+        allowLinkSharing,
         timezone: effectiveTimezone,
         timezoneMode: timezoneModeForScheduler,
         winningSlotId: null,
         googleEventId: null,
+        questingGroupId: selectedGroup?.id || null,
+        questingGroupName: selectedGroup?.name || null,
         createdAt: serverTimestamp(),
       });
 
@@ -375,6 +602,24 @@ export default function CreateSchedulerPage() {
           });
         })
       );
+
+      const initialAcceptedRecipients = acceptedParticipants.filter((email) => email !== creatorEmail);
+      if (initialAcceptedRecipients.length > 0) {
+        try {
+          await sendAcceptedInvites(initialAcceptedRecipients, schedulerId, pollTitle);
+        } catch (inviteErr) {
+          console.error("Failed to send accepted invites:", inviteErr);
+        }
+      }
+
+      if (pendingList.length > 0) {
+        try {
+          await sendPendingInvites(pendingList, schedulerId, pollTitle);
+        } catch (inviteErr) {
+          console.error("Failed to send pending invites:", inviteErr);
+          toast.error(inviteErr?.message || "Failed to send pending invites.");
+        }
+      }
 
       setCreatedId(schedulerId);
       toast.success(isEditing ? "Session poll updated" : "Session poll created");
@@ -398,13 +643,39 @@ export default function CreateSchedulerPage() {
       setInviteError("You are already included as a participant.");
       return;
     }
-    setInvites((prev) => (prev.includes(normalized) ? prev : [...prev, normalized]));
+    if (groupMemberSet.has(normalized)) {
+      setInviteError("That email is already included via the questing group.");
+      return;
+    }
+    if (invites.includes(normalized) || pendingInvites.includes(normalized)) {
+      setInviteError("That email is already invited.");
+      return;
+    }
+    if (friendSet.has(normalized)) {
+      setInvites((prev) => [...prev, normalized]);
+    } else {
+      setPendingInvites((prev) => [...prev, normalized]);
+    }
     setInviteInput("");
     setInviteError(null);
   };
 
   const removeInvite = (email) => {
     setInvites((prev) => prev.filter((item) => item !== email));
+  };
+
+  const removePendingInvite = (email) => {
+    setPendingInvites((prev) => prev.filter((item) => item !== email));
+  };
+
+  const handleGroupChange = (groupId) => {
+    if (!groupId || groupId === "none") {
+      setSelectedGroupId(null);
+      return;
+    }
+    const group = groups.find((g) => g.id === groupId);
+    if (!group) return;
+    setSelectedGroupId(groupId);
   };
 
   if (isEditing && scheduler.loading) {
@@ -504,6 +775,33 @@ export default function CreateSchedulerPage() {
               </Select>
             </div>
 
+            {/* Questing Group Selector */}
+            {groups.length > 0 && (
+              <div className="grid gap-2">
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  Questing Group (optional)
+                </span>
+                <Select value={selectedGroupId || "none"} onValueChange={handleGroupChange}>
+                  <SelectTrigger className="h-12 rounded-2xl px-4">
+                    <SelectValue placeholder="Select a group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No group</SelectItem>
+                    {groups.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.name} ({group.members?.length || 0} members)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedGroup && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Group members will be auto-added as invitees.
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Invitees</p>
               {user?.email && (
@@ -511,37 +809,100 @@ export default function CreateSchedulerPage() {
                   You are included as {user.email}.
                 </p>
               )}
-              <div className="mt-3 flex flex-wrap gap-2">
-                {invites.length === 0 && (
-                  <span className="text-xs text-slate-400 dark:text-slate-500">No invitees yet.</span>
+              {selectedGroup && (
+                <div
+                  className="mt-3 rounded-2xl border px-3 py-3 text-xs"
+                  style={{
+                    borderColor: getGroupColor(selectedGroup.id),
+                    backgroundColor: `${getGroupColor(selectedGroup.id)}22`,
+                  }}
+                >
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-100">
+                    Members from {selectedGroup.name}
+                  </p>
+                  <div className="mt-2 grid gap-2">
+                    {groupUsers.length === 0 && (
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        No members listed for this group.
+                      </span>
+                    )}
+                    {groupUsers.map((member) => (
+                      <div
+                        key={member.email}
+                        className="flex items-center gap-2 rounded-xl border border-transparent bg-white/70 px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-slate-900/70 dark:text-slate-200"
+                      >
+                        <UserAvatar email={member.email} src={member.avatar} size={24} />
+                        <span>{member.email}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {inviteUsers.length === 0 && (
+                  <span className="text-xs text-slate-400 dark:text-slate-500">
+                    No individual invitees yet.
+                  </span>
                 )}
-                {invites.map((email) => (
+                {inviteUsers.map((invitee) => (
                   <button
-                    key={email}
+                    key={invitee.email}
                     type="button"
-                    onClick={() => removeInvite(email)}
-                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-red-50 hover:border-red-200 hover:text-red-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-red-900/30 dark:hover:border-red-800 dark:hover:text-red-300"
+                    onClick={() => removeInvite(invitee.email)}
+                    className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-red-50 hover:border-red-200 hover:text-red-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-red-900/30 dark:hover:border-red-800 dark:hover:text-red-300"
                     title="Remove"
                   >
-                    {email} ✕
+                    <UserAvatar email={invitee.email} src={invitee.avatar} size={20} />
+                    <span>{invitee.email}</span>
+                    <span className="text-xs">✕</span>
                   </button>
                 ))}
               </div>
 
-              {addressBook.length > 0 && (
+              <div className="mt-4">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Pending invites (non-friends)
+                </p>
+                {pendingInviteUsers.length === 0 && (
+                  <span className="mt-2 block text-xs text-slate-400 dark:text-slate-500">
+                    No pending invites.
+                  </span>
+                )}
+                {pendingInviteUsers.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {pendingInviteUsers.map((invitee) => (
+                      <button
+                        key={invitee.email}
+                        type="button"
+                        onClick={() => removePendingInvite(invitee.email)}
+                        className="flex items-center gap-2 rounded-full border border-dashed border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 transition-colors hover:border-amber-400 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
+                        title="Remove pending invite"
+                      >
+                        <UserAvatar email={invitee.email} src={invitee.avatar} size={20} />
+                        <span>{invitee.email}</span>
+                        <span className="text-xs">✕</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {recommendedEmails.length > 0 && (
                 <>
                   <p className="mt-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    Recommended (from address book)
+                    Recommended (from friends)
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {addressBook.map((email) => (
+                    {recommendedUsers.map((entry) => (
                       <button
-                        key={email}
+                        key={entry.email}
                         type="button"
-                        className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-700"
-                        onClick={() => addInvite(email)}
+                        className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-700"
+                        onClick={() => addInvite(entry.email)}
                       >
-                        + {email}
+                        <UserAvatar email={entry.email} src={entry.avatar} size={18} />
+                        + {entry.email}
                       </button>
                     ))}
                   </div>
@@ -571,6 +932,25 @@ export default function CreateSchedulerPage() {
               </div>
               {inviteError && (
                 <p className="mt-2 text-xs text-red-500 dark:text-red-400">{inviteError}</p>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-slate-100 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/60">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    Anyone with link
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Allow anyone with the poll URL to join and vote.
+                  </p>
+                </div>
+                <Switch checked={allowLinkSharing} onCheckedChange={setAllowLinkSharing} />
+              </div>
+              {allowLinkSharing && (
+                <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                  Anyone with the link can join after accepting the invite prompt.
+                </p>
               )}
             </div>
           </div>
@@ -606,13 +986,18 @@ export default function CreateSchedulerPage() {
                 }))}
                 startAccessor="start"
                 endAccessor="end"
-                selectable
+                selectable="ignoreEvents"
                 scrollToTime={new Date(1970, 0, 1, 8, 0)}
                 date={calendarDate}
                 onNavigate={(nextDate) => setCalendarDate(nextDate)}
                 view={calendarView}
                 onView={(nextView) => setCalendarView(nextView)}
                 views={["month", "week", "day"]}
+                onDrillDown={(date) => {
+                  if (calendarView === "month") {
+                    openModalForDate(date);
+                  }
+                }}
                 resizable
                 draggableAccessor={() => true}
                 onSelectSlot={(slotInfo) => {
@@ -775,7 +1160,7 @@ export default function CreateSchedulerPage() {
 
           {createdId && (
             <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/30 dark:text-emerald-200">
-              Session poll created. Share link: {`${window.location.origin}/scheduler/${createdId}`}
+              Session poll created. Share link: {`${APP_URL}/scheduler/${createdId}`}
             </div>
           )}
 

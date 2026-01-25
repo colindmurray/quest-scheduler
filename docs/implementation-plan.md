@@ -1,7 +1,7 @@
-# D&D Scheduler — Master Implementation Plan
+# Quest Scheduler — Master Implementation Plan
 
 ## 1) Goals & Scope
-Build a Firebase‑backed D&D scheduling app with Google login and Google Calendar event creation. Users join schedulers via shared UUID link or explicit email invites, propose time slots, vote (Feasible/Preferred), view results, and allow the creator to finalize or re‑open a session. App must be visually strong and fully responsive.
+Build a Firebase‑backed Quest Scheduler app for tabletop sessions with Google login and Google Calendar event creation. Users join schedulers via shared UUID link or explicit email invites, propose time slots, vote (Feasible/Preferred), view results, and allow the creator to finalize or re‑open a session. App must be visually strong and fully responsive.
 
 ## 2) Stack
 - **Frontend:** React + Vite
@@ -67,14 +67,40 @@ Build a Firebase‑backed D&D scheduling app with Google login and Google Calend
   "email": "user@gmail.com",
   "displayName": "Colin",
   "photoURL": "...",
-  "addressBook": ["friend1@gmail.com"],
+  "inviteAllowance": 50,
+  "suspended": false,
+  "suspendedAt": null,
   "settings": {
     "defaultDurationMinutes": 240,
-    "defaultTitle": "D&D Session",
+    "defaultTitle": "Quest Session",
     "defaultDescription": "Weekly session",
     "emailNotifications": true,
     "defaultStartTimes": { "1": "18:00", "6": "12:00" }
   }
+}
+```
+
+### 5.1.2 users/{userId}/blockedUsers/{blockedEmailId}
+```json
+{
+  "email": "spam@example.com",
+  "blockedUserId": "uid_456",
+  "blockedAt": "2026-01-06T12:00:00Z",
+  "penalized": true,
+  "penaltyValue": 5,
+  "penaltyAppliedAt": "2026-01-06T12:00:00Z"
+}
+```
+
+### 5.1.1 usersPublic/{userId}
+```json
+{
+  "email": "user@gmail.com",
+  "displayName": "Colin",
+  "photoURL": "...",
+  "emailNotifications": true,
+  "friendInviteCode": "uuid",
+  "updatedAt": "2026-01-06T12:00:00Z"
 }
 ```
 
@@ -86,9 +112,27 @@ Build a Firebase‑backed D&D scheduling app with Google login and Google Calend
   "creatorEmail": "creator@gmail.com",
   "status": "OPEN",
   "participants": ["creator@gmail.com", "friend@gmail.com"],
+  "pendingInvites": ["stranger@gmail.com"],
+  "pendingInviteMeta": {
+    "stranger@gmail.com": {
+      "invitedByEmail": "creator@gmail.com",
+      "invitedByUserId": "uid_123",
+      "invitedAt": "2026-01-06T12:00:00Z"
+    }
+  },
+  "allowLinkSharing": false,
   "winningSlotId": null,
   "googleEventId": null,
   "createdAt": "2026-01-06T10:00:00Z"
+}
+```
+
+### 5.9 bannedEmails/{emailId}
+```json
+{
+  "email": "suspended@example.com",
+  "reason": "suspended",
+  "bannedAt": "2026-01-06T12:00:00Z"
 }
 ```
 
@@ -114,6 +158,20 @@ Build a Firebase‑backed D&D scheduling app with Google login and Google Calend
     "slot_xyz": "FEASIBLE"
   },
   "updatedAt": "2026-01-06T12:00:00Z"
+}
+```
+
+### 5.5 friendRequests/{requestId}
+```json
+{
+  "fromUserId": "uid_123",
+  "fromEmail": "creator@gmail.com",
+  "fromDisplayName": "Colin",
+  "toEmail": "friend@gmail.com",
+  "toUserId": null,
+  "status": "pending",
+  "createdAt": "2026-01-06T12:00:00Z",
+  "respondedAt": null
 }
 ```
 

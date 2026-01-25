@@ -1,6 +1,7 @@
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { signInWithGoogle } from "../../lib/auth";
 import { useAuth } from "../../app/AuthProvider";
+import { AvatarStack } from "../../components/ui/voter-avatars";
 
 const features = [
   {
@@ -9,7 +10,7 @@ const features = [
   },
   {
     title: "Invite players",
-    body: "Share a UUID link or add addresses from your list.",
+    body: "Share a link or add addresses from your list.",
   },
   {
     title: "Vote fast",
@@ -21,20 +22,28 @@ const features = [
   },
 ];
 
+const mockVoters = [
+  { email: "aria@party.gg" },
+  { email: "dm.kai@tabletop.io" },
+  { email: "wren@dice.club" },
+  { email: "soren@quest.net" },
+  { email: "lin@spellbook.co" },
+];
+
 export default function LandingPage() {
-  const { user } = useAuth();
+  const { user, banned } = useAuth();
   const navigate = useNavigate();
 
   return (
     <div className="min-h-full bg-brand-background text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-brand-primary/20 dark:bg-brand-primary/30" />
+          <img src="/app_icon.png" alt="Quest Scheduler Logo" className="h-10 w-10 rounded-xl object-contain" />
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">
-              Session Forge
+              Quest Scheduler
             </p>
-            <h1 className="text-xl font-bold">Session Forge</h1>
+            <h1 className="text-xl font-bold">Quest Scheduler</h1>
           </div>
         </div>
         <button
@@ -44,6 +53,15 @@ export default function LandingPage() {
           {user ? "Go to Dashboard" : "Sign in with Google"}
         </button>
       </header>
+
+      {banned && (
+        <div className="mx-auto max-w-5xl px-6">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-sm dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200">
+            This account is suspended and cannot be re-registered. If you believe this is a mistake,
+            contact support at support@questscheduler.cc.
+          </div>
+        </div>
+      )}
 
       <main className="mx-auto grid max-w-5xl gap-6 px-6 pb-16 md:grid-cols-[1.1fr_0.9fr]">
         <section className="rounded-3xl bg-white p-8 shadow-xl shadow-slate-200 dark:bg-slate-900 dark:shadow-slate-900/50">
@@ -72,23 +90,56 @@ export default function LandingPage() {
         </section>
 
         <aside className="rounded-3xl bg-slate-900 p-8 text-white shadow-xl shadow-slate-300/60 dark:bg-slate-800">
-          <h3 className="text-lg font-semibold">Session Pulse</h3>
+          <h3 className="text-lg font-semibold">Live Preview</h3>
           <p className="mt-2 text-sm text-slate-300">
-            Track open session polls, recent votes, and calendar locks at a glance.
+            See who responded, who is in, and what time wins the vote.
           </p>
           <div className="mt-6 space-y-4">
-            {[
-              "Campaign 12: The Mistwood",
-              "Onyx League One-shot",
-              "Feywild Sidequest",
-            ].map((label) => (
-              <div key={label} className="rounded-2xl bg-white/10 p-4">
-                <p className="text-sm font-semibold">{label}</p>
-                <p className="mt-2 text-xs text-slate-300">
-                  5 votes · 2 preferred · 4 feasible
-                </p>
+            <div className="rounded-2xl bg-white/10 p-4">
+              <p className="text-sm font-semibold">Onyx League One-shot</p>
+              <p className="mt-2 text-xs text-slate-300">
+                Pending · 3 preferred · 4 feasible
+              </p>
+              <div className="mt-3 flex items-center gap-2 text-xs">
+                <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
+                  Needs votes
+                </span>
+                <AvatarStack users={mockVoters.slice(0, 4)} max={4} size={18} />
               </div>
-            ))}
+            </div>
+
+            <div className="rounded-2xl bg-white/10 p-4">
+              <p className="text-sm font-semibold">Campaign 12: Mistwood</p>
+              <p className="mt-2 text-xs text-slate-300">Finalized · Jan 14 · 6:30 PM</p>
+              <div className="mt-3 grid gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-slate-200 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-emerald-200">Confirmed</span>
+                  <AvatarStack users={mockVoters.slice(0, 3)} max={3} size={16} />
+                  <span className="text-slate-300">3</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-rose-200">Unavailable</span>
+                  <AvatarStack users={mockVoters.slice(3, 4)} max={3} size={16} />
+                  <span className="text-slate-300">1</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-300">Unresponded</span>
+                  <AvatarStack users={mockVoters.slice(4)} max={3} size={16} />
+                  <span className="text-slate-300">1</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 p-4">
+              <p className="text-sm font-semibold">Feywild Sidequest</p>
+              <p className="mt-2 text-xs text-slate-300">Finalized · Feb 2 · 7:00 PM</p>
+              <div className="mt-3 flex items-center gap-2 text-xs text-slate-200">
+                <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
+                  Calendar synced
+                </span>
+                <AvatarStack users={mockVoters} max={5} size={18} />
+              </div>
+            </div>
           </div>
           <div className="mt-6">
             <a
@@ -106,6 +157,21 @@ export default function LandingPage() {
           </div>
         </aside>
       </main>
+
+      <footer className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-4 px-6 pb-10 text-xs text-slate-500 dark:text-slate-400">
+        <Link to="/privacy" className="hover:text-slate-900 dark:hover:text-slate-100">
+          Privacy Policy
+        </Link>
+        <Link to="/terms" className="hover:text-slate-900 dark:hover:text-slate-100">
+          Terms of Service
+        </Link>
+        <a
+          href="mailto:support@questscheduler.cc"
+          className="hover:text-slate-900 dark:hover:text-slate-100"
+        >
+          Contact us
+        </a>
+      </footer>
     </div>
   );
 }

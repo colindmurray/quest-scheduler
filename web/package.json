@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:dev": "vite build --minify false --sourcemap",
     "lint": "eslint .",
+    "test": "vitest",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -48,6 +50,7 @@
     "globals": "^16.5.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.17",
-    "vite": "^7.2.4"
+    "vite": "^7.2.4",
+    "vitest": "^3.2.4"
   }
 }

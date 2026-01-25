@@ -1,11 +1,14 @@
-import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { Navigate, Route, Routes, useNavigate, useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import { Toaster } from "sonner";
 import LandingPage from "./features/landing/LandingPage";
 import DashboardPage from "./features/dashboard/DashboardPage";
 import SettingsPage from "./features/settings/SettingsPage";
+import FriendsPage from "./features/friends/FriendsPage";
 import SchedulerPage from "./features/scheduler/SchedulerPage";
 import CreateSchedulerPage from "./features/scheduler/CreateSchedulerPage";
+import PrivacyPage from "./features/legal/PrivacyPage";
+import TermsPage from "./features/legal/TermsPage";
 import ProtectedRoute from "./app/ProtectedRoute";
 import { useAuth } from "./app/AuthProvider";
 import AppLayout from "./app/AppLayout";
@@ -20,10 +23,17 @@ function RedirectWhenSignedIn({ children }) {
       const redirectPath = localStorage.getItem("postLoginRedirect");
       if (redirectPath) {
         localStorage.removeItem("postLoginRedirect");
-        navigate(redirectPath, { replace: true });
-      } else {
-        navigate("/dashboard", { replace: true });
+        const [pathname, search] = redirectPath.split("?");
+        const isPollRoute = /^\/scheduler\/[^/]+$/.test(pathname);
+        const searchParams = new URLSearchParams(search || "");
+        const isFriendRequestRoute = pathname === "/friends" && searchParams.has("request");
+        const isFriendInviteRoute = pathname === "/friends" && searchParams.has("invite");
+        if (isPollRoute || isFriendRequestRoute || isFriendInviteRoute) {
+          navigate(redirectPath, { replace: true });
+          return;
+        }
       }
+      navigate("/dashboard", { replace: true });
     }
   }, [loading, navigate, user]);
 
@@ -32,6 +42,7 @@ function RedirectWhenSignedIn({ children }) {
 
 export default function App() {
   const { darkMode } = useTheme();
+  const location = useLocation();
 
   return (
     <>
@@ -43,7 +54,7 @@ export default function App() {
           duration: 4000,
         }}
       />
-      <Routes>
+      <Routes location={location} key={location.pathname}>
       <Route
         path="/"
         element={
@@ -52,6 +63,8 @@ export default function App() {
           </RedirectWhenSignedIn>
         }
       />
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
       <Route
         path="/dashboard"
         element={
@@ -68,6 +81,16 @@ export default function App() {
           <ProtectedRoute>
             <AppLayout>
               <SettingsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/friends"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <FriendsPage />
             </AppLayout>
           </ProtectedRoute>
         }

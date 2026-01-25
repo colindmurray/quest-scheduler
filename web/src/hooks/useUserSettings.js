@@ -9,7 +9,9 @@ export function useUserSettings() {
   const userRef = useMemo(() => (user ? doc(db, "users", user.uid) : null), [user]);
   const { data, loading } = useFirestoreDoc(userRef);
 
-  const archivedPolls = data?.archivedPolls || [];
+  const archivedPolls = useMemo(() => data?.archivedPolls || [], [data?.archivedPolls]);
+  const groupColors = useMemo(() => data?.groupColors || {}, [data?.groupColors]);
+  const calendarSyncPreference = data?.calendarSyncPreference || "poll";
 
   const archivePoll = useCallback(
     async (pollId) => {
@@ -50,10 +52,42 @@ export function useUserSettings() {
     [archivedPolls]
   );
 
+  const setCalendarSyncPreference = useCallback(
+    async (preference) => {
+      if (!userRef) return;
+      await setDoc(
+        userRef,
+        {
+          calendarSyncPreference: preference,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    },
+    [userRef]
+  );
+
+  const setGroupColor = useCallback(
+    async (groupId, color) => {
+      if (!userRef) return;
+      await setDoc(
+        userRef,
+        {
+          groupColors: {
+            ...groupColors,
+            [groupId]: color,
+          },
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    },
+    [userRef, groupColors]
+  );
+
   return {
     loading,
     settings: data?.settings,
-    addressBook: data?.addressBook || [],
     timezone:
       data?.settings?.timezoneMode === "manual"
         ? data?.settings?.timezone
@@ -63,5 +97,9 @@ export function useUserSettings() {
     archivePoll,
     unarchivePoll,
     isArchived,
+    groupColors,
+    setGroupColor,
+    calendarSyncPreference,
+    setCalendarSyncPreference,
   };
 }

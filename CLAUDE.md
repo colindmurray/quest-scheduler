@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-D&D Scheduler is a Firebase-backed scheduling application for Dungeons & Dragons sessions. Users create schedulers with time slots, invite participants via email or shareable links, collect votes (Feasible/Preferred), and finalize sessions by creating Google Calendar events.
+Quest Scheduler is a Firebase-backed scheduling application for tabletop sessions. Users create schedulers with time slots, invite participants via email or shareable links, collect votes (Feasible/Preferred), and finalize sessions by creating Google Calendar events.
 
 ## Commands
 

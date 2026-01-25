@@ -1,9 +1,9 @@
-# AGENTS.md — D&D Scheduler Conventions
+# AGENTS.md — Quest Scheduler Conventions
 
 This file is the working contract for all agents (including Codex) contributing to this repo.
 
 ## 1) Project Goals
-- Build a Firebase-backed D&D scheduling app with Google Auth + Google Calendar integration.
+- Build a Firebase-backed Quest Scheduler app for tabletop sessions with Google Auth + Google Calendar integration.
 - Support slot-based voting (Feasible/Preferred), results sorting, and re-open workflow.
 - Keep implementation simple, deterministic, and maintainable.
 
@@ -75,4 +75,3 @@ This file is the working contract for all agents (including Codex) contributing 
 
 ## 7) Open Questions Log
 Maintain an evolving list in `docs/decisions.md` when new questions arise.
-

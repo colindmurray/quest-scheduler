@@ -19,6 +19,9 @@ extensions/*.secret.local
 **/.env.*
 !**/.env.example
 
+# OAuth client secrets (local only)
+client_secret*.json
+
 # OS files
 .DS_Store
 Thumbs.db

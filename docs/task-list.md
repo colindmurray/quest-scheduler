@@ -31,6 +31,7 @@
 - [x] App layout, theme tokens, fonts
 - [x] Router (Dashboard, Scheduler, Settings)
 - [x] Protected route guard
+- [x] Centralize app-wide constants with env overrides
 
 ## Phase 4 — Scheduler Creation
 - [x] Date range picker
@@ -76,6 +77,7 @@
 - [x] Send in-app finalization notifications to poll participants (exclude creator)
 - [x] Notify poll creator when someone joins via link or submits votes
 - [x] Send poll invite emails + notifications to new participants (exclude creator)
+- [x] Add Quest Scheduler logo header to outgoing emails
 - [x] Load friend/group notifications globally on login
 - [x] Remove friend/group invite notifications on accept/decline
 - [x] Notify inviter when a group invite is accepted

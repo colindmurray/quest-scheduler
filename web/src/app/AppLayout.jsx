@@ -1,8 +1,10 @@
 import { Link, useNavigate } from "react-router-dom";
-import { Settings, LogOut } from "lucide-react";
+import { Settings, LogOut, Users } from "lucide-react";
 import { useAuth } from "./AuthProvider";
 import { signOutUser } from "../lib/auth";
 import { UserAvatar } from "../components/ui/avatar";
+import { NotificationBell } from "../components/ui/notification-bell";
+import { useNotificationSync } from "../hooks/useNotificationSync";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,15 +16,16 @@ import {
 export default function AppLayout({ children }) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  useNotificationSync();
 
   return (
     <div className="min-h-full bg-brand-background text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/90 backdrop-blur dark:border-slate-700/70 dark:bg-slate-900/90">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Link to="/dashboard" className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-brand-primary/20 dark:bg-brand-primary/30" />
+            <img src="/app_icon.png" alt="Quest Scheduler Logo" className="h-9 w-9 rounded-xl object-contain" />
             <div>
-              <p className="text-sm font-semibold">Session Forge</p>
+              <p className="text-sm font-semibold">Quest Scheduler</p>
             </div>
           </Link>
           <div className="flex items-center gap-3">
@@ -38,6 +41,7 @@ export default function AppLayout({ children }) {
                 alt="Buy Me A Coffee"
               />
             </a>
+            <NotificationBell />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -51,6 +55,13 @@ export default function AppLayout({ children }) {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem
+                  onClick={() => navigate("/friends")}
+                  className="flex items-center gap-2"
+                >
+                  <Users className="h-4 w-4" />
+                  Friends & Groups
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => navigate("/settings")}
                   className="flex items-center gap-2"
@@ -72,6 +83,20 @@ export default function AppLayout({ children }) {
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+      <footer className="mx-auto flex max-w-6xl flex-wrap gap-4 px-6 pb-8 text-xs text-slate-500 dark:text-slate-400">
+        <Link to="/privacy" className="hover:text-slate-900 dark:hover:text-slate-100">
+          Privacy Policy
+        </Link>
+        <Link to="/terms" className="hover:text-slate-900 dark:hover:text-slate-100">
+          Terms of Service
+        </Link>
+        <a
+          href="mailto:support@questscheduler.cc"
+          className="hover:text-slate-900 dark:hover:text-slate-100"
+        >
+          Contact us
+        </a>
+      </footer>
     </div>
   );
 }

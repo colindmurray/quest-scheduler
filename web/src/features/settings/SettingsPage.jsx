@@ -2,11 +2,11 @@ import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { useAuth } from "../../app/AuthProvider";
 import { useTheme } from "../../app/ThemeProvider";
-import { getStoredAccessToken, signInWithGoogle } from "../../lib/auth";
 import { db } from "../../lib/firebase";
-import { isValidEmail } from "../../lib/utils";
+import { signOutUser } from "../../lib/auth";
 import { LoadingState } from "../../components/ui/spinner";
 import { Switch } from "../../components/ui/switch";
 import {
@@ -16,6 +16,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../components/ui/dialog";
 
 const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -27,22 +35,23 @@ export default function SettingsPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [addressBook, setAddressBook] = useState([]);
-  const [addressInput, setAddressInput] = useState("");
-  const [addressError, setAddressError] = useState(null);
   const [defaultDuration, setDefaultDuration] = useState(240);
-  const [defaultTitle, setDefaultTitle] = useState("D&D Session");
+  const [defaultTitle, setDefaultTitle] = useState("Quest Session");
   const [defaultDescription, setDefaultDescription] = useState("");
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [timezoneMode, setTimezoneMode] = useState("auto");
   const [timezone, setTimezone] = useState(
     Intl.DateTimeFormat().resolvedOptions().timeZone
   );
-  const [calendarId, setCalendarId] = useState("");
-  const [calendarName, setCalendarName] = useState("");
+  const [calendarIds, setCalendarIds] = useState([]);
+  const [calendarNames, setCalendarNames] = useState({});
   const [availableCalendars, setAvailableCalendars] = useState([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarError, setCalendarError] = useState(null);
+  const [calendarSyncPreference, setCalendarSyncPreference] = useState("poll");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [defaultTimes, setDefaultTimes] = useState({
     1: "18:00",
     2: "18:00",
@@ -62,19 +71,25 @@ export default function SettingsPage() {
       .then((snap) => {
         if (snap.exists()) {
           const data = snap.data();
-          setAddressBook(data.addressBook || []);
           setDefaultDuration(data.settings?.defaultDurationMinutes ?? 240);
-          setDefaultTitle(data.settings?.defaultTitle ?? "D&D Session");
+          setDefaultTitle(data.settings?.defaultTitle ?? "Quest Session");
           setDefaultDescription(data.settings?.defaultDescription ?? "");
           setEmailNotifications(data.settings?.emailNotifications ?? true);
           setDefaultTimes(data.settings?.defaultStartTimes ?? defaultTimes);
           setTimezoneMode(data.settings?.timezoneMode ?? "auto");
-          setCalendarId(data.settings?.googleCalendarId ?? "");
-          setCalendarName(data.settings?.googleCalendarName ?? "");
+          setCalendarIds(data.settings?.googleCalendarIds ?? []);
+          setCalendarNames(data.settings?.googleCalendarNames ?? {});
+          setCalendarSyncPreference(data.calendarSyncPreference ?? "poll");
           setTimezone(
             data.settings?.timezone ??
               Intl.DateTimeFormat().resolvedOptions().timeZone
           );
+          if (!data.settings?.googleCalendarIds && data.settings?.googleCalendarId) {
+            setCalendarIds([data.settings.googleCalendarId]);
+          }
+          if (!data.settings?.googleCalendarNames && data.settings?.googleCalendarName) {
+            setCalendarNames({ [data.settings.googleCalendarId]: data.settings.googleCalendarName });
+          }
         }
       })
       .catch((err) => {
@@ -84,39 +99,26 @@ export default function SettingsPage() {
       .finally(() => setLoading(false));
   }, [userRef]);
 
-  const handleCalendarSelect = (nextId) => {
-    const selected = availableCalendars.find((item) => item.id === nextId);
-    setCalendarId(nextId);
-    setCalendarName(selected?.summary || nextId);
+  const toggleCalendarSelection = (calendar) => {
+    setCalendarIds((prev) => {
+      const exists = prev.includes(calendar.id);
+      const next = exists ? prev.filter((id) => id !== calendar.id) : [...prev, calendar.id];
+      return next;
+    });
+    setCalendarNames((prev) => ({
+      ...prev,
+      [calendar.id]: calendar.summary || calendar.id,
+    }));
   };
 
   const fetchCalendars = async () => {
     setCalendarLoading(true);
     setCalendarError(null);
     try {
-      let accessToken = getStoredAccessToken();
-      if (!accessToken) {
-        await signInWithGoogle();
-        accessToken = getStoredAccessToken();
-      }
-      if (!accessToken) {
-        throw new Error("Google access token missing. Please try again.");
-      }
-
-      const response = await fetch(
-        "https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=writer&showDeleted=false",
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      );
-      if (!response.ok) {
-        const detail = await response.json();
-        throw new Error(detail?.error?.message || "Failed to load calendars.");
-      }
-      const payload = await response.json();
-      const calendars = (payload.items || [])
+      const functions = getFunctions();
+      const listCalendars = httpsCallable(functions, "googleCalendarListCalendars");
+      const payload = await listCalendars();
+      const calendars = (payload.data?.items || [])
         .filter((item) => item.id)
         .sort((a, b) => {
           if (a.primary) return -1;
@@ -125,15 +127,36 @@ export default function SettingsPage() {
         });
       setAvailableCalendars(calendars);
 
-      if (!calendarId && calendars.length > 0) {
+      if (!calendarIds.length && calendars.length > 0) {
         const primary = calendars.find((item) => item.primary) || calendars[0];
-        setCalendarId(primary.id);
-        setCalendarName(primary.summary || primary.id);
+        setCalendarIds([primary.id]);
+        setCalendarNames((prev) => ({
+          ...prev,
+          [primary.id]: primary.summary || primary.id,
+        }));
       }
     } catch (err) {
+      const message = err?.message || err?.details || "Failed to load calendars.";
+      if (
+        message.includes("Google Calendar not linked") ||
+        message.includes("authorization expired")
+      ) {
+        try {
+          const functions = getFunctions();
+          const startAuth = httpsCallable(functions, "googleCalendarStartAuth");
+          const response = await startAuth();
+          const authUrl = response.data?.authUrl;
+          if (authUrl) {
+            window.location.assign(authUrl);
+            return;
+          }
+        } catch (authErr) {
+          console.error("Failed to start calendar auth:", authErr);
+        }
+      }
       console.error("Failed to load calendars:", err);
-      setCalendarError(err.message || "Failed to load calendars.");
-      toast.error(err.message || "Failed to load calendars.");
+      setCalendarError(message);
+      toast.error(message);
     } finally {
       setCalendarLoading(false);
     }
@@ -143,13 +166,22 @@ export default function SettingsPage() {
     if (!userRef) return;
     setSaving(true);
     try {
+      const primaryCalendarId = [...calendarIds].sort((a, b) => {
+        const nameA = calendarNames[a] || a;
+        const nameB = calendarNames[b] || b;
+        return nameA.localeCompare(nameB);
+      })[0];
+      const primaryCalendarName = primaryCalendarId
+        ? calendarNames[primaryCalendarId] || primaryCalendarId
+        : null;
+
       await setDoc(
         userRef,
         {
           email: user.email,
           displayName: user.displayName,
           photoURL: user.photoURL,
-          addressBook,
+          calendarSyncPreference,
           settings: {
             defaultDurationMinutes: Number(defaultDuration || 0),
             defaultTitle,
@@ -158,8 +190,10 @@ export default function SettingsPage() {
             defaultStartTimes: defaultTimes,
             timezoneMode,
             timezone,
-            googleCalendarId: calendarId || null,
-            googleCalendarName: calendarName || null,
+            googleCalendarId: primaryCalendarId || null,
+            googleCalendarName: primaryCalendarName,
+            googleCalendarIds: calendarIds,
+            googleCalendarNames: calendarNames,
           },
           updatedAt: serverTimestamp(),
         },
@@ -176,6 +210,8 @@ export default function SettingsPage() {
         },
         { merge: true }
       );
+      setAvailableCalendars([]);
+      setCalendarError(null);
       toast.success("Settings saved successfully");
     } catch (err) {
       console.error("Failed to save settings:", err);
@@ -185,20 +221,28 @@ export default function SettingsPage() {
     }
   };
 
-  const addAddress = () => {
-    const normalized = addressInput.trim().toLowerCase();
-    if (!normalized) return;
-    if (!isValidEmail(normalized)) {
-      setAddressError("Enter a valid email address.");
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    if (deleteConfirm.trim() !== "DELETE") {
+      toast.error('Type "DELETE" to confirm.');
       return;
     }
-    setAddressBook((prev) => (prev.includes(normalized) ? prev : [...prev, normalized]));
-    setAddressInput("");
-    setAddressError(null);
-  };
-
-  const removeAddress = (email) => {
-    setAddressBook((prev) => prev.filter((item) => item !== email));
+    setDeleteBusy(true);
+    try {
+      const functions = getFunctions();
+      const deleteAccount = httpsCallable(functions, "deleteUserAccount");
+      await deleteAccount();
+      toast.success("Your account has been deleted.");
+      setDeleteDialogOpen(false);
+      setDeleteConfirm("");
+      await signOutUser();
+      navigate("/");
+    } catch (err) {
+      console.error("Failed to delete account:", err);
+      toast.error(err?.message || "Failed to delete account.");
+    } finally {
+      setDeleteBusy(false);
+    }
   };
 
   if (loading) {
@@ -215,7 +259,7 @@ export default function SettingsPage() {
             <div>
               <h2 className="text-xl font-semibold">User Settings</h2>
               <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                Address book, defaults, and notification preferences.
+                Defaults and notification preferences.
               </p>
             </div>
             <button
@@ -227,6 +271,7 @@ export default function SettingsPage() {
             </button>
           </div>
 
+          <>
           <div className="mt-6 grid gap-6">
             <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Timezone</h3>
@@ -293,93 +338,82 @@ export default function SettingsPage() {
                 >
                   {calendarLoading ? "Loading..." : "Connect / Refresh calendars"}
                 </button>
-                {calendarId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCalendarId("");
-                      setCalendarName("");
-                    }}
-                    className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
-                  >
-                    Unlink calendar
-                  </button>
-                )}
+              {calendarIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCalendarIds([]);
+                    setCalendarNames({});
+                  }}
+                  className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+                >
+                  Unlink calendar
+                </button>
+              )}
               </div>
               {calendarError && (
                 <p className="mt-2 text-xs text-red-500 dark:text-red-400">{calendarError}</p>
               )}
               {availableCalendars.length > 0 && (
                 <div className="mt-4 grid gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  <span>Choose calendar</span>
-                  <Select value={calendarId} onValueChange={handleCalendarSelect}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a calendar" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableCalendars.map((calendar) => (
-                        <SelectItem key={calendar.id} value={calendar.id}>
-                          {calendar.summary || calendar.id}
-                          {calendar.primary ? " (primary)" : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <span>Select calendars to link</span>
+                  <div className="grid gap-2">
+                    {availableCalendars.map((calendar) => {
+                      const selected = calendarIds.includes(calendar.id);
+                      return (
+                        <label
+                          key={calendar.id}
+                          className={`flex items-center justify-between rounded-2xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                            selected
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700/60 dark:bg-emerald-900/30 dark:text-emerald-100"
+                              : "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                          }`}
+                        >
+                          <span>
+                            {calendar.summary || calendar.id}
+                            {calendar.primary ? " (primary)" : ""}
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() => toggleCalendarSelection(calendar)}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
-              {!availableCalendars.length && calendarId && (
-                <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                  Linked calendar: {calendarName || calendarId}
+              {!availableCalendars.length && calendarIds.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  {calendarIds.map((id) => (
+                    <span
+                      key={id}
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+                    >
+                      {calendarNames[id] || id}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="mt-4 grid gap-2">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  When calendar event differs from poll
+                </span>
+                <Select value={calendarSyncPreference} onValueChange={setCalendarSyncPreference}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select preference" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="poll">Show poll data (what was voted on)</SelectItem>
+                    <SelectItem value="calendar">Show Google Calendar data</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-400 dark:text-slate-500">
+                  If the calendar event was modified after finalization, choose which data to display on the dashboard.
                 </p>
-              )}
-            </section>
-            <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
-              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Address book</h3>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Add one email at a time. Click an entry to remove it.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {addressBook.length === 0 && (
-                  <span className="text-xs text-slate-400 dark:text-slate-500">No friends yet.</span>
-                )}
-                {addressBook.map((email) => (
-                  <button
-                    key={email}
-                    type="button"
-                    onClick={() => removeAddress(email)}
-                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-red-50 hover:border-red-200 hover:text-red-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-red-900/30 dark:hover:border-red-800 dark:hover:text-red-300"
-                    title="Remove"
-                  >
-                    {email} ✕
-                  </button>
-                ))}
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <input
-                  className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                  placeholder="Add a friend email"
-                  value={addressInput}
-                  onChange={(event) => setAddressInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addAddress();
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={addAddress}
-                  className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
-                >
-                  Add
-                </button>
-              </div>
-              {addressError && (
-                <p className="mt-2 text-xs text-red-500 dark:text-red-400">{addressError}</p>
-              )}
             </section>
-
             <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Default calendar entry</h3>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -463,6 +497,23 @@ export default function SettingsPage() {
                 />
               </div>
             </section>
+
+            <section className="rounded-2xl border border-rose-200 bg-rose-50/40 p-4 dark:border-rose-900/60 dark:bg-rose-900/20">
+              <h3 className="text-sm font-semibold text-rose-700 dark:text-rose-200">Delete profile</h3>
+              <p className="mt-1 text-xs text-rose-600/90 dark:text-rose-200/80">
+                This permanently removes your account, friend connections, questing group memberships,
+                votes, and every session poll you have created.
+              </p>
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => setDeleteDialogOpen(true)}
+                  className="rounded-full border border-rose-200 bg-white px-4 py-2 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100 dark:border-rose-800 dark:bg-slate-950 dark:text-rose-200 dark:hover:bg-rose-900/40"
+                >
+                  Delete profile
+                </button>
+              </div>
+            </section>
           </div>
 
           <div className="mt-6 flex justify-end">
@@ -475,6 +526,45 @@ export default function SettingsPage() {
               {saving ? "Saving..." : "Save settings"}
             </button>
           </div>
+
+          <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete your profile?</DialogTitle>
+                <DialogDescription>
+                  This action is permanent. It will remove your account, friends, questing group
+                  memberships, votes, and all polls you created.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="mt-4 space-y-3 text-sm text-slate-600 dark:text-slate-300">
+                <p>Type <span className="font-semibold text-rose-500">DELETE</span> to confirm.</p>
+                <input
+                  value={deleteConfirm}
+                  onChange={(event) => setDeleteConfirm(event.target.value)}
+                  placeholder="DELETE"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm uppercase tracking-widest dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </div>
+              <DialogFooter>
+                <button
+                  type="button"
+                  onClick={() => setDeleteDialogOpen(false)}
+                  className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteAccount}
+                  disabled={deleteBusy}
+                  className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-rose-500 disabled:opacity-60"
+                >
+                  {deleteBusy ? "Deleting..." : "Delete permanently"}
+                </button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          </>
         </div>
   );
 }

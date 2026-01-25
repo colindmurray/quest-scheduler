@@ -13,12 +13,69 @@ service cloud.firestore {
       return isSignedIn() && data.creatorId == request.auth.uid;
     }
 
-    function isParticipant(data) {
-      return isSignedIn() && userEmail() in data.participants;
+    function hasPendingInvite(data) {
+      return data.pendingInvites != null && userEmail() in data.pendingInvites;
+    }
+
+    function canReadScheduler(data) {
+      return isSignedIn() && (
+        isCreator(data) ||
+        userEmail() in data.participants ||
+        hasPendingInvite(data) ||
+        data.allowLinkSharing == true
+      );
     }
 
     match /users/{userId} {
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      function protectedUserFieldsUnchanged() {
+        return resource == null
+          ? !request.resource.data.keys().hasAny([
+              "inviteAllowance",
+              "suspended",
+              "suspendedAt"
+            ])
+          : !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+              "inviteAllowance",
+              "suspended",
+              "suspendedAt"
+            ]);
+      }
+
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow write: if isSignedIn()
+        && request.auth.uid == userId
+        && protectedUserFieldsUnchanged();
+
+      // Notifications subcollection - user can only access their own
+      match /notifications/{notificationId} {
+        allow read, update: if isSignedIn() && request.auth.uid == userId;
+        allow delete: if isSignedIn() && (
+          request.auth.uid == userId ||
+          (resource.data.type in ["GROUP_INVITE", "POLL_INVITE"]
+            && resource.data.metadata.inviterEmail == userEmail())
+        );
+        allow create: if isSignedIn()
+          && request.resource.data.type in [
+            "FRIEND_REQUEST",
+            "FRIEND_ACCEPTED",
+            "POLL_INVITE",
+            "GROUP_INVITE",
+            "GROUP_INVITE_ACCEPTED",
+            "SESSION_INVITE",
+            "VOTE_REMINDER",
+            "VOTE_SUBMITTED",
+            "SESSION_FINALIZED",
+            "SESSION_JOINED",
+            "GROUP_MEMBER_CHANGE"
+          ]
+          && request.resource.data.read == false
+          && request.resource.data.dismissed == false;
+      }
+
+      match /blockedUsers/{blockId} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if false;
+      }
     }
 
     match /usersPublic/{userId} {
@@ -26,29 +83,204 @@ service cloud.firestore {
       allow write: if isSignedIn() && request.auth.uid == userId;
     }
 
-    match /schedulers/{schedulerId} {
-      allow read: if isSignedIn();
+    match /bannedEmails/{emailId} {
+      allow read: if isSignedIn()
+        && request.auth.token.email != null
+        && (resource == null || resource.data.email == request.auth.token.email);
+      allow write: if false;
+    }
+
+    match /userSecrets/{userId} {
+      allow read, write: if false;
+    }
+
+    match /oauthStates/{stateId} {
+      allow read, write: if false;
+    }
+
+    match /questingGroups/{groupId} {
+      function isGroupMember(data) {
+        return userEmail() in data.members;
+      }
+
+      function isGroupInvitee(data) {
+        return userEmail() in data.pendingInvites;
+      }
+
+      function isGroupManager(data) {
+        return data.creatorId == request.auth.uid
+          || (data.memberManaged == true && isGroupMember(data));
+      }
+
+      function isInviteeUpdate(data) {
+        return isGroupInvitee(data)
+          && request.resource.data.diff(data).affectedKeys().hasOnly([
+            "members",
+            "pendingInvites",
+            "pendingInviteMeta",
+            "updatedAt"
+          ])
+          && data.pendingInvites.size() == request.resource.data.pendingInvites.size() + 1
+          && !(userEmail() in request.resource.data.pendingInvites)
+          && data.pendingInvites.hasAll(request.resource.data.pendingInvites)
+          && request.resource.data.members.hasAll(data.members)
+          && request.resource.data.members.size() <= data.members.size() + 1;
+      }
+
+      function isSelfLeave(data) {
+        return isGroupMember(data)
+          && request.resource.data.diff(data).affectedKeys().hasOnly([
+            "members",
+            "updatedAt"
+          ])
+          && userEmail() in data.members
+          && !(userEmail() in request.resource.data.members)
+          && data.members.size() == request.resource.data.members.size() + 1
+          && data.members.hasAll(request.resource.data.members);
+      }
+
+      // Read: members, pending invites, or creator can read
+      allow read: if isSignedIn() && (
+        isGroupMember(resource.data) ||
+        isGroupInvitee(resource.data) ||
+        resource.data.creatorId == request.auth.uid
+      );
+
+      // Create: any authenticated user can create a group
       allow create: if isSignedIn() && request.resource.data.creatorId == request.auth.uid;
 
-      allow update: if isCreator(resource.data)
-        || (
-          isSignedIn()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["participants"])
-          && request.resource.data.participants.hasAll(resource.data.participants)
+      // Update: creator always can update, members can update if memberManaged is true, invitees can accept/decline
+      allow update: if isSignedIn() && (
+        isGroupManager(resource.data) ||
+        isInviteeUpdate(resource.data) ||
+        isSelfLeave(resource.data)
+      );
+
+      // Delete: creator only
+      allow delete: if isSignedIn() && resource.data.creatorId == request.auth.uid;
+    }
+
+    match /schedulers/{schedulerId} {
+      function isSchedulerParticipant(data) {
+        return isSignedIn() && userEmail() in data.participants;
+      }
+
+      function isSchedulerInvitee(data) {
+        return isSignedIn() && hasPendingInvite(data);
+      }
+
+      function isInviteeUpdate(data) {
+        return data.pendingInvites != null
+          && isSchedulerInvitee(data)
+          && request.resource.data.diff(data).affectedKeys().hasOnly([
+            "participants",
+            "pendingInvites",
+            "pendingInviteMeta",
+            "updatedAt"
+          ])
+          && data.pendingInvites.size() == request.resource.data.pendingInvites.size() + 1
+          && !(userEmail() in request.resource.data.pendingInvites)
+          && data.pendingInvites.hasAll(request.resource.data.pendingInvites)
+          && request.resource.data.participants.hasAll(data.participants)
+          && request.resource.data.participants.size() <= data.participants.size() + 1
+          && (
+            request.resource.data.participants.size() == data.participants.size()
+            || userEmail() in request.resource.data.participants
+          );
+      }
+
+      function isLinkShareJoin(data) {
+        return isSignedIn()
+          && data.allowLinkSharing == true
+          && request.resource.data.diff(data).affectedKeys().hasOnly([
+            "participants",
+            "pendingInvites",
+            "pendingInviteMeta",
+            "updatedAt"
+          ])
+          && request.resource.data.participants.size() == data.participants.size() + 1
           && userEmail() in request.resource.data.participants
-        );
+          && request.resource.data.participants.hasAll(data.participants);
+      }
+
+      function isSelfLeave(data) {
+        return isSchedulerParticipant(data)
+          && request.resource.data.diff(data).affectedKeys().hasOnly([
+            "participants",
+            "updatedAt"
+          ])
+          && userEmail() in data.participants
+          && !(userEmail() in request.resource.data.participants)
+          && data.participants.size() == request.resource.data.participants.size() + 1
+          && data.participants.hasAll(request.resource.data.participants);
+      }
+
+      function creatorUpdateAllowed(data) {
+        return isCreator(data)
+          && !request.resource.data.diff(data).affectedKeys().hasAny([
+            "pendingInvites",
+            "pendingInviteMeta"
+          ]);
+      }
+
+      allow read: if canReadScheduler(resource.data);
+      allow create: if isSignedIn()
+        && request.resource.data.creatorId == request.auth.uid
+        && (!request.resource.data.keys().hasAny(["pendingInviteMeta"]))
+        && (request.resource.data.pendingInvites == null
+          || request.resource.data.pendingInvites.size() == 0);
+
+      allow update: if creatorUpdateAllowed(resource.data)
+        || isInviteeUpdate(resource.data)
+        || isLinkShareJoin(resource.data)
+        || isSelfLeave(resource.data);
 
       allow delete: if isCreator(resource.data);
 
       match /slots/{slotId} {
-        allow read: if isSignedIn();
+        allow read: if canReadScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data);
         allow write: if isCreator(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data);
       }
 
       match /votes/{userId} {
-        allow read: if isSignedIn();
-        allow write: if isSignedIn() && request.auth.uid == userId;
+        allow read: if canReadScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data);
+        allow write: if isSignedIn()
+          && request.auth.uid == userId
+          && userEmail() in get(/databases/$(database)/documents/schedulers/$(schedulerId)).data.participants;
       }
+    }
+
+    match /friendRequests/{requestId} {
+      allow create: if false;
+
+      allow read: if isSignedIn() && (
+        resource == null ||
+        request.auth.uid == resource.data.fromUserId ||
+        request.auth.token.email == resource.data.toEmail ||
+        request.auth.token.email == resource.data.fromEmail
+      );
+
+      allow update: if isSignedIn() && (
+        (
+          request.auth.token.email == resource.data.toEmail &&
+          resource.data.status == "pending" &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "respondedAt", "toUserId"]) &&
+          request.resource.data.status in ["accepted", "declined"]
+        ) ||
+        (
+          (request.auth.uid == resource.data.fromUserId ||
+            request.auth.token.email == resource.data.toEmail ||
+            request.auth.token.email == resource.data.fromEmail) &&
+          resource.data.status == "accepted" &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "respondedAt"]) &&
+          request.resource.data.status == "removed"
+        )
+      );
+
+      allow delete: if isSignedIn()
+        && (request.auth.token.email == resource.data.fromEmail
+          || request.auth.token.email == resource.data.toEmail)
+        && resource.data.status in ["accepted", "removed"];
     }
 
     match /mail/{docId} {

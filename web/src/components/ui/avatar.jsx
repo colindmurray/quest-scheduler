@@ -1,6 +1,7 @@
 import * as React from "react";
 import * as AvatarPrimitive from "@radix-ui/react-avatar";
 import { cn } from "../../lib/utils";
+import { getColorForEmail, getInitial } from "./voter-avatars";
 
 const Avatar = React.forwardRef(({ className, ...props }, ref) => (
   <AvatarPrimitive.Root
@@ -36,27 +37,9 @@ const AvatarFallback = React.forwardRef(({ className, ...props }, ref) => (
 ));
 AvatarFallback.displayName = AvatarPrimitive.Fallback.displayName;
 
-function getInitial(name) {
-  if (!name) return "?";
-  return name.trim()[0]?.toUpperCase() || "?";
-}
-
-function generateColorFromEmail(email) {
-  if (!email) return { bg: "#e2e8f0", text: "#0f172a" };
-  let hash = 0;
-  for (let i = 0; i < email.length; i++) {
-    hash = email.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const hue = Math.abs(hash) % 360;
-  return {
-    bg: `hsl(${hue} 60% 78%)`,
-    text: `hsl(${hue} 35% 25%)`,
-  };
-}
-
 const UserAvatar = React.forwardRef(
   ({ email, src, size = 40, className, ...props }, ref) => {
-    const colors = generateColorFromEmail(email);
+    const colors = getColorForEmail(email);
     return (
       <Avatar
         ref={ref}

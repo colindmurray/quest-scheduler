@@ -1,0 +1,453 @@
+import { useState } from "react";
+import { toast } from "sonner";
+import { Users, Settings, UserPlus, LogOut, Trash2, Crown } from "lucide-react";
+import { GroupColorPicker } from "./GroupColorPicker";
+import { InviteMemberModal } from "./InviteMemberModal";
+import { AvatarBubble, AvatarStack, buildColorMap } from "../../../components/ui/voter-avatars";
+import { useUserProfiles } from "../../../hooks/useUserProfiles";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../../components/ui/dialog";
+import { Switch } from "../../../components/ui/switch";
+
+export function GroupCard({
+  group,
+  isOwner,
+  canManage,
+  groupColor,
+  onColorChange,
+  onInviteMember,
+  onRemoveMember,
+  onLeaveGroup,
+  onDeleteGroup,
+  onUpdateGroup,
+  onRevokeInvite,
+  friends = [],
+}) {
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [removeMemberOpen, setRemoveMemberOpen] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [revokeInviteEmail, setRevokeInviteEmail] = useState(null);
+  const [revokeInviteOpen, setRevokeInviteOpen] = useState(false);
+
+  const members = group.members || [];
+  const pendingInvites = group.pendingInvites || [];
+  const colorMap = buildColorMap(members);
+  const { enrichUsers, getAvatar } = useUserProfiles(members);
+  const enrichedMembers = enrichUsers(members);
+
+  const handleRemoveMember = async () => {
+    if (!memberToRemove) return;
+    setSaving(true);
+    try {
+      await onRemoveMember(group.id, group.name, memberToRemove, true);
+      setRemoveMemberOpen(false);
+      setMemberToRemove(null);
+      toast.success("Member removed from group and associated polls");
+    } catch (err) {
+      console.error("Failed to remove member:", err);
+      toast.error(err.message || "Failed to remove member");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleLeave = async () => {
+    setSaving(true);
+    try {
+      await onLeaveGroup(group.id);
+      setLeaveOpen(false);
+      toast.success("You have left the group");
+    } catch (err) {
+      console.error("Failed to leave group:", err);
+      toast.error(err.message || "Failed to leave group");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRevokeInvite = async () => {
+    if (!revokeInviteEmail) return;
+    setSaving(true);
+    try {
+      await onRevokeInvite(group.id, revokeInviteEmail);
+      setRevokeInviteOpen(false);
+      setRevokeInviteEmail(null);
+      toast.success("Invite removed");
+    } catch (err) {
+      console.error("Failed to revoke invite:", err);
+      toast.error(err.message || "Failed to remove invite");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setSaving(true);
+    try {
+      await onDeleteGroup(group.id);
+      setDeleteOpen(false);
+      toast.success("Group deleted");
+    } catch (err) {
+      console.error("Failed to delete group:", err);
+      toast.error(err.message || "Failed to delete group");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggleMemberManaged = async (value) => {
+    try {
+      await onUpdateGroup(group.id, { memberManaged: value });
+      toast.success(value ? "Group is now member-managed" : "Group is now owner-managed");
+    } catch (err) {
+      console.error("Failed to update group:", err);
+      toast.error(err.message || "Failed to update group settings");
+    }
+  };
+
+  return (
+    <>
+      <div className="rounded-2xl border border-slate-100 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div
+              className="flex h-10 w-10 items-center justify-center rounded-xl"
+              style={{ backgroundColor: groupColor }}
+            >
+              <Users className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="font-semibold text-slate-900 dark:text-slate-100">
+                  {group.name}
+                </h4>
+                {isOwner && (
+                  <Crown className="h-4 w-4 text-amber-500" title="You own this group" />
+                )}
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {members.length} member{members.length !== 1 ? "s" : ""} ·{" "}
+                {group.memberManaged ? "Member-managed" : "Owner-managed"}
+              </p>
+            </div>
+          </div>
+
+          <AvatarStack
+            users={enrichedMembers}
+            max={4}
+            size={24}
+            colorMap={colorMap}
+          />
+        </div>
+
+        {/* Member list */}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {members.map((email) => (
+            <div
+              key={email}
+              className="group flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 py-1 pl-1 pr-2 text-xs dark:border-slate-700 dark:bg-slate-800"
+            >
+              <AvatarBubble
+                email={email}
+                avatar={getAvatar(email)}
+                size={18}
+                colorMap={colorMap}
+              />
+              <span className="text-slate-600 dark:text-slate-300">{email}</span>
+              {canManage && email !== group.creatorEmail && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMemberToRemove(email);
+                    setRemoveMemberOpen(true);
+                  }}
+                  className="ml-1 hidden text-red-500 hover:text-red-600 group-hover:inline-block"
+                  title="Remove member"
+                >
+                  &times;
+                </button>
+              )}
+            </div>
+          ))}
+          {pendingInvites.map((email) => (
+            <div
+              key={email}
+              className="group flex items-center gap-1 rounded-full border border-dashed border-amber-300 bg-amber-50 px-2 py-1 text-xs dark:border-amber-700 dark:bg-amber-900/30"
+            >
+              <span className="text-amber-700 dark:text-amber-300">{email}</span>
+              <span className="text-amber-500 dark:text-amber-400">(pending)</span>
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRevokeInviteEmail(email);
+                    setRevokeInviteOpen(true);
+                  }}
+                  className="ml-1 hidden text-amber-600 hover:text-amber-700 group-hover:inline-block"
+                  title="Remove invite"
+                >
+                  &times;
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Actions */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => setInviteOpen(true)}
+              className="flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              <UserPlus className="h-3 w-3" />
+              Invite
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className="flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+          >
+            <Settings className="h-3 w-3" />
+            Settings
+          </button>
+
+          {!isOwner && (
+            <button
+              type="button"
+              onClick={() => setLeaveOpen(true)}
+              className="flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              <LogOut className="h-3 w-3" />
+              Leave
+            </button>
+          )}
+
+          {isOwner && (
+            <button
+              type="button"
+              onClick={() => setDeleteOpen(true)}
+              className="flex items-center gap-1 rounded-full border border-red-200 px-3 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30"
+            >
+              <Trash2 className="h-3 w-3" />
+              Delete
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Invite Modal */}
+      <InviteMemberModal
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        group={group}
+        onInviteMember={onInviteMember}
+        friends={friends}
+      />
+
+      {/* Settings Modal */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Group Settings</DialogTitle>
+            <DialogDescription>
+              Customize your personal settings for "{group.name}"
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 space-y-4">
+            <div>
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Your color for this group
+              </p>
+              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                This color is personal and only visible to you
+              </p>
+              <div className="mt-3">
+                <GroupColorPicker
+                  selectedColor={groupColor}
+                  onColorChange={(color) => onColorChange(group.id, color)}
+                />
+              </div>
+            </div>
+
+            {isOwner && (
+              <div className="flex items-center justify-between rounded-2xl border border-slate-100 px-4 py-3 dark:border-slate-700">
+                <div>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                    Member-managed
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                    Allow any member to invite or remove others
+                  </p>
+                </div>
+                <Switch
+                  checked={group.memberManaged}
+                  onCheckedChange={handleToggleMemberManaged}
+                />
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="mt-6">
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(false)}
+              className="rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90"
+            >
+              Done
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove Member Confirmation */}
+      <Dialog open={removeMemberOpen} onOpenChange={setRemoveMemberOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Remove member</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove {memberToRemove} from "{group.name}"?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-900/20">
+            <p className="text-sm text-amber-700 dark:text-amber-300">
+              This will also remove them from all session polls that use this group.
+            </p>
+          </div>
+
+          <DialogFooter className="mt-6">
+            <button
+              type="button"
+              onClick={() => setRemoveMemberOpen(false)}
+              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleRemoveMember}
+              disabled={saving}
+              className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+            >
+              {saving ? "Removing..." : "Remove member"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Leave Confirmation */}
+      <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Leave group</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to leave "{group.name}"?
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="mt-6">
+            <button
+              type="button"
+              onClick={() => setLeaveOpen(false)}
+              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleLeave}
+              disabled={saving}
+              className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+            >
+              {saving ? "Leaving..." : "Leave group"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revoke Invite Confirmation */}
+      <Dialog open={revokeInviteOpen} onOpenChange={setRevokeInviteOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Remove invite</DialogTitle>
+            <DialogDescription>
+              Remove the pending invite for {revokeInviteEmail}?
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="mt-6">
+            <button
+              type="button"
+              onClick={() => setRevokeInviteOpen(false)}
+              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleRevokeInvite}
+              disabled={saving}
+              className="rounded-full bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:opacity-50"
+            >
+              {saving ? "Removing..." : "Remove invite"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete group</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{group.name}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
+            <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+              {group.name}
+            </p>
+            <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+              {members.length} members
+            </p>
+          </div>
+
+          <DialogFooter className="mt-6">
+            <button
+              type="button"
+              onClick={() => setDeleteOpen(false)}
+              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={saving}
+              className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+            >
+              {saving ? "Deleting..." : "Delete group"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
