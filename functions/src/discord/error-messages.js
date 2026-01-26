@@ -14,6 +14,7 @@ const ERROR_MESSAGES = {
   linkCodeInvalidOrExpired: "Invalid or expired link code.",
   linkCodeInvalid: "Invalid link code.",
   linkCodeExpired: "Link code expired. Generate a new one in Quest Scheduler.",
+  noLinkedGroup: "No Quest Scheduler group is linked to this channel.",
   pollNotFound: "This poll no longer exists. It may have been deleted.",
   pollFinalized: "Voting is closed for this session.",
   channelMismatch: "This poll is linked to a different channel.",

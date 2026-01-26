@@ -380,6 +380,45 @@ async function handleLinkGroup(interaction) {
   });
 }
 
+async function handleUnlinkGroup(interaction) {
+  if (!interaction.guildId || !interaction.channelId) {
+    return respondWithError(interaction, ERROR_MESSAGES.linkChannelOnly);
+  }
+
+  if (!hasLinkPermissions(interaction.member?.permissions)) {
+    return respondWithError(interaction, ERROR_MESSAGES.linkPermissions);
+  }
+
+  const groupSnap = await db
+    .collection("questingGroups")
+    .where("discord.channelId", "==", interaction.channelId)
+    .get();
+  if (groupSnap.empty) {
+    return respondWithError(interaction, ERROR_MESSAGES.noLinkedGroup);
+  }
+
+  const matchingDoc =
+    groupSnap.docs.find(
+      (doc) => doc.data()?.discord?.guildId === interaction.guildId
+    ) || groupSnap.docs[0];
+
+  if (!matchingDoc) {
+    return respondWithError(interaction, ERROR_MESSAGES.noLinkedGroup);
+  }
+
+  await matchingDoc.ref.set(
+    {
+      discord: admin.firestore.FieldValue.delete(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return respondWithMessage(interaction, {
+    content: "Discord channel unlinked from the Quest Scheduler group.",
+  });
+}
+
 async function handleVoteButton(interaction, schedulerId) {
   const schedulerRef = db.collection("schedulers").doc(schedulerId);
   const schedulerSnap = await schedulerRef.get();
@@ -867,6 +906,9 @@ exports.processDiscordInteraction = onTaskDispatched(
       if (interaction.type === InteractionType.ApplicationCommand) {
         if (interaction.data?.name === "link-group") {
           await handleLinkGroup(interaction);
+          handled = true;
+        } else if (interaction.data?.name === "unlink-group") {
+          await handleUnlinkGroup(interaction);
           handled = true;
         }
       }

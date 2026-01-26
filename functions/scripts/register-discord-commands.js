@@ -36,6 +36,11 @@ const commands = [
       },
     ],
   },
+  {
+    name: "unlink-group",
+    description: "Unlink this channel from a Quest Scheduler group",
+    default_member_permissions: "16",
+  },
 ];
 
 async function registerCommands() {

@@ -161,3 +161,4 @@
 - [x] 2026-01-26: Centralize Discord voting error messages and refresh finalized/stale/authorization text.
 - [x] 2026-01-26: Debounce Discord poll updates with Cloud Tasks + lastSyncedHash checks.
 - [x] 2026-01-26: Add Discord account unlink flow (callable + Settings UI).
+- [x] 2026-01-26: Add Discord unlink-group slash command and handler.
