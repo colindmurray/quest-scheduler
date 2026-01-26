@@ -38,6 +38,7 @@ function trimInteractionPayload(body) {
     data: body?.data,
     guildId: body?.guild_id,
     channelId: body?.channel_id,
+    receivedAt: Date.now(),
     member: body?.member
       ? {
           user: body.member.user,
@@ -85,6 +86,16 @@ exports.discordInteractions = onRequest(
     if (!body) {
       return res.status(400).send("Invalid payload");
     }
+
+    logger.info("Discord interaction received", {
+      interactionId: body.id,
+      type: body.type,
+      command: body.data?.name || null,
+      customId: body.data?.custom_id || null,
+      userId: body.member?.user?.id || body.user?.id || null,
+      guildId: body.guild_id,
+      channelId: body.channel_id,
+    });
 
     if (body.application_id !== DISCORD_APPLICATION_ID.value()) {
       logger.warn("Discord application ID mismatch", {

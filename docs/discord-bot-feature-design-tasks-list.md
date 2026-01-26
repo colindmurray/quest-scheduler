@@ -206,10 +206,10 @@ Tech debt, code health, and future enhancements that won't block a robust MVP.
 
 | # | Task | Priority | Status | Dependencies | Notes |
 | --- | ------ | ---------- | --- | -------------- | ------- |
-| 84 | **Add structured logging** | P3 | [ ] | #19, #11 | Log interaction types, user IDs, timing, errors in structured format. |
+| 84 | **Add structured logging** | P3 | [x] | #19, #11 | Log interaction types, user IDs, timing, errors in structured format. Validation: no automated tests. |
 | 85 | **Set up monitoring alerts** | P3 | [ ] | #84 | Alert on high error rates, signature verification failures, rate limits. |
-| 86 | **Add latency tracking** | P3 | [ ] | #84 | Track time from interaction receipt to response edit. |
-| 87 | **Implement graceful degradation** | P3 | [ ] | #56 | Store `discord.pendingSync` when Discord API unavailable. Retry later. |
+| 86 | **Add latency tracking** | P3 | [x] | #84 | Track time from interaction receipt to response edit. Validation: no automated tests. |
+| 87 | **Implement graceful degradation** | P3 | [x] | #56 | Store `discord.pendingSync` when Discord API unavailable. Retry later. Validation: no automated tests. |
 
 ### 3.2 Large Poll Optimizations (P3)
 

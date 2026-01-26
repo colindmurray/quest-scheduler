@@ -105,6 +105,16 @@ exports.postDiscordPollCard = onDocumentCreated(
         { merge: true }
       );
     } catch (err) {
+      await db.collection("schedulers").doc(schedulerId).set(
+        {
+          discord: {
+            pendingSync: true,
+            pendingSyncAt: admin.firestore.FieldValue.serverTimestamp(),
+            pendingSyncError: err?.message || "unknown",
+          },
+        },
+        { merge: true }
+      );
       logger.error("Failed to post Discord poll card", {
         schedulerId,
         error: err?.message,
@@ -205,15 +215,30 @@ exports.processDiscordSchedulerUpdate = onTaskDispatched(
             lastUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
             lastStatus: scheduler.status || "OPEN",
             lastSyncedHash: syncHash,
+            pendingSync: admin.firestore.FieldValue.delete(),
+            pendingSyncAt: admin.firestore.FieldValue.delete(),
+            pendingSyncError: admin.firestore.FieldValue.delete(),
           },
         },
         { merge: true }
       );
     } catch (err) {
+      await schedulerRef.set(
+        {
+          discord: {
+            ...scheduler.discord,
+            pendingSync: true,
+            pendingSyncAt: admin.firestore.FieldValue.serverTimestamp(),
+            pendingSyncError: err?.message || "unknown",
+          },
+        },
+        { merge: true }
+      );
       logger.error("Failed to update Discord poll card", {
         schedulerId,
         error: err?.message,
       });
+      throw err;
     }
   }
 );

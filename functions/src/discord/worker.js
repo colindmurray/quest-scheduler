@@ -900,6 +900,17 @@ exports.processDiscordInteraction = onTaskDispatched(
       return;
     }
 
+    const startedAt = Date.now();
+    const interactionMeta = {
+      interactionId: interaction.id,
+      type: interaction.type,
+      command: interaction.data?.name || null,
+      customId: interaction.data?.custom_id || null,
+      userId: getDiscordUserId(interaction),
+      guildId: interaction.guildId,
+      channelId: interaction.channelId,
+    };
+
     if (interaction.applicationId !== DISCORD_APPLICATION_ID.value()) {
       logger.warn("Discarding interaction with mismatched application ID", {
         interactionId: interaction.id,
@@ -1003,10 +1014,22 @@ exports.processDiscordInteraction = onTaskDispatched(
       }
 
       await markInteractionDone(interaction.id);
+      const durationMs = Date.now() - startedAt;
+      const latencyMs = interaction.receivedAt ? Date.now() - interaction.receivedAt : null;
+      logger.info("Discord interaction handled", {
+        ...interactionMeta,
+        handled,
+        durationMs,
+        latencyMs,
+      });
     } catch (err) {
+      const durationMs = Date.now() - startedAt;
+      const latencyMs = interaction.receivedAt ? Date.now() - interaction.receivedAt : null;
       logger.error("Discord worker error", {
         interactionId: interaction.id,
         error: err?.message,
+        durationMs,
+        latencyMs,
       });
       await respondWithError(interaction, ERROR_MESSAGES.genericError);
       await releaseInteractionLock(interaction.id);
