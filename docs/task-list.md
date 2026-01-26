@@ -87,7 +87,8 @@
 - [x] Replace address book with friend requests + accept flow
 - [x] Friends page with pending requests + questing groups tab
 - [x] Friend invite link that auto-accepts after login
-- [x] Restrict questing group invites to existing friends
+- [x] Allow questing group invites without requiring friendship
+- [x] 2026-01-25: Add optional friend request checkbox for non-friend group invites (no extra email)
 - [x] Friend invite modal flow for email links
 - [x] Pending outgoing requests section + unfriend action
 - [x] Questing group invite revocation + accept/decline permissions
@@ -146,3 +147,6 @@
 - [x] 2026-01-25: Render Discord vote slot labels in scheduler timezone instead of server default.
 - [x] 2026-01-25: Avoid duplicate ephemeral vote panels by deferring updates for select/submit interactions.
 - [x] 2026-01-25: Clarify Discord vote dropdown labels for preferred vs feasible selections.
+- [x] 2026-01-25: Add inline labels above Discord vote dropdowns using disabled buttons.
+- [x] 2026-01-25: Keep preferred selections automatically included in feasible selections for Discord voting.
+- [x] 2026-01-26: Landing page highlights Discord voting support with a Discord callout.

@@ -87,6 +87,19 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
+          <div className="mt-6 flex items-center gap-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-slate-700 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200">
+            <img
+              src="/assets/discord-logo.png"
+              alt="Discord logo"
+              className="h-9 w-9 rounded-xl bg-slate-900/5 p-1 dark:bg-white/5"
+            />
+            <div>
+              <p className="text-sm font-semibold">Connect with Discord</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Vote directly inside your server without leaving the chat.
+              </p>
+            </div>
+          </div>
         </section>
 
         <aside className="rounded-3xl bg-slate-900 p-8 text-white shadow-xl shadow-slate-300/60 dark:bg-slate-800">
