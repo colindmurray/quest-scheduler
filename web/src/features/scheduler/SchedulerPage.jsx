@@ -1091,6 +1091,9 @@ export default function SchedulerPage() {
         const participantSet = new Set(participants.map((email) => email.toLowerCase()));
         await Promise.all(
           allVotes.data.map((voteDoc) => {
+            if (voteDoc.id !== user.uid) {
+              return Promise.resolve();
+            }
             if (!voteDoc.userEmail) return Promise.resolve();
             if (!participantSet.has(voteDoc.userEmail.toLowerCase())) {
               return Promise.resolve();
