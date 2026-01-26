@@ -184,9 +184,9 @@ High bang-for-buck features that should be completed before releasing to users b
 
 | # | Task | Priority | Status | Dependencies | Notes |
 | --- | ------ | ---------- | --- | -------------- | ------- |
-| 78 | **Rate limit link code generation** | P2 | [ ] | #30 | Max 5 codes per user per hour. |
-| 79 | **Rate limit link code attempts** | P2 | [ ] | #33 | Max 5 attempts per code. Delete on success or expiration. |
-| 80 | **Validate Discord admin permissions** | P2 | [ ] | #33 | Check user has Manage Channels or Administrator in guild. |
+| 78 | **Rate limit link code generation** | P2 | [x] | #30 | Max 5 codes per user per hour. Validation: no automated tests. |
+| 79 | **Rate limit link code attempts** | P2 | [x] | #33 | Max 5 attempts per code. Delete on success or expiration. Validation: no automated tests. |
+| 80 | **Validate Discord admin permissions** | P2 | [x] | #33 | Check user has Manage Channels or Administrator in guild. Validation: no automated tests. |
 
 ### 2.7 Web UI Enhancements (P2)
 

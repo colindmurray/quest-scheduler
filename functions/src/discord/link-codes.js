@@ -30,6 +30,39 @@ exports.discordGenerateLinkCode = onCall({ region: DISCORD_REGION }, async (requ
     throw new HttpsError("permission-denied", "You do not have permission to link this group.");
   }
 
+  const rateLimitRef = admin.firestore().collection("discordLinkCodeRateLimits").doc(request.auth.uid);
+  const now = admin.firestore.Timestamp.now();
+  await admin.firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(rateLimitRef);
+    const limitData = snap.exists ? snap.data() || {} : {};
+    const windowStart = limitData.windowStart?.toDate?.();
+    const windowMs = 60 * 60 * 1000;
+    let count = Number(limitData.count || 0);
+    let nextWindowStart = windowStart;
+
+    if (!windowStart || now.toMillis() - windowStart.getTime() > windowMs) {
+      count = 0;
+      nextWindowStart = now.toDate();
+    }
+
+    if (count >= 5) {
+      throw new HttpsError(
+        "resource-exhausted",
+        "Too many link codes generated. Try again in an hour."
+      );
+    }
+
+    tx.set(
+      rateLimitRef,
+      {
+        windowStart: admin.firestore.Timestamp.fromDate(nextWindowStart),
+        count: count + 1,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  });
+
   const code = generateLinkCode();
   const codeHash = hashLinkCode(code);
   const expiresAt = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000));

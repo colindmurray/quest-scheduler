@@ -348,6 +348,7 @@ async function handleLinkGroup(interaction) {
   }
   const codeData = codeSnap.data() || {};
   const expiresAt = codeData.expiresAt?.toDate?.();
+  const attempts = Number(codeData.attempts || 0);
   if (codeData.type !== "group-link" || !codeData.groupId || !codeData.uid) {
     await codeRef.delete();
     return respondWithError(interaction, ERROR_MESSAGES.linkCodeInvalid);
@@ -356,6 +357,17 @@ async function handleLinkGroup(interaction) {
     await codeRef.delete();
     return respondWithError(interaction, ERROR_MESSAGES.linkCodeExpired);
   }
+  if (attempts >= 5) {
+    await codeRef.delete();
+    return respondWithError(interaction, ERROR_MESSAGES.linkCodeInvalidOrExpired);
+  }
+
+  await codeRef.set(
+    {
+      attempts: attempts + 1,
+    },
+    { merge: true }
+  );
 
   const channelInfo = await fetchChannel({ channelId: interaction.channelId }).catch(() => null);
 
