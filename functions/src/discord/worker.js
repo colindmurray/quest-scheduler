@@ -9,6 +9,7 @@ const {
   APP_URL,
 } = require("./config");
 const { hashLinkCode } = require("./link-utils");
+const { ERROR_MESSAGES, buildUserNotLinkedMessage } = require("./error-messages");
 const {
   editOriginalInteractionResponse,
   fetchChannel,
@@ -328,32 +329,32 @@ async function handleLinkGroup(interaction) {
   const codeOption = options.find((option) => option.name === "code");
   const rawCode = String(codeOption?.value || "").trim();
   if (!rawCode) {
-    return respondWithError(interaction, "Missing link code. Paste the code from Quest Scheduler.");
+    return respondWithError(interaction, ERROR_MESSAGES.missingLinkCode);
   }
 
   if (!interaction.guildId || !interaction.channelId) {
-    return respondWithError(interaction, "This command must be run in a server channel.");
+    return respondWithError(interaction, ERROR_MESSAGES.linkChannelOnly);
   }
 
   if (!hasLinkPermissions(interaction.member?.permissions)) {
-    return respondWithError(interaction, "You need Manage Channels or Administrator permissions to link.");
+    return respondWithError(interaction, ERROR_MESSAGES.linkPermissions);
   }
 
   const codeHash = hashLinkCode(rawCode);
   const codeRef = db.collection("discordLinkCodes").doc(codeHash);
   const codeSnap = await codeRef.get();
   if (!codeSnap.exists) {
-    return respondWithError(interaction, "Invalid or expired link code.");
+    return respondWithError(interaction, ERROR_MESSAGES.linkCodeInvalidOrExpired);
   }
   const codeData = codeSnap.data() || {};
   const expiresAt = codeData.expiresAt?.toDate?.();
   if (codeData.type !== "group-link" || !codeData.groupId || !codeData.uid) {
     await codeRef.delete();
-    return respondWithError(interaction, "Invalid link code.");
+    return respondWithError(interaction, ERROR_MESSAGES.linkCodeInvalid);
   }
   if (expiresAt && expiresAt.getTime() < Date.now()) {
     await codeRef.delete();
-    return respondWithError(interaction, "Link code expired. Generate a new one in Quest Scheduler.");
+    return respondWithError(interaction, ERROR_MESSAGES.linkCodeExpired);
   }
 
   const channelInfo = await fetchChannel({ channelId: interaction.channelId }).catch(() => null);
@@ -383,44 +384,41 @@ async function handleVoteButton(interaction, schedulerId) {
   const schedulerRef = db.collection("schedulers").doc(schedulerId);
   const schedulerSnap = await schedulerRef.get();
   if (!schedulerSnap.exists) {
-    return respondWithError(interaction, "Poll not found.");
+    return respondWithError(interaction, ERROR_MESSAGES.pollNotFound);
   }
   const scheduler = schedulerSnap.data();
   if (scheduler.status !== "OPEN") {
-    return respondWithError(interaction, "Voting is closed for this poll.");
+    return respondWithError(interaction, ERROR_MESSAGES.pollFinalized);
   }
   if (
     scheduler.discord?.channelId &&
     scheduler.discord.channelId !== interaction.channelId
   ) {
-    return respondWithError(interaction, "This poll is linked to a different channel.");
+    return respondWithError(interaction, ERROR_MESSAGES.channelMismatch);
   }
   if (
     scheduler.discord?.guildId &&
     scheduler.discord.guildId !== interaction.guildId
   ) {
-    return respondWithError(interaction, "This poll is linked to a different server.");
+    return respondWithError(interaction, ERROR_MESSAGES.guildMismatch);
   }
 
   const discordUserId = getDiscordUserId(interaction);
   if (!discordUserId) {
-    return respondWithError(interaction, "Unable to identify your Discord account.");
+    return respondWithError(interaction, ERROR_MESSAGES.missingDiscordUser);
   }
   const linkedUser = await getLinkedUser(discordUserId);
   if (!linkedUser) {
     return respondWithError(
       interaction,
-      `Link your Discord account in Quest Scheduler: ${APP_URL}/settings?discord=link`
+      buildUserNotLinkedMessage(APP_URL)
     );
   }
 
   const userEmail = String(linkedUser.email || "").toLowerCase();
   const isParticipant = await ensureParticipant(scheduler, userEmail);
   if (!isParticipant) {
-    return respondWithError(
-      interaction,
-      "You're not a participant for this poll. Ask the organizer to invite you."
-    );
+    return respondWithError(interaction, ERROR_MESSAGES.notParticipant);
   }
 
   const slotsSnap = await schedulerRef.collection("slots").get();
@@ -430,7 +428,7 @@ async function handleVoteButton(interaction, schedulerId) {
     .sort((a, b) => new Date(a.start) - new Date(b.start));
 
   if (slots.length === 0) {
-    return respondWithError(interaction, "No available slots to vote on.");
+    return respondWithError(interaction, ERROR_MESSAGES.noSlots);
   }
 
   const voteSnap = await schedulerRef.collection("votes").doc(linkedUser.uid).get();
@@ -486,7 +484,7 @@ async function handleVoteButton(interaction, schedulerId) {
 async function handleVoteSelect(interaction, schedulerId, type) {
   const discordUserId = getDiscordUserId(interaction);
   if (!discordUserId) {
-    return respondWithError(interaction, "Unable to identify your Discord account.");
+    return respondWithError(interaction, ERROR_MESSAGES.missingDiscordUser);
   }
 
   const sessionRef = db.collection("discordVoteSessions").doc(
@@ -494,7 +492,7 @@ async function handleVoteSelect(interaction, schedulerId, type) {
   );
   const sessionSnap = await sessionRef.get();
   if (!sessionSnap.exists) {
-    return respondWithError(interaction, "Voting session expired. Click Vote again.");
+    return respondWithError(interaction, ERROR_MESSAGES.sessionExpired);
   }
   const sessionData = sessionSnap.data() || {};
   const values = interaction?.data?.values || [];
@@ -507,6 +505,9 @@ async function handleVoteSelect(interaction, schedulerId, type) {
     .map((doc) => ({ id: doc.id, ...doc.data() }))
     .filter((slot) => slot.start && slot.end)
     .sort((a, b) => new Date(a.start) - new Date(b.start));
+  if (slots.length === 0) {
+    return respondWithError(interaction, ERROR_MESSAGES.noSlots);
+  }
   const pageInfo = getVotePage(slots, sessionData.pageIndex || 0);
   const pageSlotIds = new Set(pageInfo.pageSlots.map((slot) => slot.id));
 
@@ -570,7 +571,7 @@ async function handleVoteSelect(interaction, schedulerId, type) {
 async function handleVotePage(interaction, schedulerId, direction) {
   const discordUserId = getDiscordUserId(interaction);
   if (!discordUserId) {
-    return respondWithError(interaction, "Unable to identify your Discord account.");
+    return respondWithError(interaction, ERROR_MESSAGES.missingDiscordUser);
   }
 
   const sessionRef = db.collection("discordVoteSessions").doc(
@@ -578,7 +579,7 @@ async function handleVotePage(interaction, schedulerId, direction) {
   );
   const sessionSnap = await sessionRef.get();
   if (!sessionSnap.exists) {
-    return respondWithError(interaction, "Voting session expired. Click Vote again.");
+    return respondWithError(interaction, ERROR_MESSAGES.sessionExpired);
   }
   const sessionData = sessionSnap.data() || {};
 
@@ -591,7 +592,7 @@ async function handleVotePage(interaction, schedulerId, direction) {
     .filter((slot) => slot.start && slot.end)
     .sort((a, b) => new Date(a.start) - new Date(b.start));
   if (slots.length === 0) {
-    return respondWithError(interaction, "No available slots to vote on.");
+    return respondWithError(interaction, ERROR_MESSAGES.noSlots);
   }
 
   const currentPage = getVotePage(slots, sessionData.pageIndex || 0);
@@ -634,44 +635,41 @@ async function handleClearVotes(interaction, schedulerId, noTimesWork) {
   const schedulerRef = db.collection("schedulers").doc(schedulerId);
   const schedulerSnap = await schedulerRef.get();
   if (!schedulerSnap.exists) {
-    return respondWithError(interaction, "Poll not found.");
+    return respondWithError(interaction, ERROR_MESSAGES.pollNotFound);
   }
   const scheduler = schedulerSnap.data();
   if (scheduler.status !== "OPEN") {
-    return respondWithError(interaction, "Voting is closed for this poll.");
+    return respondWithError(interaction, ERROR_MESSAGES.pollFinalized);
   }
   if (
     scheduler.discord?.channelId &&
     scheduler.discord.channelId !== interaction.channelId
   ) {
-    return respondWithError(interaction, "This poll is linked to a different channel.");
+    return respondWithError(interaction, ERROR_MESSAGES.channelMismatch);
   }
   if (
     scheduler.discord?.guildId &&
     scheduler.discord.guildId !== interaction.guildId
   ) {
-    return respondWithError(interaction, "This poll is linked to a different server.");
+    return respondWithError(interaction, ERROR_MESSAGES.guildMismatch);
   }
 
   const discordUserId = getDiscordUserId(interaction);
   if (!discordUserId) {
-    return respondWithError(interaction, "Unable to identify your Discord account.");
+    return respondWithError(interaction, ERROR_MESSAGES.missingDiscordUser);
   }
   const linkedUser = await getLinkedUser(discordUserId);
   if (!linkedUser) {
     return respondWithError(
       interaction,
-      `Link your Discord account in Quest Scheduler: ${APP_URL}/settings?discord=link`
+      buildUserNotLinkedMessage(APP_URL)
     );
   }
 
   const userEmail = String(linkedUser.email || "").toLowerCase();
   const isParticipant = await ensureParticipant(scheduler, userEmail);
   if (!isParticipant) {
-    return respondWithError(
-      interaction,
-      "You're not a participant for this poll. Ask the organizer to invite you."
-    );
+    return respondWithError(interaction, ERROR_MESSAGES.notParticipant);
   }
 
   await schedulerRef
@@ -714,6 +712,9 @@ async function handleClearVotes(interaction, schedulerId, noTimesWork) {
     .map((doc) => ({ id: doc.id, ...doc.data() }))
     .filter((slot) => slot.start && slot.end)
     .sort((a, b) => new Date(a.start) - new Date(b.start));
+  if (slots.length === 0) {
+    return respondWithError(interaction, ERROR_MESSAGES.noSlots);
+  }
   const pageInfo = getVotePage(slots, 0);
 
   const components = buildVoteComponents({
@@ -739,7 +740,7 @@ async function handleClearVotes(interaction, schedulerId, noTimesWork) {
 async function handleSubmitVote(interaction, schedulerId) {
   const discordUserId = getDiscordUserId(interaction);
   if (!discordUserId) {
-    return respondWithError(interaction, "Unable to identify your Discord account.");
+    return respondWithError(interaction, ERROR_MESSAGES.missingDiscordUser);
   }
 
   const sessionRef = db.collection("discordVoteSessions").doc(
@@ -747,47 +748,44 @@ async function handleSubmitVote(interaction, schedulerId) {
   );
   const sessionSnap = await sessionRef.get();
   if (!sessionSnap.exists) {
-    return respondWithError(interaction, "Voting session expired. Click Vote again.");
+    return respondWithError(interaction, ERROR_MESSAGES.sessionExpired);
   }
   const session = sessionSnap.data() || {};
 
   const schedulerRef = db.collection("schedulers").doc(schedulerId);
   const schedulerSnap = await schedulerRef.get();
   if (!schedulerSnap.exists) {
-    return respondWithError(interaction, "Poll not found.");
+    return respondWithError(interaction, ERROR_MESSAGES.pollNotFound);
   }
   const scheduler = schedulerSnap.data();
   if (scheduler.status !== "OPEN") {
-    return respondWithError(interaction, "Voting is closed for this poll.");
+    return respondWithError(interaction, ERROR_MESSAGES.pollFinalized);
   }
   if (
     scheduler.discord?.channelId &&
     scheduler.discord.channelId !== interaction.channelId
   ) {
-    return respondWithError(interaction, "This poll is linked to a different channel.");
+    return respondWithError(interaction, ERROR_MESSAGES.channelMismatch);
   }
   if (
     scheduler.discord?.guildId &&
     scheduler.discord.guildId !== interaction.guildId
   ) {
-    return respondWithError(interaction, "This poll is linked to a different server.");
+    return respondWithError(interaction, ERROR_MESSAGES.guildMismatch);
   }
 
   const linkedUser = await getLinkedUser(discordUserId);
   if (!linkedUser) {
     return respondWithError(
       interaction,
-      `Link your Discord account in Quest Scheduler: ${APP_URL}/settings?discord=link`
+      buildUserNotLinkedMessage(APP_URL)
     );
   }
 
   const userEmail = String(linkedUser.email || "").toLowerCase();
   const isParticipant = await ensureParticipant(scheduler, userEmail);
   if (!isParticipant) {
-    return respondWithError(
-      interaction,
-      "You're not a participant for this poll. Ask the organizer to invite you."
-    );
+    return respondWithError(interaction, ERROR_MESSAGES.notParticipant);
   }
 
   const slotsSnap = await schedulerRef.collection("slots").get();
@@ -798,14 +796,14 @@ async function handleSubmitVote(interaction, schedulerId) {
   const invalidPreferred = preferredSelections.filter((id) => !slotIds.has(id));
   const invalidFeasible = feasibleSelections.filter((id) => !slotIds.has(id));
   if (invalidPreferred.length > 0 || invalidFeasible.length > 0) {
-    return respondWithError(interaction, "Poll was updated. Please tap Vote again.");
+    return respondWithError(interaction, ERROR_MESSAGES.staleSlots);
   }
 
   const preferredIds = preferredSelections.filter((id) => slotIds.has(id));
   const feasibleIds = feasibleSelections.filter((id) => slotIds.has(id));
 
   if (preferredIds.length === 0 && feasibleIds.length === 0) {
-    return respondWithError(interaction, "Select at least one slot before submitting.");
+    return respondWithError(interaction, ERROR_MESSAGES.selectAtLeastOne);
   }
 
   const votes = {};
@@ -880,7 +878,7 @@ exports.processDiscordInteraction = onTaskDispatched(
           if (schedulerId) {
             await handleVoteButton(interaction, schedulerId);
           } else {
-            await respondWithError(interaction, "Missing poll id.");
+            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
           }
           handled = true;
         } else if (customId.startsWith("submit_vote:")) {
@@ -888,7 +886,7 @@ exports.processDiscordInteraction = onTaskDispatched(
           if (schedulerId) {
             await handleSubmitVote(interaction, schedulerId);
           } else {
-            await respondWithError(interaction, "Missing poll id.");
+            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
           }
           handled = true;
         } else if (customId.startsWith("page_prev:")) {
@@ -896,7 +894,7 @@ exports.processDiscordInteraction = onTaskDispatched(
           if (schedulerId) {
             await handleVotePage(interaction, schedulerId, "prev");
           } else {
-            await respondWithError(interaction, "Missing poll id.");
+            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
           }
           handled = true;
         } else if (customId.startsWith("page_next:")) {
@@ -904,7 +902,7 @@ exports.processDiscordInteraction = onTaskDispatched(
           if (schedulerId) {
             await handleVotePage(interaction, schedulerId, "next");
           } else {
-            await respondWithError(interaction, "Missing poll id.");
+            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
           }
           handled = true;
         } else if (customId.startsWith("clear_votes:")) {
@@ -912,7 +910,7 @@ exports.processDiscordInteraction = onTaskDispatched(
           if (schedulerId) {
             await handleClearVotes(interaction, schedulerId, false);
           } else {
-            await respondWithError(interaction, "Missing poll id.");
+            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
           }
           handled = true;
         } else if (customId.startsWith("none_work:")) {
@@ -920,7 +918,7 @@ exports.processDiscordInteraction = onTaskDispatched(
           if (schedulerId) {
             await handleClearVotes(interaction, schedulerId, true);
           } else {
-            await respondWithError(interaction, "Missing poll id.");
+            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
           }
           handled = true;
         } else if (customId.startsWith("vote_pref:")) {
@@ -928,7 +926,7 @@ exports.processDiscordInteraction = onTaskDispatched(
           if (schedulerId) {
             await handleVoteSelect(interaction, schedulerId, "preferred");
           } else {
-            await respondWithError(interaction, "Missing poll id.");
+            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
           }
           handled = true;
         } else if (customId.startsWith("vote_feasible:")) {
@@ -936,7 +934,7 @@ exports.processDiscordInteraction = onTaskDispatched(
           if (schedulerId) {
             await handleVoteSelect(interaction, schedulerId, "feasible");
           } else {
-            await respondWithError(interaction, "Missing poll id.");
+            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
           }
           handled = true;
         }
@@ -956,7 +954,7 @@ exports.processDiscordInteraction = onTaskDispatched(
         interactionId: interaction.id,
         error: err?.message,
       });
-      await respondWithError(interaction, "Something went wrong. Please try again.");
+      await respondWithError(interaction, ERROR_MESSAGES.genericError);
       await releaseInteractionLock(interaction.id);
     }
   }

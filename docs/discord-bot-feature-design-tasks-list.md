@@ -159,10 +159,10 @@ High bang-for-buck features that should be completed before releasing to users b
 
 | # | Task | Priority | Status | Dependencies | Notes |
 | --- | ------ | ---------- | --- | -------------- | ------- |
-| 68 | **Create error message constants** | P1 | [ ] | #56 | Centralized, actionable error messages (see design doc table). |
-| 69 | **Handle "poll finalized" error** | P1 | [ ] | #47 | "Voting is closed for this session." |
-| 70 | **Handle "stale slots" error** | P1 | [ ] | #47 | "Poll was updated. Please tap Vote again." |
-| 71 | **Handle "not authorized" error** | P1 | [ ] | #54 | "You're not a participant. Ask the organizer to invite you." |
+| 68 | **Create error message constants** | P1 | [x] | #56 | Centralized, actionable error messages (see design doc table). Validation: no automated tests. |
+| 69 | **Handle "poll finalized" error** | P1 | [x] | #47 | "Voting is closed for this session." Validation: no automated tests. |
+| 70 | **Handle "stale slots" error** | P1 | [x] | #47 | "Poll was updated. Please tap Vote again." Validation: no automated tests. |
+| 71 | **Handle "not authorized" error** | P1 | [x] | #54 | "You're not a participant. Ask the organizer to invite you." Validation: no automated tests. |
 
 ### 2.4 Debouncing & Performance (P1)
 
