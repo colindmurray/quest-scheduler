@@ -7,7 +7,7 @@ import { useAuth } from "../../app/AuthProvider";
 import { useTheme } from "../../app/ThemeProvider";
 import { db } from "../../lib/firebase";
 import { signOutUser } from "../../lib/auth";
-import { startDiscordOAuth } from "../../lib/data/discord";
+import { startDiscordOAuth, unlinkDiscordAccount } from "../../lib/data/discord";
 import { LoadingState } from "../../components/ui/spinner";
 import { Switch } from "../../components/ui/switch";
 import {
@@ -52,6 +52,7 @@ export default function SettingsPage() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [discordInfo, setDiscordInfo] = useState(null);
   const [discordLinking, setDiscordLinking] = useState(false);
+  const [discordUnlinking, setDiscordUnlinking] = useState(false);
   const [defaultTimes, setDefaultTimes] = useState({
     1: "18:00",
     2: "18:00",
@@ -187,6 +188,20 @@ export default function SettingsPage() {
       toast.error(err?.message || "Failed to start Discord linking.");
     } finally {
       setDiscordLinking(false);
+    }
+  };
+
+  const handleDiscordUnlink = async () => {
+    setDiscordUnlinking(true);
+    try {
+      await unlinkDiscordAccount();
+      setDiscordInfo(null);
+      toast.success("Discord account unlinked.");
+    } catch (err) {
+      console.error("Failed to unlink Discord:", err);
+      toast.error(err?.message || "Failed to unlink Discord.");
+    } finally {
+      setDiscordUnlinking(false);
     }
   };
 
@@ -455,10 +470,11 @@ export default function SettingsPage() {
                     </span>
                     <button
                       type="button"
-                      disabled
-                      className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-400 dark:border-slate-600 dark:text-slate-500"
+                      onClick={handleDiscordUnlink}
+                      disabled={discordUnlinking}
+                      className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
                     >
-                      Unlink (coming soon)
+                      {discordUnlinking ? "Unlinking..." : "Unlink Discord"}
                     </button>
                   </>
                 ) : (

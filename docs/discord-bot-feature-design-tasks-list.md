@@ -176,7 +176,7 @@ High bang-for-buck features that should be completed before releasing to users b
 
 | # | Task | Priority | Status | Dependencies | Notes |
 | --- | ------ | ---------- | --- | -------------- | ------- |
-| 75 | **Implement user unlink** | P2 | [ ] | #29 | Remove `users/{uid}.discord`, delete `discordUserLinks/{discordUserId}`, and purge stored Discord tokens in `userSecrets/{uid}` (if any). |
+| 75 | **Implement user unlink** | P2 | [x] | #29 | Remove `users/{uid}.discord`, delete `discordUserLinks/{discordUserId}`, and purge stored Discord tokens in `userSecrets/{uid}` (if any). Validation: no automated tests. |
 | 76 | **Register `/qs unlink-group` command** | P2 | [ ] | #31 | Allow group admins to disconnect channel. |
 | 77 | **Implement unlink-group handler** | P2 | [ ] | #76 | Remove `questingGroups/{id}.discord`. Optionally edit poll cards to show "Disconnected". |
 

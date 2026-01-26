@@ -13,3 +13,10 @@ export async function generateDiscordLinkCode(groupId) {
   const response = await generateCode({ groupId });
   return response.data;
 }
+
+export async function unlinkDiscordAccount() {
+  const functions = getFunctions();
+  const unlinkAccount = httpsCallable(functions, "discordUnlink");
+  const response = await unlinkAccount();
+  return response.data;
+}
