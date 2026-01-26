@@ -1,4 +1,4 @@
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
 import { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Archive } from "lucide-react";
@@ -54,10 +54,23 @@ function TabButton({ active, onClick, children }) {
   );
 }
 
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
 export default function DashboardPage() {
   const { user } = useAuth();
   const { archivedPolls, loading: settingsLoading } = useUserSettings();
   const { groups, getGroupColor } = useQuestingGroups();
+  const groupIds = useMemo(
+    () => (groups || []).map((group) => group.id).filter(Boolean),
+    [groups]
+  );
+  const groupIdsKey = useMemo(() => groupIds.slice().sort().join("|"), [groupIds]);
   const { pendingInvites, loading: pendingInvitesLoading, acceptInvite, declineInvite } = usePollInvites();
   const { removeLocal: removeNotification } = useNotifications();
   const [pastSessionsTab, setPastSessionsTab] = useState("finalized");
@@ -65,6 +78,8 @@ export default function DashboardPage() {
   const [slotsByScheduler, setSlotsByScheduler] = useState({});
   const [votesByScheduler, setVotesByScheduler] = useState({});
   const [votersByScheduler, setVotersByScheduler] = useState({});
+  const [groupSchedulers, setGroupSchedulers] = useState([]);
+  const [groupPollsLoading, setGroupPollsLoading] = useState(false);
   const [pendingInviteOpen, setPendingInviteOpen] = useState(false);
   const [selectedInvite, setSelectedInvite] = useState(null);
 
@@ -75,6 +90,54 @@ export default function DashboardPage() {
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
+
+  useEffect(() => {
+    if (!groupIds.length) {
+      setGroupSchedulers([]);
+      setGroupPollsLoading(false);
+      return undefined;
+    }
+
+    const chunks = chunkArray(groupIds, 10);
+    const byChunk = new Map();
+    const loadedChunks = new Set();
+    setGroupPollsLoading(true);
+
+    const unsubscribes = chunks.map((chunk, index) => {
+      const q = query(
+        collection(db, "schedulers"),
+        where("questingGroupId", "in", chunk)
+      );
+      return onSnapshot(
+        q,
+        (snapshot) => {
+          byChunk.set(
+            index,
+            snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+          );
+          loadedChunks.add(index);
+          const merged = Array.from(byChunk.values()).flat();
+          const deduped = new Map();
+          merged.forEach((doc) => {
+            deduped.set(doc.id, doc);
+          });
+          setGroupSchedulers(Array.from(deduped.values()));
+          if (loadedChunks.size === chunks.length) {
+            setGroupPollsLoading(false);
+          }
+        },
+        (err) => {
+          console.error("Failed to load questing group polls:", err);
+          loadedChunks.add(index);
+          if (loadedChunks.size === chunks.length) {
+            setGroupPollsLoading(false);
+          }
+        }
+      );
+    });
+
+    return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
+  }, [groupIdsKey]);
 
   // Query for all polls user participates in
   const allParticipatingQuery = useMemo(() => {
@@ -93,10 +156,27 @@ export default function DashboardPage() {
 
   const allParticipating = useFirestoreCollection(allParticipatingQuery);
   const mine = useFirestoreCollection(myQuery);
+  const groupMembersById = useMemo(() => {
+    const map = new Map();
+    (groups || []).forEach((group) => {
+      const members = (group.members || [])
+        .filter(Boolean)
+        .map((email) => email.toLowerCase());
+      map.set(group.id, members);
+    });
+    return map;
+  }, [groups]);
+  const participatingSchedulers = useMemo(() => {
+    const deduped = new Map();
+    [...allParticipating.data, ...groupSchedulers].forEach((scheduler) => {
+      deduped.set(scheduler.id, scheduler);
+    });
+    return Array.from(deduped.values());
+  }, [allParticipating.data, groupSchedulers]);
 
   // Fetch slots and votes for all schedulers to get winning slots and vote counts
   useEffect(() => {
-    if (!allParticipating.data.length) return;
+    if (!participatingSchedulers.length) return;
 
     const fetchSlotsAndVotes = async () => {
       const slotsMap = {};
@@ -104,7 +184,7 @@ export default function DashboardPage() {
       const votersMap = {};
 
       await Promise.all(
-        allParticipating.data.map(async (scheduler) => {
+        participatingSchedulers.map(async (scheduler) => {
           try {
             // Fetch slots
             const slotsSnap = await getDocs(
@@ -140,11 +220,11 @@ export default function DashboardPage() {
     };
 
     fetchSlotsAndVotes();
-  }, [allParticipating.data]);
+  }, [participatingSchedulers]);
 
   // Enrich schedulers with slot data and voters
   const enrichedSchedulers = useMemo(() => {
-    return allParticipating.data.map((scheduler) => {
+    return participatingSchedulers.map((scheduler) => {
       const slots = slotsByScheduler[scheduler.id] || [];
       const voteDocs = votesByScheduler[scheduler.id] || [];
       const winningSlot = scheduler.winningSlotId
@@ -158,7 +238,19 @@ export default function DashboardPage() {
         .sort((a, b) => new Date(a.start) - new Date(b.start));
 
       const voters = votersByScheduler[scheduler.id] || [];
-      const participantEmails = (scheduler.participants || []).map((email) => email?.toLowerCase()).filter(Boolean);
+      const groupMemberEmails = scheduler.questingGroupId
+        ? groupMembersById.get(scheduler.questingGroupId) || []
+        : [];
+      const participantEmails = Array.from(
+        new Set(
+          [
+            ...(scheduler.participants || []),
+            ...groupMemberEmails,
+          ]
+            .map((email) => email?.toLowerCase())
+            .filter(Boolean)
+        )
+      );
       const respondedEmails = voteDocs
         .map((voteDoc) => voteDoc.userEmail?.toLowerCase())
         .filter(Boolean);
@@ -185,6 +277,7 @@ export default function DashboardPage() {
 
       return {
         ...scheduler,
+        effectiveParticipants: participantEmails,
         winningSlot,
         firstSlot: futureSlots[0] || null,
         votedCount: voteDocs.length,
@@ -196,7 +289,7 @@ export default function DashboardPage() {
         },
       };
     });
-  }, [allParticipating.data, slotsByScheduler, votesByScheduler, votersByScheduler]);
+  }, [participatingSchedulers, slotsByScheduler, votesByScheduler, votersByScheduler, groupMembersById]);
 
   // Filter into categories
   const upcomingOpen = useMemo(() => {
@@ -298,7 +391,7 @@ export default function DashboardPage() {
     return map;
   }, [groups]);
 
-  const isLoading = allParticipating.loading || mine.loading || settingsLoading || pendingInvitesLoading;
+  const isLoading = allParticipating.loading || groupPollsLoading || mine.loading || settingsLoading || pendingInvitesLoading;
   const normalizedEmail = user?.email?.toLowerCase() || "";
 
   const handleOpenInvite = (invite) => {
@@ -352,7 +445,7 @@ export default function DashboardPage() {
               ? getGroupColor(nextSession.questingGroupId)
               : null
           }
-          participants={nextSession.participants || []}
+          participants={nextSession.effectiveParticipants || nextSession.participants || []}
         />
       )}
 
@@ -406,7 +499,7 @@ export default function DashboardPage() {
                             ? getGroupColor(scheduler.questingGroupId)
                             : null
                         }
-                        participants={scheduler.participants || []}
+                        participants={scheduler.effectiveParticipants || scheduler.participants || []}
                         voters={scheduler.voters || []}
                         questingGroup={
                           scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null
@@ -434,7 +527,7 @@ export default function DashboardPage() {
                           ? getGroupColor(scheduler.questingGroupId)
                           : null
                       }
-                      participants={scheduler.participants || []}
+                      participants={scheduler.effectiveParticipants || scheduler.participants || []}
                       voters={scheduler.voters || []}
                       votedCount={scheduler.votedCount}
                       questingGroup={
@@ -522,7 +615,7 @@ export default function DashboardPage() {
                         : null
                     }
                     attendanceSummary={enriched?.attendanceSummary}
-                    participants={scheduler.participants || []}
+                    participants={enriched?.effectiveParticipants || scheduler.participants || []}
                     voters={enriched?.voters || []}
                     questingGroup={scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null}
                   />
@@ -578,7 +671,7 @@ export default function DashboardPage() {
                           : null
                       }
                       attendanceSummary={scheduler.attendanceSummary}
-                      participants={scheduler.participants || []}
+                      participants={scheduler.effectiveParticipants || scheduler.participants || []}
                       voters={scheduler.voters || []}
                       questingGroup={scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null}
                     />
@@ -605,7 +698,7 @@ export default function DashboardPage() {
                           : null
                       }
                       attendanceSummary={scheduler.attendanceSummary}
-                      participants={scheduler.participants || []}
+                      participants={scheduler.effectiveParticipants || scheduler.participants || []}
                       voters={scheduler.voters || []}
                       questingGroup={scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null}
                     />

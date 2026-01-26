@@ -136,7 +136,7 @@ export function GroupCard({
 
   return (
     <>
-      <div className="rounded-2xl border border-slate-100 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+      <div className="rounded-2xl border border-slate-200/70 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <div
@@ -304,7 +304,7 @@ export function GroupCard({
             </div>
 
             {isOwner && (
-              <div className="flex items-center justify-between rounded-2xl border border-slate-100 px-4 py-3 dark:border-slate-700">
+              <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 px-4 py-3 dark:border-slate-700">
                 <div>
                   <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
                     Member-managed
@@ -321,7 +321,7 @@ export function GroupCard({
             )}
 
             {canManage && (
-              <div className="rounded-2xl border border-slate-100 px-4 py-3 dark:border-slate-700">
+              <div className="rounded-2xl border border-slate-200/70 px-4 py-3 dark:border-slate-700">
                 <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
                   Discord channel
                 </p>

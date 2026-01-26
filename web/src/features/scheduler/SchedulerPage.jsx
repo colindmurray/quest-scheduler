@@ -165,6 +165,14 @@ export default function SchedulerPage() {
         (email) => normalizeEmail(email) === normalizedUserEmail
       )
   );
+  const isExplicitParticipant = useMemo(
+    () =>
+      scheduler.data?.participants?.some(
+        (email) => normalizedUserEmail && email?.toLowerCase() === normalizedUserEmail
+      ) || false,
+    [scheduler.data?.participants, normalizedUserEmail]
+  );
+  const isEffectiveParticipant = isExplicitParticipant || isGroupMember;
   const [calendarView, setCalendarView] = useState("month");
   const [expandedSlots, setExpandedSlots] = useState({});
   const questingGroupMembers = useMemo(
@@ -195,13 +203,13 @@ export default function SchedulerPage() {
     if (!scheduler.data || !user?.email || !id) return;
     if (isCreator) return;
     const normalizedEmail = user.email.toLowerCase();
-    const isParticipant = scheduler.data.participants?.some(
+    const participantMatch = scheduler.data.participants?.some(
       (email) => email?.toLowerCase() === normalizedEmail
     );
     const isPendingInvite = scheduler.data.pendingInvites?.some(
       (email) => email?.toLowerCase() === normalizedEmail
     );
-    if (isParticipant) {
+    if (participantMatch || isGroupMember) {
       setInvitePromptOpen(false);
       return;
     }
@@ -256,10 +264,17 @@ export default function SchedulerPage() {
     return map;
   }, [allVotes.data]);
 
-  const participantEmails = useMemo(
+  const explicitParticipantEmails = useMemo(
     () => scheduler.data?.participants || [],
     [scheduler.data?.participants]
   );
+  const participantEmails = useMemo(() => {
+    const merged = new Set([
+      ...explicitParticipantEmails,
+      ...questingGroupMembers,
+    ]);
+    return Array.from(merged);
+  }, [explicitParticipantEmails, questingGroupMembers]);
   const pendingInviteEmails = useMemo(
     () => scheduler.data?.pendingInvites || [],
     [scheduler.data?.pendingInvites]
@@ -1134,9 +1149,7 @@ export default function SchedulerPage() {
     );
   }
 
-  const isParticipant = scheduler.data.participants?.some(
-    (email) => normalizedUserEmail && email?.toLowerCase() === normalizedUserEmail
-  );
+  const isParticipant = isEffectiveParticipant;
   const isPendingInvite = scheduler.data.pendingInvites?.some(
     (email) => normalizedUserEmail && email?.toLowerCase() === normalizedUserEmail
   );
@@ -1182,7 +1195,7 @@ export default function SchedulerPage() {
               <h2 className="text-2xl font-semibold dark:text-slate-100">{scheduler.data.title}</h2>
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {scheduler.data.participants?.length || 0} participants
+                  {participantEmails.length} participants
                 </p>
                 {scheduler.data.status === "OPEN" && (
                   <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
@@ -1224,7 +1237,7 @@ export default function SchedulerPage() {
                   <Copy className="mr-2 h-4 w-4" />
                   Clone poll
                 </DropdownMenuItem>
-                {isParticipant && !isCreator && (
+                {isExplicitParticipant && !isCreator && (
                   <DropdownMenuItem
                     onClick={() => {
                       if (isGroupMember) {
@@ -1304,7 +1317,7 @@ export default function SchedulerPage() {
             )}
           </div>
 
-          <div className="mt-6 rounded-3xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+          <div className="mt-6 rounded-3xl border border-slate-200/70 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Participants</h3>
@@ -1444,7 +1457,7 @@ export default function SchedulerPage() {
           </div>
 
           {view === "calendar" && (
-            <div className="mt-6 rounded-3xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+            <div className="mt-6 rounded-3xl border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
               <Calendar
                 localizer={localizer}
                 events={calendarEvents}
@@ -1465,7 +1478,7 @@ export default function SchedulerPage() {
 
           {view === "list" && (
             <div className="mt-6 space-y-4">
-              <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white px-4 py-3 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+              <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white px-4 py-3 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
                 <span>No times work for me</span>
                 <Switch
                   checked={noTimesWork}
@@ -1492,7 +1505,7 @@ export default function SchedulerPage() {
                     className={`grid gap-3 rounded-2xl border px-4 py-3 md:grid-cols-[1.4fr_1fr_1fr_auto] ${
                       pastSlotIds.has(slot.id)
                         ? "border-red-300 bg-red-50/60 dark:border-red-700 dark:bg-red-900/20"
-                        : "border-slate-100 dark:border-slate-700"
+                        : "border-slate-200/70 dark:border-slate-700"
                     }`}
                   >
                     <div>
@@ -1553,7 +1566,7 @@ export default function SchedulerPage() {
             </div>
           )}
 
-          <div className="mt-10 rounded-3xl border border-slate-100 bg-slate-50 p-6 dark:border-slate-700 dark:bg-slate-800/60">
+          <div className="mt-10 rounded-3xl border border-slate-200/70 bg-slate-50 p-6 dark:border-slate-700 dark:bg-slate-800/60">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-lg font-semibold">Results</h3>
@@ -1603,7 +1616,7 @@ export default function SchedulerPage() {
                         ? "border-emerald-300 bg-emerald-50/70 dark:border-emerald-700 dark:bg-emerald-900/30"
                         : isPast
                           ? "border-red-300 bg-red-50/60 dark:border-red-700 dark:bg-red-900/20"
-                          : "border-slate-100 bg-white dark:border-slate-700"
+                          : "border-slate-200/70 bg-white dark:border-slate-700"
                     } ${isMuted ? "opacity-60 grayscale" : ""}`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1674,7 +1687,7 @@ export default function SchedulerPage() {
                     </div>
                     {expandedSlots[slot.id] && (
                       <div className="mt-4 grid gap-3 md:grid-cols-2">
-                        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+                        <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
                           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                             ★ Preferred voters
                           </p>
@@ -1704,7 +1717,7 @@ export default function SchedulerPage() {
                             </div>
                           )}
                         </div>
-                        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+                        <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
                           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                             ✓ Feasible voters
                           </p>
@@ -1765,7 +1778,7 @@ export default function SchedulerPage() {
               Toggle Feasible or Preferred for each slot.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white px-4 py-3 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+          <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white px-4 py-3 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
             <span>No times work for me</span>
             <Switch
               checked={noTimesWork}
@@ -1786,7 +1799,7 @@ export default function SchedulerPage() {
                     className={`grid gap-2 rounded-2xl border px-4 py-3 dark:border-slate-700 ${
                       isPast
                         ? "border-red-300 bg-red-50/60 dark:border-red-700 dark:bg-red-900/20"
-                        : "border-slate-100"
+                        : "border-slate-200/70"
                     }`}
                   >
                     <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -1871,7 +1884,7 @@ export default function SchedulerPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="mt-4 grid gap-3">
-            <label className="flex items-center justify-between gap-2 rounded-2xl border border-slate-100 px-4 py-3 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300">
+            <label className="flex items-center justify-between gap-2 rounded-2xl border border-slate-200/70 px-4 py-3 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300">
               <span>Create Google Calendar event</span>
               <Switch
                 checked={createCalendarEvent}
@@ -2007,7 +2020,7 @@ export default function SchedulerPage() {
               />
             </label>
 
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+            <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Invitees</p>
               {scheduler.data?.creatorEmail && (
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -2123,7 +2136,7 @@ export default function SchedulerPage() {
               {scheduler.data?.title || "Untitled poll"}
             </p>
             <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-              {scheduler.data?.participants?.length || 0} participants · {slots.data?.length || 0} slots · {allVotes.data?.length || 0} votes
+              {participantEmails.length} participants · {slots.data?.length || 0} slots · {allVotes.data?.length || 0} votes
             </p>
           </div>
           <DialogFooter>

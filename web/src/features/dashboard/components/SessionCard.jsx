@@ -53,7 +53,7 @@ export function SessionCard({
     (email) => !groupMemberSet.has(email.toLowerCase())
   ).length;
 
-  const totalParticipants = scheduler.participants?.length || 0;
+  const totalParticipants = participantUsers.length;
   const actualVotedCount = respondedVoters.length || votedCount;
 
   // Determine the time display
@@ -82,7 +82,7 @@ export function SessionCard({
       <button
         type="button"
         onClick={handleOpen}
-        className="relative flex w-full flex-col gap-2 rounded-2xl border border-slate-100 bg-white px-4 py-3 text-left transition-all duration-150 hover:scale-[1.02] hover:shadow-lg dark:border-slate-700 dark:bg-slate-800"
+        className="relative flex w-full flex-col gap-2 rounded-2xl border border-slate-200/70 bg-white px-4 py-3 text-left transition-all duration-150 hover:scale-[1.02] hover:shadow-lg dark:border-slate-700 dark:bg-slate-800"
         style={{
           borderLeftWidth: groupColor ? "4px" : undefined,
           borderLeftColor: groupColor || undefined,
@@ -187,16 +187,18 @@ export function SessionCard({
             {/* Pending votes section - only show for open polls */}
             {scheduler.status === "OPEN" && (
               <div className="flex items-center gap-1.5">
-                <span className="font-medium text-amber-600 dark:text-amber-400">
-                  {pendingVoters.length}/{totalParticipants} pending:
-                </span>
                 {pendingVoters.length > 0 ? (
-                  <AvatarStack
-                    users={pendingVoters}
-                    max={10}
-                    size={18}
-                    colorMap={colorMap}
-                  />
+                  <>
+                    <span className="font-medium text-amber-600 dark:text-amber-400">
+                      {pendingVoters.length}/{totalParticipants} pending:
+                    </span>
+                    <AvatarStack
+                      users={pendingVoters}
+                      max={10}
+                      size={18}
+                      colorMap={colorMap}
+                    />
+                  </>
                 ) : (
                   <span className="text-emerald-600 dark:text-emerald-400">All voted!</span>
                 )}
@@ -206,7 +208,7 @@ export function SessionCard({
         )}
 
         {scheduler.status === "FINALIZED" && attendanceSummary && (
-          <div className="mt-2 grid w-full gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+          <div className="mt-2 grid w-full gap-2 rounded-xl border border-slate-200/70 bg-slate-50 px-3 py-2 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
             <div className="flex items-center gap-2 min-w-0">
               <span className="font-semibold text-emerald-600 dark:text-emerald-300">
                 Confirmed

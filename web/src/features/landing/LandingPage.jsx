@@ -35,7 +35,11 @@ export default function LandingPage() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-full bg-brand-background text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="relative min-h-full text-slate-900 dark:text-slate-100">
+      <div className="absolute inset-0 -z-10">
+        <div className="absolute inset-0 bg-[url('/assets/background.jpeg')] bg-cover bg-center" />
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-950/35 via-slate-950/55 to-slate-950/75" />
+      </div>
       <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
         <div className="flex items-center gap-3">
           <img src="/app_icon.png" alt="Quest Scheduler Logo" className="h-10 w-10 rounded-xl object-contain" />
@@ -76,7 +80,7 @@ export default function LandingPage() {
             {features.map((item) => (
               <div
                 key={item.title}
-                className="rounded-2xl border border-slate-100 p-4 dark:border-slate-800"
+                className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-800"
               >
                 <h3 className="font-semibold text-slate-900 dark:text-slate-100">
                   {item.title}
@@ -87,7 +91,7 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
-          <div className="mt-6 flex items-center gap-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-slate-700 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200">
+          <div className="mt-6 flex items-center gap-4 rounded-2xl border border-slate-200/70 bg-slate-50 px-4 py-3 text-slate-700 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200">
             <img
               src="/assets/discord-logo.png"
               alt="Discord logo"

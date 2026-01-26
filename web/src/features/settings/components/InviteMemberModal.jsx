@@ -14,6 +14,7 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
   const [email, setEmail] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [sendFriendInvite, setSendFriendInvite] = useState(false);
 
   const existingMembers = new Set([
     ...(group?.members || []).map((e) => e.toLowerCase()),
@@ -24,12 +25,14 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
   const availableSuggestions = friends.filter(
     (e) => !existingMembers.has(e.toLowerCase())
   );
+  const normalizedEmail = email.trim().toLowerCase();
+  const isFriend = normalizedEmail ? friendSet.has(normalizedEmail) : false;
+  const showFriendInviteToggle =
+    normalizedEmail && isValidEmail(normalizedEmail) && !isFriend;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
-
-    const normalizedEmail = email.trim().toLowerCase();
 
     if (!normalizedEmail) {
       setError("Please enter an email address");
@@ -45,15 +48,14 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
       setError("This person is already a member or has a pending invite");
       return;
     }
-    if (!friendSet.has(normalizedEmail)) {
-      setError("You can only invite friends to a questing group.");
-      return;
-    }
 
     setSaving(true);
     try {
-      await onInviteMember(group.id, group.name, normalizedEmail);
+      await onInviteMember(group.id, group.name, normalizedEmail, {
+        sendFriendInvite,
+      });
       setEmail("");
+      setSendFriendInvite(false);
       onOpenChange(false);
       toast.success(`Invitation sent to ${normalizedEmail}`);
     } catch (err) {
@@ -66,6 +68,7 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
 
   const handleSuggestionClick = (suggestedEmail) => {
     setEmail(suggestedEmail);
+    setSendFriendInvite(false);
     setError(null);
   };
 
@@ -75,7 +78,7 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
         <DialogHeader>
           <DialogTitle>Invite to {group?.name}</DialogTitle>
           <DialogDescription>
-            Invite friends to join this questing group. They'll receive an email and in-app notification.
+            Invite someone to join this questing group. They'll receive an email and in-app notification.
           </DialogDescription>
         </DialogHeader>
 
@@ -87,7 +90,12 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
                 type="email"
                 value={email}
                 onChange={(e) => {
-                  setEmail(e.target.value);
+                  const nextValue = e.target.value;
+                  setEmail(nextValue);
+                  const nextNormalized = nextValue.trim().toLowerCase();
+                  if (!nextNormalized || friendSet.has(nextNormalized)) {
+                    setSendFriendInvite(false);
+                  }
                   setError(null);
                 }}
                 placeholder="friend@example.com"
@@ -100,10 +108,16 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
               <p className="text-xs text-red-500 dark:text-red-400">{error}</p>
             )}
 
-            {friends.length === 0 && (
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                You need to add friends before inviting them to a questing group.
-              </p>
+            {showFriendInviteToggle && (
+              <label className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={sendFriendInvite}
+                  onChange={(e) => setSendFriendInvite(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-primary focus:ring-brand-primary dark:border-slate-600"
+                />
+                <span>Also send a friend request.</span>
+              </label>
             )}
 
             {availableSuggestions.length > 0 && (

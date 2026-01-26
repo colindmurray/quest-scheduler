@@ -159,7 +159,7 @@ export function DashboardCalendar({
   };
 
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+    <div className="rounded-2xl border border-slate-200/70 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
       {/* View toggle */}
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">

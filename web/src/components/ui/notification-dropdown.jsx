@@ -101,7 +101,7 @@ function NotificationItem({
 
   return (
     <div
-      className={`flex gap-3 border-b border-slate-100 p-3 transition-colors last:border-b-0 dark:border-slate-700 ${
+      className={`flex gap-3 border-b border-slate-200/70 p-3 transition-colors last:border-b-0 dark:border-slate-700 ${
         notification.read
           ? "bg-white dark:bg-slate-800"
           : "bg-blue-50/50 dark:bg-blue-900/20"
@@ -182,7 +182,7 @@ export function NotificationDropdown({
   return (
     <div className="flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2 dark:border-slate-700">
+      <div className="flex items-center justify-between border-b border-slate-200/70 px-3 py-2 dark:border-slate-700">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
           Notifications
           {unreadCount > 0 && (

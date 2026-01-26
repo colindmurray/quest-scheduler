@@ -62,7 +62,7 @@ function AgendaItem({ session, groupColor }) {
     <button
       type="button"
       onClick={handleOpen}
-      className="flex w-full items-center gap-3 rounded-xl border border-slate-100 bg-white px-3 py-2 text-left transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
+      className="flex w-full items-center gap-3 rounded-xl border border-slate-200/70 bg-white px-3 py-2 text-left transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
       style={{
         borderLeftWidth: groupColor ? "4px" : undefined,
         borderLeftColor: groupColor || undefined,

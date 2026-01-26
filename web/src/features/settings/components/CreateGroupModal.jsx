@@ -62,7 +62,7 @@ export function CreateGroupModal({ open, onOpenChange, onCreateGroup }) {
               />
             </label>
 
-            <div className="flex items-center justify-between rounded-2xl border border-slate-100 px-4 py-3 dark:border-slate-700">
+            <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 px-4 py-3 dark:border-slate-700">
               <div>
                 <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
                   Member-managed

@@ -452,12 +452,21 @@ export default function CreateSchedulerPage() {
 
     setSubmitting(true);
     try {
-      const acceptedParticipants = Array.from(
-        new Set([user.email, ...inviteEmails, ...groupMemberEmails].filter(Boolean).map(normalizeEmail))
+      const explicitParticipants = Array.from(
+        new Set([user.email, ...inviteEmails].filter(Boolean).map(normalizeEmail))
+      );
+      const effectiveParticipants = Array.from(
+        new Set(
+          [...explicitParticipants, ...groupMemberEmails]
+            .filter(Boolean)
+            .map(normalizeEmail)
+        )
       );
       const pendingList = Array.from(
         new Set(pendingInvites.filter(Boolean).map(normalizeEmail))
-      ).filter((email) => !acceptedParticipants.includes(email));
+      ).filter(
+        (email) => !explicitParticipants.includes(email) && !groupMemberSet.has(email)
+      );
       const creatorEmail = normalizeEmail(user.email);
       const pollTitle = title || "Untitled poll";
 
@@ -472,7 +481,7 @@ export default function CreateSchedulerPage() {
         const previousPending = new Set(
           (scheduler.data?.pendingInvites || []).map((email) => normalizeEmail(email))
         );
-        const newAcceptedRecipients = acceptedParticipants.filter(
+        const newAcceptedRecipients = explicitParticipants.filter(
           (email) => !previousParticipants.has(email) && email !== creatorEmail
         );
         const newPendingRecipients = pendingList.filter(
@@ -483,7 +492,7 @@ export default function CreateSchedulerPage() {
         );
         await updateDoc(schedulerRef, {
           title: pollTitle,
-          participants: acceptedParticipants,
+          participants: explicitParticipants,
           allowLinkSharing,
           timezone: effectiveTimezone,
           timezoneMode: timezoneModeForScheduler,
@@ -511,7 +520,7 @@ export default function CreateSchedulerPage() {
           })
         );
 
-        const participantSet = new Set(acceptedParticipants.map((email) => email.toLowerCase()));
+        const participantSet = new Set(effectiveParticipants.map((email) => email.toLowerCase()));
 
         if (removedIds.length > 0) {
           await Promise.all(
@@ -580,7 +589,7 @@ export default function CreateSchedulerPage() {
         creatorId: user.uid,
         creatorEmail: user.email,
         status: "OPEN",
-        participants: acceptedParticipants,
+        participants: explicitParticipants,
         pendingInvites: [],
         allowLinkSharing,
         timezone: effectiveTimezone,
@@ -603,7 +612,7 @@ export default function CreateSchedulerPage() {
         })
       );
 
-      const initialAcceptedRecipients = acceptedParticipants.filter((email) => email !== creatorEmail);
+      const initialAcceptedRecipients = explicitParticipants.filter((email) => email !== creatorEmail);
       if (initialAcceptedRecipients.length > 0) {
         try {
           await sendAcceptedInvites(initialAcceptedRecipients, schedulerId, pollTitle);
@@ -802,7 +811,7 @@ export default function CreateSchedulerPage() {
               </div>
             )}
 
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+            <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Invitees</p>
               {user?.email && (
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -935,7 +944,7 @@ export default function CreateSchedulerPage() {
               )}
             </div>
 
-            <div className="rounded-2xl border border-slate-100 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/60">
+            <div className="rounded-2xl border border-slate-200/70 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/60">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -977,7 +986,7 @@ export default function CreateSchedulerPage() {
                 + Add slot
               </button>
             </div>
-            <div className="mt-4 rounded-3xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+            <div className="mt-4 rounded-3xl border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
               <DragAndDropCalendar
                 localizer={localizer}
                 events={slots.map((slot) => ({
@@ -1092,7 +1101,7 @@ export default function CreateSchedulerPage() {
                   className={`flex items-center justify-between rounded-2xl border px-4 py-3 dark:bg-slate-900 ${
                     invalidSlotIds.has(slot.id)
                       ? "border-red-300 bg-red-50/60 dark:border-red-700 dark:bg-red-900/20"
-                      : "border-slate-100 bg-white dark:border-slate-700"
+                      : "border-slate-200/70 bg-white dark:border-slate-700"
                   }`}
                 >
                   <div>

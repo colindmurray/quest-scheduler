@@ -12,6 +12,10 @@
 - [x] Add Privacy Policy + Terms of Service pages and link in app
 - [x] Add Contact us mailto link (support@questscheduler.cc)
 - [x] Replace app icon with new Quest Scheduler logo
+- [x] 2026-01-26: Move splash background asset to `web/public/assets/background.jpeg`
+- [x] 2026-01-26: Apply splash background image to landing/login page
+- [x] 2026-01-26: Add light/dark app background images for logged-in pages
+- [x] 2026-01-26: Strengthen light-mode card borders for nested surfaces
 
 ## Phase 1 — Firebase Wiring
 - [x] Add Firebase config module

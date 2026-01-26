@@ -19,7 +19,12 @@ export default function AppLayout({ children }) {
   useNotificationSync();
 
   return (
-    <div className="min-h-full bg-brand-background text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="relative min-h-full text-slate-900 dark:text-slate-100">
+      <div className="absolute inset-0 -z-10">
+        <div className="absolute inset-0 bg-[url('/assets/app-bg-light.jpeg')] bg-cover bg-center" />
+        <div className="absolute inset-0 hidden bg-[url('/assets/app-bg-dark.jpeg')] bg-cover bg-center dark:block" />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/50 via-white/60 to-white/80 dark:from-slate-950/45 dark:via-slate-950/65 dark:to-slate-950/85" />
+      </div>
       <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/90 backdrop-blur dark:border-slate-700/70 dark:bg-slate-900/90">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Link to="/dashboard" className="flex items-center gap-3">

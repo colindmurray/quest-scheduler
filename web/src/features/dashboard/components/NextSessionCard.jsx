@@ -35,7 +35,7 @@ export function NextSessionCard({ scheduler, winningSlot, groupColor, participan
 
   return (
     <div
-      className="rounded-3xl border border-slate-100 bg-gradient-to-br from-white to-slate-50 p-6 shadow-lg shadow-slate-200/50 dark:border-slate-700 dark:from-slate-800 dark:to-slate-900 dark:shadow-slate-900/50"
+      className="rounded-3xl border border-slate-200/70 bg-gradient-to-br from-white to-slate-50 p-6 shadow-lg shadow-slate-200/50 dark:border-slate-700 dark:from-slate-800 dark:to-slate-900 dark:shadow-slate-900/50"
       style={{
         borderLeftWidth: groupColor ? "6px" : undefined,
         borderLeftColor: groupColor || undefined,

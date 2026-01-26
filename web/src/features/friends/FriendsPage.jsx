@@ -395,7 +395,7 @@ export default function FriendsPage() {
 
       {activeTab === "friends" && (
         <div className="mt-6 grid gap-6">
-          <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
+          <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
               Your invite link
             </h3>
@@ -418,7 +418,7 @@ export default function FriendsPage() {
               </button>
             </div>
           </section>
-          <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
+          <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
               Add a friend
             </h3>
@@ -452,7 +452,7 @@ export default function FriendsPage() {
             )}
           </section>
 
-          <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
+          <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
               Pending incoming requests
             </h3>
@@ -501,7 +501,7 @@ export default function FriendsPage() {
             )}
           </section>
 
-          <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
+          <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
               Pending outgoing requests
             </h3>
@@ -529,7 +529,7 @@ export default function FriendsPage() {
             )}
           </section>
 
-          <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
+          <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
               Your friends
             </h3>
@@ -575,7 +575,7 @@ export default function FriendsPage() {
             )}
           </section>
 
-          <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
+          <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
               Blocked users
             </h3>

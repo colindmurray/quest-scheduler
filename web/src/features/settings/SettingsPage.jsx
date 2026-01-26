@@ -301,7 +301,7 @@ export default function SettingsPage() {
 
           <>
           <div className="mt-6 grid gap-6">
-            <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
+            <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Timezone</h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 Default timezone for scheduling new sessions.
@@ -351,7 +351,7 @@ export default function SettingsPage() {
                 </div>
               </div>
             </section>
-            <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
+            <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                 Google Calendar
               </h3>
@@ -442,7 +442,7 @@ export default function SettingsPage() {
                 </p>
               </div>
             </section>
-            <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
+            <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Discord</h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 Link your Discord account to vote directly from Discord.
@@ -473,7 +473,7 @@ export default function SettingsPage() {
                 )}
               </div>
             </section>
-            <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
+            <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Default calendar entry</h3>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -506,7 +506,7 @@ export default function SettingsPage() {
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
+            <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                 Default session start times
               </h3>
@@ -530,7 +530,7 @@ export default function SettingsPage() {
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
+            <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Notifications</h3>
               <label className="mt-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                 <input
@@ -542,7 +542,7 @@ export default function SettingsPage() {
               </label>
             </section>
 
-            <section className="rounded-2xl border border-slate-100 p-4 dark:border-slate-700">
+            <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Appearance</h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 Choose your preferred color scheme.
