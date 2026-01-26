@@ -88,7 +88,7 @@ export default function SchedulerPage() {
   );
   const { settings, archivePoll, unarchivePoll, isArchived } = useUserSettings();
   const { friends } = useFriends();
-  const { getGroupColor } = useQuestingGroups();
+  const { getGroupColor, groups } = useQuestingGroups();
   const { removeLocal: removeNotification } = useNotifications();
   const scheduler = useFirestoreDoc(schedulerRef);
   const creatorRef = useMemo(
@@ -142,6 +142,7 @@ export default function SchedulerPage() {
   const [cloneInviteError, setCloneInviteError] = useState(null);
   const [cloneSaving, setCloneSaving] = useState(false);
   const [cloneClearVotes, setCloneClearVotes] = useState(false);
+  const [cloneGroupId, setCloneGroupId] = useState(null);
   const [archiveSaving, setArchiveSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteSaving, setDeleteSaving] = useState(false);
@@ -209,6 +210,21 @@ export default function SchedulerPage() {
     () => enrichUsers(questingGroupMembers),
     [enrichUsers, questingGroupMembers]
   );
+  const cloneGroupOptions = useMemo(() => {
+    const base = groups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      members: group.members?.length || 0,
+    }));
+    if (scheduler.data?.questingGroupId && !base.some((item) => item.id === scheduler.data.questingGroupId)) {
+      base.unshift({
+        id: scheduler.data.questingGroupId,
+        name: scheduler.data.questingGroupName || "Current group",
+        members: 0,
+      });
+    }
+    return base;
+  }, [groups, scheduler.data?.questingGroupId, scheduler.data?.questingGroupName]);
 
   useEffect(() => {
     if (!scheduler.data || !user?.email || !id) return;
@@ -1009,6 +1025,7 @@ export default function SchedulerPage() {
     setCloneInvites(newInvites);
     setCloneClearVotes(false);
     setCloneInviteError(null);
+    setCloneGroupId(scheduler.data?.questingGroupId || null);
     setCloneOpen(true);
   };
 
@@ -1025,6 +1042,14 @@ export default function SchedulerPage() {
         new Set([newCreatorEmail, ...cloneInvites].filter(Boolean).map((e) => e.toLowerCase()))
       );
 
+      const cloneGroup = cloneGroupId
+        ? groups.find((group) => group.id === cloneGroupId) || null
+        : null;
+      const cloneGroupName = cloneGroup
+        ? cloneGroup.name
+        : cloneGroupId === scheduler.data?.questingGroupId
+          ? scheduler.data?.questingGroupName || null
+          : null;
       const now = new Date();
       const futureSlots = slots.data.filter(
         (slot) => slot.start && new Date(slot.start) > now
@@ -1048,6 +1073,8 @@ export default function SchedulerPage() {
         googleEventId: null,
         googleCalendarId: null,
         createdAt: serverTimestamp(),
+        questingGroupId: cloneGroupId || null,
+        questingGroupName: cloneGroupName,
       });
 
       const slotWrites = futureSlots.map((slot) =>
@@ -2094,6 +2121,37 @@ export default function SchedulerPage() {
                 onChange={(event) => setCloneTitle(event.target.value)}
               />
             </label>
+            {cloneGroupOptions.length > 0 && (
+              <div className="grid gap-2">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Questing Group (optional)
+                </span>
+                <Select
+                  value={cloneGroupId || "none"}
+                  onValueChange={(value) =>
+                    setCloneGroupId(value === "none" ? null : value)
+                  }
+                >
+                  <SelectTrigger className="h-10 rounded-xl px-3 text-xs">
+                    <SelectValue placeholder="Select a group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No group</SelectItem>
+                    {cloneGroupOptions.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.name}
+                        {group.members ? ` (${group.members} members)` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {cloneGroupId && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Group members will be auto-added as invitees.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Invitees</p>
