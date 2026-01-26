@@ -144,6 +144,7 @@
 - [x] 2026-01-26: Add public Discord bot install page and invite flow
 - [x] 2026-01-26: Add Discord bot install link in account menu
 - [x] 2026-01-26: Remove bot permissions integer from UI and add Discord logo to install CTA
+- [x] 2026-01-26: Swap Discord CTA logo asset and restyle button to Discord palette
 
 ## Phase 15 — Discord Integration (Design)
 - [x] Draft Discord bot feature design doc (poll voting for questing groups)

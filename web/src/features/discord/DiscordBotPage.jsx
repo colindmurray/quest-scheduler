@@ -92,12 +92,12 @@ export default function DiscordBotPage() {
                 href={DISCORD_INSTALL_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-full bg-brand-primary px-6 py-3 text-sm font-semibold text-white shadow-md shadow-brand-primary/30 transition-colors hover:bg-brand-primary/90"
+                className="inline-flex items-center gap-3 rounded-xl bg-[#d7defc] px-6 py-3 text-sm font-semibold text-[#3d47c4] shadow-md shadow-[#3d47c4]/20 transition-colors hover:bg-[#c7d0fb]"
               >
                 <img
-                  src="/assets/discord-logo.png"
-                  alt=""
-                  className="h-4 w-4"
+                  src="/assets/discord-button-logo.png"
+                  alt="Discord logo"
+                  className="h-5 w-5"
                 />
                 Add to Discord
               </a>
