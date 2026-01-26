@@ -632,6 +632,122 @@ exports.googleCalendarFinalizePoll = functionsWithOAuthSecrets.https.onCall(asyn
   return { eventId, calendarId: calendarIdToSave };
 });
 
+exports.cloneSchedulerPoll = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Login required");
+  }
+  const { schedulerId, title, inviteEmails, clearVotes, questingGroupId, questingGroupName } = data || {};
+  if (!schedulerId) {
+    throw new functions.https.HttpsError("invalid-argument", "Missing scheduler id");
+  }
+
+  const schedulerRef = admin.firestore().collection("schedulers").doc(schedulerId);
+  const schedulerSnap = await schedulerRef.get();
+  if (!schedulerSnap.exists) {
+    throw new functions.https.HttpsError("not-found", "Scheduler not found");
+  }
+  const scheduler = schedulerSnap.data();
+  if (scheduler.creatorId !== context.auth.uid) {
+    throw new functions.https.HttpsError("permission-denied", "Only creator can clone with votes");
+  }
+
+  const normalizedInvites = Array.isArray(inviteEmails)
+    ? inviteEmails.map(normalizeEmail).filter(Boolean)
+    : [];
+  const creatorEmail = normalizeEmail(context.auth.token.email);
+  const participants = Array.from(new Set([creatorEmail, ...normalizedInvites].filter(Boolean)));
+
+  let groupNameToSave = null;
+  let groupMembers = [];
+  if (questingGroupId) {
+    const groupSnap = await admin.firestore().collection("questingGroups").doc(questingGroupId).get();
+    if (groupSnap.exists) {
+      const groupData = groupSnap.data() || {};
+      groupNameToSave = groupData.name || questingGroupName || null;
+      groupMembers = Array.isArray(groupData.members) ? groupData.members : [];
+    } else {
+      groupNameToSave = questingGroupName || null;
+    }
+  }
+
+  const newId = crypto.randomUUID();
+  const newRef = admin.firestore().collection("schedulers").doc(newId);
+
+  await newRef.set({
+    title: title || `${scheduler.title || "Untitled poll"} (copy)`,
+    creatorId: context.auth.uid,
+    creatorEmail,
+    status: "OPEN",
+    participants,
+    timezone: scheduler.timezone || null,
+    timezoneMode: scheduler.timezoneMode || null,
+    winningSlotId: null,
+    googleEventId: null,
+    googleCalendarId: null,
+    questingGroupId: questingGroupId || null,
+    questingGroupName: groupNameToSave,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  const slotsSnap = await schedulerRef.collection("slots").get();
+  const now = Date.now();
+  const validSlots = slotsSnap.docs
+    .map((doc) => ({ id: doc.id, ...doc.data() }))
+    .filter((slot) => slot.start && new Date(slot.start).getTime() > now);
+  const validSlotIds = new Set(validSlots.map((slot) => slot.id));
+
+  await Promise.all(
+    validSlots.map((slot) =>
+      newRef.collection("slots").doc(slot.id).set({
+        start: slot.start,
+        end: slot.end,
+        stats: { feasible: 0, preferred: 0 },
+      })
+    )
+  );
+
+  if (!clearVotes) {
+    const participantSet = new Set(
+      [...participants, ...groupMembers.map((email) => normalizeEmail(email))]
+        .filter(Boolean)
+        .map((email) => email.toLowerCase())
+    );
+    const votesSnap = await schedulerRef.collection("votes").get();
+    await Promise.all(
+      votesSnap.docs.map((voteDoc) => {
+        const voteData = voteDoc.data() || {};
+        const userEmail = normalizeEmail(voteData.userEmail);
+        if (!userEmail || !participantSet.has(userEmail)) {
+          return Promise.resolve();
+        }
+        const nextVotes = Object.fromEntries(
+          Object.entries(voteData.votes || {}).filter(([slotId]) =>
+            validSlotIds.has(slotId)
+          )
+        );
+        if (Object.keys(nextVotes).length === 0 && !voteData.noTimesWork) {
+          return Promise.resolve();
+        }
+        return newRef
+          .collection("votes")
+          .doc(voteDoc.id)
+          .set(
+            {
+              userEmail,
+              userAvatar: voteData.userAvatar || null,
+              votes: nextVotes,
+              noTimesWork: Boolean(voteData.noTimesWork),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+      })
+    );
+  }
+
+  return { schedulerId: newId };
+});
+
 exports.googleCalendarDeleteEvent = functionsWithOAuthSecrets.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError("unauthenticated", "Login required");

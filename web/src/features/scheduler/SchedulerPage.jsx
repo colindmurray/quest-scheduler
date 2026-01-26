@@ -1059,6 +1059,28 @@ export default function SchedulerPage() {
         setCloneSaving(false);
         return;
       }
+
+      if (isCreator && !cloneClearVotes) {
+        const functions = getFunctions();
+        const clonePoll = httpsCallable(functions, "cloneSchedulerPoll");
+        const response = await clonePoll({
+          schedulerId: id,
+          title: cloneTitle || `${scheduler.data.title || "Untitled poll"} (copy)`,
+          inviteEmails: cloneInvites,
+          clearVotes: cloneClearVotes,
+          questingGroupId: cloneGroupId,
+          questingGroupName: cloneGroupName,
+        });
+        const newId = response.data?.schedulerId;
+        if (!newId) {
+          throw new Error("Failed to clone poll");
+        }
+        setCloneOpen(false);
+        toast.success("Poll cloned successfully");
+        navigate(`/scheduler/${newId}`);
+        return;
+      }
+
       const newId = crypto.randomUUID();
       const newRef = doc(db, "schedulers", newId);
       await setDoc(newRef, {
