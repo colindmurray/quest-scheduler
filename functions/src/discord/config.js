@@ -8,6 +8,8 @@ const DISCORD_CLIENT_SECRET = defineSecret("DISCORD_CLIENT_SECRET");
 
 const DISCORD_REGION = process.env.DISCORD_REGION || "us-central1";
 const DISCORD_TASK_QUEUE = process.env.DISCORD_TASK_QUEUE || "processDiscordInteraction";
+const DISCORD_SCHEDULER_TASK_QUEUE =
+  process.env.DISCORD_SCHEDULER_TASK_QUEUE || "processDiscordSchedulerUpdate";
 const APP_URL = process.env.QS_APP_URL || "https://questscheduler.cc";
 
 module.exports = {
@@ -18,5 +20,6 @@ module.exports = {
   DISCORD_CLIENT_SECRET,
   DISCORD_REGION,
   DISCORD_TASK_QUEUE,
+  DISCORD_SCHEDULER_TASK_QUEUE,
   APP_URL,
 };

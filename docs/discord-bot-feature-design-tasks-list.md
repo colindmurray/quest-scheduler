@@ -168,9 +168,9 @@ High bang-for-buck features that should be completed before releasing to users b
 
 | # | Task | Priority | Status | Dependencies | Notes |
 | --- | ------ | ---------- | --- | -------------- | ------- |
-| 72 | **Implement `lastSyncedHash` check** | P1 | [ ] | #52 | Hash title + slots + status. Skip Discord update if unchanged. |
-| 73 | **Add Cloud Tasks delay for debouncing** | P1 | [ ] | #51 | Use `scheduleDelaySeconds: 5` to coalesce rapid edits. |
-| 74 | **Prevent infinite trigger loops** | P1 | [ ] | #51 | Skip trigger if only `discord.*` fields changed. |
+| 72 | **Implement `lastSyncedHash` check** | P1 | [x] | #52 | Hash title + slots + status. Skip Discord update if unchanged. Validation: no automated tests. |
+| 73 | **Add Cloud Tasks delay for debouncing** | P1 | [x] | #51 | Use `scheduleDelaySeconds: 5` to coalesce rapid edits. Validation: no automated tests. |
+| 74 | **Prevent infinite trigger loops** | P1 | [x] | #51 | Skip trigger if only `discord.*` fields changed. Validation: no automated tests. |
 
 ### 2.5 Unlink Functionality (P2)
 

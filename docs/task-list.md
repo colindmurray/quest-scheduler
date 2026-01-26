@@ -159,3 +159,4 @@
 - [x] 2026-01-26: Add Discord voting actions for "Clear my votes" and "None work for me".
 - [x] 2026-01-26: Add Discord voting pagination for polls with more than 25 slots.
 - [x] 2026-01-26: Centralize Discord voting error messages and refresh finalized/stale/authorization text.
+- [x] 2026-01-26: Debounce Discord poll updates with Cloud Tasks + lastSyncedHash checks.

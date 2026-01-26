@@ -1,7 +1,14 @@
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onTaskDispatched } = require("firebase-functions/v2/tasks");
 const { logger } = require("firebase-functions");
 const admin = require("firebase-admin");
-const { DISCORD_REGION, DISCORD_BOT_TOKEN } = require("../discord/config");
+const crypto = require("crypto");
+const { getFunctions } = require("firebase-admin/functions");
+const {
+  DISCORD_REGION,
+  DISCORD_BOT_TOKEN,
+  DISCORD_SCHEDULER_TASK_QUEUE,
+} = require("../discord/config");
 const { createChannelMessage, editChannelMessage } = require("../discord/discord-client");
 const { buildPollCard } = require("../discord/poll-card");
 
@@ -17,6 +24,31 @@ function hasNonDiscordChanges(beforeData, afterData) {
   delete beforeCopy.discord;
   delete afterCopy.discord;
   return JSON.stringify(beforeCopy) !== JSON.stringify(afterCopy);
+}
+
+function computeSchedulerSyncHash(scheduler, slots) {
+  const normalizedSlots = slots
+    .filter((slot) => slot.start && slot.end)
+    .map((slot) => ({
+      id: slot.id,
+      start: slot.start,
+      end: slot.end,
+    }))
+    .sort((a, b) => {
+      const startDiff = new Date(a.start) - new Date(b.start);
+      if (startDiff !== 0) return startDiff;
+      const endDiff = new Date(a.end) - new Date(b.end);
+      if (endDiff !== 0) return endDiff;
+      return String(a.id).localeCompare(String(b.id));
+    });
+
+  const payload = {
+    title: scheduler?.title || "",
+    status: scheduler?.status || "OPEN",
+    slots: normalizedSlots,
+  };
+
+  return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
 exports.postDiscordPollCard = onDocumentCreated(
@@ -104,22 +136,75 @@ exports.updateDiscordPollCard = onDocumentUpdated(
     }
 
     try {
-      const slotsSnap = await db.collection("schedulers").doc(schedulerId).collection("slots").get();
+      const queueName =
+        DISCORD_REGION === "us-central1"
+          ? DISCORD_SCHEDULER_TASK_QUEUE
+          : `locations/${DISCORD_REGION}/functions/${DISCORD_SCHEDULER_TASK_QUEUE}`;
+      const queue = getFunctions().taskQueue(queueName);
+      await queue.enqueue(
+        { schedulerId },
+        {
+          scheduleDelaySeconds: 5,
+        }
+      );
+    } catch (err) {
+      logger.error("Failed to enqueue Discord poll card update", {
+        schedulerId,
+        error: err?.message,
+      });
+    }
+  }
+);
+
+exports.processDiscordSchedulerUpdate = onTaskDispatched(
+  {
+    region: DISCORD_REGION,
+    secrets: [DISCORD_BOT_TOKEN],
+  },
+  async (request) => {
+    const schedulerId = request.data?.schedulerId;
+    if (!schedulerId) {
+      logger.warn("Missing schedulerId for Discord poll update task");
+      return;
+    }
+
+    const schedulerRef = db.collection("schedulers").doc(schedulerId);
+    const schedulerSnap = await schedulerRef.get();
+    if (!schedulerSnap.exists) {
+      return;
+    }
+    const scheduler = schedulerSnap.data() || {};
+    if (!scheduler.discord?.messageId || !scheduler.discord?.channelId) {
+      return;
+    }
+
+    try {
+      const slotsSnap = await schedulerRef.collection("slots").get();
       const slots = slotsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      const messageBody = buildPollCard({ schedulerId, scheduler: afterData, slots });
+      const syncHash = computeSchedulerSyncHash(scheduler, slots);
+
+      if (scheduler.discord?.lastSyncedHash === syncHash) {
+        logger.info("Skipping Discord poll update; hash unchanged", {
+          schedulerId,
+        });
+        return;
+      }
+
+      const messageBody = buildPollCard({ schedulerId, scheduler, slots });
 
       await editChannelMessage({
-        channelId: afterData.discord.channelId,
-        messageId: afterData.discord.messageId,
+        channelId: scheduler.discord.channelId,
+        messageId: scheduler.discord.messageId,
         body: messageBody,
       });
 
-      await db.collection("schedulers").doc(schedulerId).set(
+      await schedulerRef.set(
         {
           discord: {
-            ...afterData.discord,
+            ...scheduler.discord,
             lastUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            lastStatus: afterData.status || "OPEN",
+            lastStatus: scheduler.status || "OPEN",
+            lastSyncedHash: syncHash,
           },
         },
         { merge: true }
