@@ -77,4 +77,34 @@ function buildPollCard({ schedulerId, scheduler, slots }) {
   };
 }
 
-module.exports = { buildPollCard };
+function buildPollStatusCard({ title, status, description }) {
+  return {
+    embeds: [
+      {
+        title: title || "Quest Session",
+        description,
+        fields: [
+          {
+            name: "Status",
+            value: status,
+          },
+        ],
+      },
+    ],
+    components: [
+      {
+        type: 1,
+        components: [
+          {
+            type: 2,
+            style: 2,
+            label: status,
+            disabled: true,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+module.exports = { buildPollCard, buildPollStatusCard };

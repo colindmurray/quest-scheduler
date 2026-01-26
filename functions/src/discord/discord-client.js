@@ -26,10 +26,16 @@ async function fetchChannel({ channelId }) {
   return rest.get(Routes.channel(channelId));
 }
 
+async function fetchGuildRoles({ guildId }) {
+  const rest = createDiscordRestClient();
+  return rest.get(Routes.guildRoles(guildId));
+}
+
 module.exports = {
   createDiscordRestClient,
   editOriginalInteractionResponse,
   createChannelMessage,
   editChannelMessage,
   fetchChannel,
+  fetchGuildRoles,
 };

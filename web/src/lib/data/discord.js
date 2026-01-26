@@ -20,3 +20,10 @@ export async function unlinkDiscordAccount() {
   const response = await unlinkAccount();
   return response.data;
 }
+
+export async function fetchDiscordGuildRoles(groupId) {
+  const functions = getFunctions();
+  const listRoles = httpsCallable(functions, "discordListGuildRoles");
+  const response = await listRoles({ groupId });
+  return response.data;
+}

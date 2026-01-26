@@ -232,6 +232,7 @@ if (!isValid) {
 Use **Firestore Triggers** to enqueue Cloud Tasks for poll updates.
 - **Debounce**: Use a `lastSyncedHash` and a 5-second delay on the Cloud Task to prevent rapid-fire edits (e.g., during a drag-and-drop reorder).
 - **Finalization announcement**: When status transitions to `FINALIZED`, post a new channel message with the winning time and mention `notifyRoleId` (including the `"everyone"` default).
+- **Delete/unlink updates**: If a poll is deleted or unlinked from a channel, edit the existing Discord message to show the new status (e.g., DELETED or UNLINKED) and disable voting.
 
 ## Idempotency & Retries
 - Discord may retry interactions; Cloud Tasks will retry on transient failures.

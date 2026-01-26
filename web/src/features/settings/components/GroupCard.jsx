@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Users, Settings, UserPlus, LogOut, Trash2, Crown } from "lucide-react";
 import { GroupColorPicker } from "./GroupColorPicker";
 import { InviteMemberModal } from "./InviteMemberModal";
 import { AvatarBubble, AvatarStack, buildColorMap } from "../../../components/ui/voter-avatars";
 import { useUserProfiles } from "../../../hooks/useUserProfiles";
-import { generateDiscordLinkCode } from "../../../lib/data/discord";
+import { generateDiscordLinkCode, fetchDiscordGuildRoles } from "../../../lib/data/discord";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +42,9 @@ export function GroupCard({
   const [discordLinking, setDiscordLinking] = useState(false);
   const [discordCode, setDiscordCode] = useState(null);
   const [discordCodeExpiresAt, setDiscordCodeExpiresAt] = useState(null);
+  const [discordRoles, setDiscordRoles] = useState(null);
+  const [discordRolesLoading, setDiscordRolesLoading] = useState(false);
+  const [discordNotifyRoleId, setDiscordNotifyRoleId] = useState(null);
 
   const members = group.members || [];
   const pendingInvites = group.pendingInvites || [];
@@ -131,6 +134,45 @@ export function GroupCard({
     } catch (err) {
       console.error("Failed to update group:", err);
       toast.error(err.message || "Failed to update group settings");
+    }
+  };
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    if (!canManage || !group.discord?.guildId) return;
+    loadDiscordRoles();
+  }, [settingsOpen, canManage, group.discord?.guildId]);
+
+  const notifyRoleName = discordRoles?.find(
+    (role) => role.id === (discordNotifyRoleId || group.discord?.notifyRoleId || "everyone")
+  )?.name;
+
+  const handleNotifyRoleChange = async (roleId) => {
+    setDiscordNotifyRoleId(roleId);
+    try {
+      await onUpdateGroup(group.id, {
+        "discord.notifyRoleId": roleId,
+      });
+      toast.success("Discord notification role updated");
+    } catch (err) {
+      console.error("Failed to update Discord notification role:", err);
+      toast.error(err.message || "Failed to update Discord notification role");
+    }
+  };
+
+  const loadDiscordRoles = async () => {
+    if (!group.discord?.guildId) return;
+    setDiscordRolesLoading(true);
+    try {
+      const response = await fetchDiscordGuildRoles(group.id);
+      const roles = response?.roles || [];
+      setDiscordRoles(roles);
+      setDiscordNotifyRoleId(response?.notifyRoleId || group.discord?.notifyRoleId || "everyone");
+    } catch (err) {
+      console.error("Failed to fetch Discord roles:", err);
+      setDiscordRoles(null);
+    } finally {
+      setDiscordRolesLoading(false);
     }
   };
 
@@ -361,6 +403,30 @@ export function GroupCard({
                     Expires at {new Date(discordCodeExpiresAt).toLocaleTimeString()}.
                     Run /qs link-group {discordCode} in the target Discord channel.
                   </p>
+                )}
+                {group.discord?.channelId && notifyRoleName && (
+                  <div className="mt-4">
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      Finalization notification
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                      Choose which role gets pinged when a poll is finalized.
+                    </p>
+                    <div className="mt-2">
+                      <select
+                        value={discordNotifyRoleId || group.discord?.notifyRoleId || "everyone"}
+                        onChange={(event) => handleNotifyRoleChange(event.target.value)}
+                        disabled={discordRolesLoading}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                      >
+                        {(discordRoles || []).map((role) => (
+                          <option key={role.id} value={role.id}>
+                            {role.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 )}
               </div>
             )}

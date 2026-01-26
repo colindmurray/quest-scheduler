@@ -1,4 +1,8 @@
-const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const {
+  onDocumentCreated,
+  onDocumentUpdated,
+  onDocumentDeleted,
+} = require("firebase-functions/v2/firestore");
 const { onTaskDispatched } = require("firebase-functions/v2/tasks");
 const { logger } = require("firebase-functions");
 const admin = require("firebase-admin");
@@ -11,7 +15,7 @@ const {
   APP_URL,
 } = require("../discord/config");
 const { createChannelMessage, editChannelMessage } = require("../discord/discord-client");
-const { buildPollCard } = require("../discord/poll-card");
+const { buildPollCard, buildPollStatusCard } = require("../discord/poll-card");
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -57,6 +61,20 @@ function computeSchedulerSyncHash(scheduler, slots) {
   };
 
   return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
+async function updateDiscordStatusMessage({ discord, title, status, description }) {
+  if (!discord?.channelId || !discord?.messageId) return;
+  const body = buildPollStatusCard({
+    title,
+    status,
+    description,
+  });
+  await editChannelMessage({
+    channelId: discord.channelId,
+    messageId: discord.messageId,
+    body,
+  });
 }
 
 function buildFinalizationMention(notifyRoleId) {
@@ -158,15 +176,99 @@ exports.updateDiscordPollCard = onDocumentUpdated(
       return;
     }
 
-    if (!afterData.discord?.messageId) {
-      return;
-    }
-
-    if (!hasNonDiscordChanges(beforeData, afterData)) {
-      return;
-    }
-
     try {
+      const groupChanged = beforeData.questingGroupId !== afterData.questingGroupId;
+      if (groupChanged) {
+        const previousDiscord = beforeData.discord || null;
+        let nextGroupDiscord = null;
+        if (afterData.questingGroupId) {
+          const groupSnap = await db
+            .collection("questingGroups")
+            .doc(afterData.questingGroupId)
+            .get();
+          if (groupSnap.exists) {
+            nextGroupDiscord = groupSnap.data()?.discord || null;
+          }
+        }
+
+        const hasNextLink = Boolean(
+          nextGroupDiscord?.channelId && nextGroupDiscord?.guildId
+        );
+        const sameChannel =
+          previousDiscord?.channelId &&
+          nextGroupDiscord?.channelId &&
+          previousDiscord.channelId === nextGroupDiscord.channelId &&
+          previousDiscord.guildId === nextGroupDiscord.guildId;
+
+        if (!sameChannel) {
+          if (previousDiscord?.messageId) {
+            const status = hasNextLink ? "MOVED" : "UNLINKED";
+            const description = hasNextLink
+              ? "This poll moved to a different Discord channel."
+              : "This poll is no longer linked to this channel.";
+            await updateDiscordStatusMessage({
+              discord: previousDiscord,
+              title: beforeData.title || "Quest Session",
+              status,
+              description,
+            });
+          }
+
+          if (hasNextLink) {
+            const slotsSnap = await db
+              .collection("schedulers")
+              .doc(schedulerId)
+              .collection("slots")
+              .get();
+            const slots = slotsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+            const messageBody = buildPollCard({
+              schedulerId,
+              scheduler: afterData,
+              slots,
+            });
+            const message = await createChannelMessage({
+              channelId: nextGroupDiscord.channelId,
+              body: messageBody,
+            });
+            const messageId = message?.id;
+            if (messageId) {
+              const messageUrl = `https://discord.com/channels/${nextGroupDiscord.guildId}/${nextGroupDiscord.channelId}/${messageId}`;
+              await db.collection("schedulers").doc(schedulerId).set(
+                {
+                  discord: {
+                    messageId,
+                    channelId: nextGroupDiscord.channelId,
+                    guildId: nextGroupDiscord.guildId,
+                    lastPostedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    lastUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    lastStatus: afterData.status || "OPEN",
+                    messageUrl,
+                    notifyRoleId: nextGroupDiscord.notifyRoleId || "everyone",
+                  },
+                },
+                { merge: true }
+              );
+            }
+          } else {
+            await db.collection("schedulers").doc(schedulerId).set(
+              {
+                discord: admin.firestore.FieldValue.delete(),
+              },
+              { merge: true }
+            );
+          }
+          return;
+        }
+      }
+
+      if (!afterData.discord?.messageId) {
+        return;
+      }
+
+      if (!hasNonDiscordChanges(beforeData, afterData)) {
+        return;
+      }
+
       const queueName =
         DISCORD_REGION === "us-central1"
           ? DISCORD_SCHEDULER_TASK_QUEUE
@@ -297,6 +399,37 @@ exports.processDiscordSchedulerUpdate = onTaskDispatched(
         error: err?.message,
       });
       throw err;
+    }
+  }
+);
+
+exports.handleDiscordPollDelete = onDocumentDeleted(
+  {
+    document: "schedulers/{schedulerId}",
+    region: DISCORD_REGION,
+    secrets: [DISCORD_BOT_TOKEN],
+  },
+  async (event) => {
+    const schedulerId = event.params.schedulerId;
+    const data = event.data?.data();
+    if (!data?.discord?.messageId || !data?.discord?.channelId) {
+      return;
+    }
+
+    try {
+      const description = `This poll was deleted in Quest Scheduler.`;
+      await updateDiscordStatusMessage({
+        discord: data.discord,
+        title: data.title || "Quest Session",
+        status: "DELETED",
+        description,
+      });
+      logger.info("Updated Discord poll card for deleted scheduler", { schedulerId });
+    } catch (err) {
+      logger.error("Failed to update Discord poll card on delete", {
+        schedulerId,
+        error: err?.message,
+      });
     }
   }
 );

@@ -4,6 +4,7 @@ const discordWorker = require("./discord/worker");
 const discordLinkCodes = require("./discord/link-codes");
 const discordOAuth = require("./discord/oauth");
 const discordUnlink = require("./discord/unlink");
+const discordRoles = require("./discord/roles");
 const schedulerTriggers = require("./triggers/scheduler");
 
 module.exports = {
@@ -13,5 +14,6 @@ module.exports = {
   ...discordLinkCodes,
   ...discordOAuth,
   ...discordUnlink,
+  ...discordRoles,
   ...schedulerTriggers,
 };
