@@ -17,10 +17,19 @@ service cloud.firestore {
       return data.pendingInvites != null && userEmail() in data.pendingInvites;
     }
 
+    function isQuestingGroupMember(data) {
+      return isSignedIn()
+        && data.questingGroupId != null
+        && data.questingGroupId != ""
+        && exists(/databases/$(database)/documents/questingGroups/$(data.questingGroupId))
+        && userEmail() in get(/databases/$(database)/documents/questingGroups/$(data.questingGroupId)).data.members;
+    }
+
     function canReadScheduler(data) {
       return isSignedIn() && (
         isCreator(data) ||
         userEmail() in data.participants ||
+        isQuestingGroupMember(data) ||
         hasPendingInvite(data) ||
         data.allowLinkSharing == true
       );
@@ -183,6 +192,13 @@ service cloud.firestore {
         return isSignedIn() && userEmail() in data.participants;
       }
 
+      function canVoteScheduler(data) {
+        return isSignedIn() && (
+          userEmail() in data.participants ||
+          isQuestingGroupMember(data)
+        );
+      }
+
       function isSchedulerInvitee(data) {
         return isSignedIn() && hasPendingInvite(data);
       }
@@ -264,7 +280,7 @@ service cloud.firestore {
         allow read: if canReadScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data);
         allow write: if isSignedIn()
           && request.auth.uid == userId
-          && userEmail() in get(/databases/$(database)/documents/schedulers/$(schedulerId)).data.participants;
+          && canVoteScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data);
       }
     }
 

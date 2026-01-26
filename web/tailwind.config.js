@@ -16,6 +16,7 @@ export default {
       },
       fontFamily: {
         sans: ['"PT Sans"', "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ['"Cinzel"', "ui-serif", "serif"],
       },
     },
   },

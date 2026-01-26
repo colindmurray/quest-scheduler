@@ -36,7 +36,7 @@ export function createEmailMessage({
     ...extraLines,
     "",
     `${ctaLabel}: ${ctaUrl}`,
-    `Contact us: ${supportEmail}`,
+    `Contact us: ${SUPPORT_EMAIL}`,
     "",
     footer,
   ];

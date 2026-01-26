@@ -43,11 +43,14 @@ function RedirectWhenSignedIn({ children }) {
 export default function App() {
   const { darkMode } = useTheme();
   const location = useLocation();
+  const { user } = useAuth();
+  const isPublicRoute = location.pathname === "/" || location.pathname === "/privacy" || location.pathname === "/terms";
+  const forceDarkTheme = !user && isPublicRoute;
 
   return (
     <>
       <Toaster
-        theme={darkMode ? "dark" : "light"}
+        theme={forceDarkTheme || darkMode ? "dark" : "light"}
         position="top-right"
         toastOptions={{
           className: "font-sans",

@@ -1,0 +1,95 @@
+# Quest Scheduler
+
+**Quest Scheduler** is a Firebase-backed scheduling application designed to streamline coordinating tabletop game sessions. It features slot-based voting (Feasible/Preferred), Google Calendar integration, and real-time updates.
+
+## Project Structure
+
+The project is organized as a monorepo with distinct frontend and backend directories:
+
+- **`web/`**: The frontend application.
+    - **`src/app/`**: App shell, routing (React Router v7), and authentication guards.
+    - **`src/features/`**: Feature-based modules (e.g., `dashboard`, `scheduler`, `settings`, `friends`). This is where UI and specific logic reside.
+    - **`src/components/`**: Shared, reusable UI components (built with Radix UI primitives).
+    - **`src/lib/`**: Core infrastructure including Firebase SDK initialization (`firebase.js`), authentication helpers, and the centralized data access layer (`data/`).
+    - **`src/hooks/`**: Custom React hooks, primarily for Firestore data fetching and synchronization.
+- **`functions/`**: Firebase Cloud Functions for backend logic (e.g., email notifications).
+- **`docs/`**: Project documentation, design decisions, and runbooks.
+
+## Tech Stack
+
+### Frontend
+- **Framework:** React 19 + Vite
+- **Styling:** Tailwind CSS + Radix UI + Lucide React (icons)
+- **State Management:** React Context + Custom Hooks
+- **Calendar:** `react-big-calendar`
+- **Dates:** `date-fns` + `date-fns-tz`
+- **Testing:** Vitest
+
+### Backend (Firebase)
+- **Auth:** Firebase Authentication (Google OAuth)
+- **Database:** Cloud Firestore
+- **Hosting:** Firebase Hosting
+- **Logic:** Cloud Functions (Node.js 20)
+
+## Getting Started
+
+### Prerequisites
+- Node.js (v20+ recommended)
+- npm
+
+### Development
+1.  Navigate to the web directory:
+    ```bash
+    cd web
+    ```
+2.  Install dependencies:
+    ```bash
+    npm install
+    ```
+3.  Start the development server:
+    ```bash
+    npm run dev
+    ```
+    The app will be available at `http://localhost:5173`.
+
+### Building
+To build the frontend for production:
+```bash
+npm --prefix web run build
+```
+Output is generated in `web/dist/`.
+
+### Testing & Linting
+- **Run Tests:** `npm --prefix web run test`
+- **Lint Code:** `npm --prefix web run lint`
+
+### Deployment
+Deploy to Firebase (requires `firebase-tools` CLI):
+```bash
+# Deploy everything
+firebase deploy --project studio-473406021-87ead
+
+# Deploy specific services
+firebase deploy --only hosting --project studio-473406021-87ead
+```
+
+## Development Conventions
+
+### Code Organization
+- **Feature-First:** Keep related UI and logic together in `src/features/<feature_name>`.
+- **Data Layer:** All direct Firestore interactions should be encapsulated within `src/lib/data/`. Avoid raw Firestore calls in components.
+- **Naming:**
+    - Files/Folders: `kebab-case` (e.g., `dashboard-page.jsx`)
+    - Components: `PascalCase` (e.g., `DashboardPage`)
+    - Hooks: `useCamelCase` (e.g., `useUserProfiles`)
+    - Firestore Fields: `camelCase`
+
+### Date & Time Handling
+- **Storage:** Always store timestamps in **UTC** in Firestore.
+- **Display:** Convert to **local time** only at the UI layer using `date-fns-tz`.
+- **Voting:** Users vote on specific *Time Slots*, not generic dates.
+
+### UX Guidelines
+- **Sync:** Ensure Calendar and List views reflect the same state.
+- **Visual Distinction:** Clearly differentiate actions available to the *Creator* vs. *Participants*.
+- **Voting:** "Preferred" vote implies "Feasible".

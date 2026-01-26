@@ -842,6 +842,14 @@ exports.sendPollInvites = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("permission-denied", "Only the poll creator can invite.");
   }
 
+  let groupMembers = [];
+  if (scheduler.questingGroupId) {
+    const groupSnap = await db.collection("questingGroups").doc(scheduler.questingGroupId).get();
+    if (groupSnap.exists) {
+      groupMembers = (groupSnap.data()?.members || []).map(normalizeEmail);
+    }
+  }
+
   const { data: userStatus } = await ensureUserStatus(inviterId);
   if (userStatus.suspended) {
     throw new functions.https.HttpsError(
@@ -857,7 +865,10 @@ exports.sendPollInvites = functions.https.onCall(async (data, context) => {
   ).filter((email) => email && email !== inviterEmail);
 
   const candidates = normalizedInvitees.filter(
-    (email) => !participants.includes(email) && !pending.includes(email)
+    (email) =>
+      !participants.includes(email) &&
+      !pending.includes(email) &&
+      !groupMembers.includes(email)
   );
   if (candidates.length === 0) {
     return { added: [], rejected: [] };

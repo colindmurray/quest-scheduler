@@ -112,12 +112,36 @@ function buildVoteComponents({
       type: 1,
       components: [
         {
+          type: ComponentType.Button,
+          custom_id: `label_pref:${schedulerId}`,
+          style: 2,
+          label: "Preferred times",
+          disabled: true,
+        },
+      ],
+    },
+    {
+      type: 1,
+      components: [
+        {
           type: ComponentType.StringSelect,
           custom_id: `vote_pref:${schedulerId}`,
           placeholder: "Select preferred times",
           min_values: 0,
           max_values: Math.min(MAX_SELECT_OPTIONS, options.length),
           options: preferredOptions,
+        },
+      ],
+    },
+    {
+      type: 1,
+      components: [
+        {
+          type: ComponentType.Button,
+          custom_id: `label_feasible:${schedulerId}`,
+          style: 2,
+          label: "Feasible times",
+          disabled: true,
         },
       ],
     },
@@ -389,10 +413,7 @@ async function handleVoteButton(interaction, schedulerId) {
   });
 
   return respondWithMessage(interaction, {
-    content:
-      "Preferred times: use the first dropdown.\n" +
-      "Feasible times: use the second dropdown.\n" +
-      "Select your preferred and feasible times, then press Submit.",
+    content: "Select your preferred and feasible times, then press Submit.",
     components,
   });
 }
@@ -420,10 +441,24 @@ async function handleVoteSelect(interaction, schedulerId, type) {
     ),
   };
 
+  const currentPreferred = sessionData.preferredSlotIds || [];
+  const currentFeasible = sessionData.feasibleSlotIds || [];
+  let nextPreferred = currentPreferred;
+  let nextFeasible = currentFeasible;
+
   if (type === "preferred") {
-    update.preferredSlotIds = values;
+    nextPreferred = values;
+    const feasibleSet = new Set(currentFeasible);
+    values.forEach((slotId) => feasibleSet.add(slotId));
+    nextFeasible = Array.from(feasibleSet);
+    update.preferredSlotIds = nextPreferred;
+    update.feasibleSlotIds = nextFeasible;
   } else {
-    update.feasibleSlotIds = values;
+    nextFeasible = values;
+    const feasibleSet = new Set(values);
+    nextPreferred = currentPreferred.filter((slotId) => feasibleSet.has(slotId));
+    update.feasibleSlotIds = nextFeasible;
+    update.preferredSlotIds = nextPreferred;
   }
 
   await sessionRef.set(update, { merge: true });
@@ -437,22 +472,16 @@ async function handleVoteSelect(interaction, schedulerId, type) {
     .filter((slot) => slot.start && slot.end)
     .sort((a, b) => new Date(a.start) - new Date(b.start));
 
-  const preferredIds = type === "preferred" ? values : sessionData.preferredSlotIds || [];
-  const feasibleIds = type === "feasible" ? values : sessionData.feasibleSlotIds || [];
-
   const components = buildVoteComponents({
     schedulerId,
     slots,
-    preferredIds,
-    feasibleIds,
+    preferredIds: nextPreferred,
+    feasibleIds: nextFeasible,
     timezone: scheduler?.timezone || null,
   });
 
   return respondWithMessage(interaction, {
-    content:
-      "Preferred times: use the first dropdown.\n" +
-      "Feasible times: use the second dropdown.\n" +
-      "Selections saved. Submit when ready.",
+    content: "Selections saved. Submit when ready.",
     components,
   });
 }

@@ -16,6 +16,8 @@
 - [x] 2026-01-26: Apply splash background image to landing/login page
 - [x] 2026-01-26: Add light/dark app background images for logged-in pages
 - [x] 2026-01-26: Strengthen light-mode card borders for nested surfaces
+- [x] 2026-01-26: Add subtle light-mode shadow for nested cards
+- [x] 2026-01-26: Force landing page to dark theme + update branding text styling
 
 ## Phase 1 — Firebase Wiring
 - [x] Add Firebase config module

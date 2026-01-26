@@ -9,6 +9,7 @@ import { ensureGroupInviteNotification } from "../lib/data/notifications";
 import { useFriends } from "./useFriends";
 import { APP_URL } from "../lib/config";
 import { createEmailMessage } from "../lib/emailTemplates";
+import { createFriendRequest } from "../lib/data/friends";
 import {
   userGroupsQuery,
   userPendingInvitesQuery,
@@ -126,12 +127,10 @@ export function useQuestingGroups() {
 
   // Invite a member (also sends email notification)
   const inviteMember = useCallback(
-    async (groupId, groupName, inviteeEmail) => {
+    async (groupId, groupName, inviteeEmail, { sendFriendInvite = false } = {}) => {
       if (!user?.email) return;
       const normalizedInvitee = inviteeEmail.toLowerCase();
-      if (!friendSet.has(normalizedInvitee)) {
-        throw new Error("You can only invite friends to a questing group.");
-      }
+      const shouldSendFriendInvite = sendFriendInvite && !friendSet.has(normalizedInvitee);
 
       const inviteeUserId = await findUserIdByEmail(inviteeEmail);
       await inviteMemberToGroup(
@@ -155,14 +154,30 @@ export function useQuestingGroups() {
       });
       try {
         await setDoc(doc(collection(db, "mail")), {
-          to: inviteeEmail,
+          to: normalizedInvitee,
           message,
         });
       } catch (err) {
         console.warn("Failed to queue group invite email:", err);
       }
+
+      if (shouldSendFriendInvite) {
+        try {
+          await createFriendRequest(
+            {
+              fromUserId: user.uid,
+              fromEmail: user.email,
+              toEmail: normalizedInvitee,
+              fromDisplayName: user.displayName || null,
+            },
+            { sendEmail: false }
+          );
+        } catch (err) {
+          console.warn("Failed to send friend request with group invite:", err);
+        }
+      }
     },
-    [user?.email, friendSet]
+    [user?.email, user?.uid, user?.displayName, friendSet]
   );
 
   // Accept invitation
