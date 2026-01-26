@@ -116,6 +116,7 @@
 - [x] Deploy Firestore rules + hosting
 - [ ] Verify Google OAuth scopes in production
 - [x] 2026-01-26: Remove calendar scopes from login; limit calendar OAuth scopes to calendar events + calendar list read
+- [x] 2026-01-26: Tighten privacy policy language to state no calendar event details are read
 - [x] Remove legacy App Hosting backend (`studio`) so only Hosting remains
 
 ## Phase 14 — Calendar Auth Integrity
@@ -145,6 +146,7 @@
 - [x] 2026-01-26: Add Discord bot install link in account menu
 - [x] 2026-01-26: Remove bot permissions integer from UI and add Discord logo to install CTA
 - [x] 2026-01-26: Swap Discord CTA logo asset and restyle button to Discord palette
+- [x] 2026-01-26: Center Discord CTA and move permissions note below
 
 ## Phase 15 — Discord Integration (Design)
 - [x] Draft Discord bot feature design doc (poll voting for questing groups)

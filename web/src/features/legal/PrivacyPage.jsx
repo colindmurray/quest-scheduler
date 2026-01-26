@@ -31,7 +31,7 @@ export default function PrivacyPage() {
         <li>
           <strong>Calendar access.</strong> If you connect Google Calendar, we request access to
           list your calendars and create events you approve. We do not read your event details
-          unless needed for the specific actions you initiate.
+          at any time.
         </li>
         <li>
           <strong>OAuth tokens.</strong> When you connect Google Calendar, we store an encrypted
