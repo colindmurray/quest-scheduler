@@ -115,6 +115,7 @@
 - [x] Deploy setup config (hosting predeploy + runbook)
 - [x] Deploy Firestore rules + hosting
 - [ ] Verify Google OAuth scopes in production
+- [x] 2026-01-26: Remove calendar scopes from login; limit calendar OAuth scopes to calendar events + calendar list read
 - [x] Remove legacy App Hosting backend (`studio`) so only Hosting remains
 
 ## Phase 14 — Calendar Auth Integrity
@@ -142,6 +143,7 @@
 - [x] 2026-01-26: Improve clone poll invitees (hide group members, show group card, filter recommendations)
 - [x] 2026-01-26: Add public Discord bot install page and invite flow
 - [x] 2026-01-26: Add Discord bot install link in account menu
+- [x] 2026-01-26: Remove bot permissions integer from UI and add Discord logo to install CTA
 
 ## Phase 15 — Discord Integration (Design)
 - [x] Draft Discord bot feature design doc (poll voting for questing groups)

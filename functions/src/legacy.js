@@ -18,7 +18,7 @@ const SCOPES = [
   "openid",
   "email",
   "https://www.googleapis.com/auth/calendar.events",
-  "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
 ];
 
 const googleOAuthClientJson = defineJsonSecret("QS_GOOGLE_OAUTH_CLIENT_JSON");

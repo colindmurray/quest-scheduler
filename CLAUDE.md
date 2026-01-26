@@ -35,7 +35,7 @@ firebase deploy --only hosting --project studio-473406021-87ead   # Hosting only
 - Framer Motion for animations
 
 ### Backend
-- Firebase Auth (Google OAuth with `calendar.events` scope)
+- Firebase Auth (Google OAuth with basic profile scopes at login; calendar scopes only during linking)
 - Firestore for data persistence
 - Firebase Hosting
 - Firebase Extensions (firestore-send-email for notifications)

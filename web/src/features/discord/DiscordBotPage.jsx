@@ -94,6 +94,11 @@ export default function DiscordBotPage() {
                 rel="noreferrer"
                 className="inline-flex items-center gap-2 rounded-full bg-brand-primary px-6 py-3 text-sm font-semibold text-white shadow-md shadow-brand-primary/30 transition-colors hover:bg-brand-primary/90"
               >
+                <img
+                  src="/assets/discord-logo.png"
+                  alt=""
+                  className="h-4 w-4"
+                />
                 Add to Discord
               </a>
               <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -124,7 +129,7 @@ export default function DiscordBotPage() {
                     Permissions included
                   </p>
                   <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                    Bot permissions integer: {DISCORD_INSTALL_PERMISSIONS}
+                    Permissions needed by the bot
                   </p>
                 </div>
                 <span className="rounded-full bg-indigo-100 px-3 py-1 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200">
