@@ -171,3 +171,4 @@
 - [x] 2026-01-26: Announce finalized polls in Discord with notifyRoleId/@everyone mentions.
 - [x] 2026-01-26: Sync Discord messages on poll delete/unlink/relink and expose notify role selection in group settings.
 - [x] 2026-01-26: Add "No ping" option for Discord finalization notifications.
+- [x] 2026-01-26: Clear Discord voting UI for closed polls and post reopen alerts with @ mentions.

@@ -290,6 +290,13 @@ async function respondWithError(interaction, message) {
   return respondWithMessage(interaction, { content: message });
 }
 
+async function respondWithClosedPoll(interaction) {
+  return respondWithMessage(interaction, {
+    content: ERROR_MESSAGES.pollFinalized,
+    components: [],
+  });
+}
+
 async function getLinkedUser(discordUserId) {
   const linkSnap = await db.collection("discordUserLinks").doc(discordUserId).get();
   if (!linkSnap.exists) return null;
@@ -557,6 +564,10 @@ async function handleVoteSelect(interaction, schedulerId, type) {
   const schedulerRef = db.collection("schedulers").doc(schedulerId);
   const schedulerSnap = await schedulerRef.get();
   const scheduler = schedulerSnap.exists ? schedulerSnap.data() : {};
+  if (scheduler.status !== "OPEN") {
+    await sessionRef.delete().catch(() => null);
+    return respondWithClosedPoll(interaction);
+  }
   const slotsSnap = await schedulerRef.collection("slots").get();
   const slots = slotsSnap.docs
     .map((doc) => ({ id: doc.id, ...doc.data() }))
@@ -643,6 +654,10 @@ async function handleVotePage(interaction, schedulerId, direction) {
   const schedulerRef = db.collection("schedulers").doc(schedulerId);
   const schedulerSnap = await schedulerRef.get();
   const scheduler = schedulerSnap.exists ? schedulerSnap.data() : {};
+  if (scheduler.status !== "OPEN") {
+    await sessionRef.delete().catch(() => null);
+    return respondWithClosedPoll(interaction);
+  }
   const slotsSnap = await schedulerRef.collection("slots").get();
   const slots = slotsSnap.docs
     .map((doc) => ({ id: doc.id, ...doc.data() }))
@@ -696,7 +711,7 @@ async function handleClearVotes(interaction, schedulerId, noTimesWork) {
   }
   const scheduler = schedulerSnap.data();
   if (scheduler.status !== "OPEN") {
-    return respondWithError(interaction, ERROR_MESSAGES.pollFinalized);
+    return respondWithClosedPoll(interaction);
   }
   if (
     scheduler.discord?.channelId &&
@@ -822,7 +837,7 @@ async function handleSubmitVote(interaction, schedulerId) {
   }
   const scheduler = schedulerSnap.data();
   if (scheduler.status !== "OPEN") {
-    return respondWithError(interaction, ERROR_MESSAGES.pollFinalized);
+    return respondWithClosedPoll(interaction);
   }
   if (
     scheduler.discord?.channelId &&

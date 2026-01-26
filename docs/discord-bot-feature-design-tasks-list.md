@@ -196,6 +196,13 @@ High bang-for-buck features that should be completed before releasing to users b
 | 82 | **Add "View in Discord" link** | P2 | [x] | #81 | Use stored `discord.messageUrl`. Validation: no automated tests. |
 | 83 | **Show Discord vote source** | P2 | [x] | #49 | Indicate which votes came from Discord vs web in vote summary. Validation: no automated tests. |
 
+### 2.8 Reopen & Closed Poll Messaging (P1)
+
+| # | Task | Priority | Status | Dependencies | Notes |
+| --- | ------ | ---------- | --- | -------------- | ------- |
+| 84 | **Hide voting UI when poll is closed** | P1 | [x] | #53 | Closed poll responses clear components so buttons/selects disappear. Validation: no automated tests. |
+| 85 | **Notify Discord on poll reopen** | P1 | [x] | #51 | Post @ mention when a finalized poll is reopened. Validation: no automated tests. |
+
 ---
 
 ## Section 3: Low Priority Post-MVP Tasks (P3, P4, P5)

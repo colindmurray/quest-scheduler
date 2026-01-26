@@ -332,6 +332,7 @@ exports.processDiscordSchedulerUpdate = onTaskDispatched(
       });
 
       let finalizedNotifiedAt = null;
+      let reopenedNotifiedAt = null;
       if (scheduler.status === "FINALIZED" && !scheduler.discord?.finalizedNotifiedAt) {
         const groupRef = scheduler.questingGroupId
           ? db.collection("questingGroups").doc(scheduler.questingGroupId)
@@ -356,6 +357,27 @@ exports.processDiscordSchedulerUpdate = onTaskDispatched(
         finalizedNotifiedAt = admin.firestore.FieldValue.serverTimestamp();
       }
 
+      if (scheduler.status === "OPEN" && scheduler.discord?.lastStatus === "FINALIZED") {
+        const groupRef = scheduler.questingGroupId
+          ? db.collection("questingGroups").doc(scheduler.questingGroupId)
+          : null;
+        const groupSnap = groupRef ? await groupRef.get() : null;
+        const groupDiscord = groupSnap?.exists ? groupSnap.data()?.discord || {} : {};
+        const notifyRoleId = groupDiscord?.notifyRoleId || "everyone";
+        const { mention, allowedMentions } = buildFinalizationMention(notifyRoleId);
+        const pollTitle = scheduler.title || "Quest Session";
+        const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
+
+        await createChannelMessage({
+          channelId: scheduler.discord.channelId,
+          body: {
+            content: `${mention}Poll re-opened for **${pollTitle}**. The previously finalized time may no longer apply. Please vote again: ${pollUrl}`,
+            allowed_mentions: allowedMentions,
+          },
+        });
+        reopenedNotifiedAt = admin.firestore.FieldValue.serverTimestamp();
+      }
+
       const discordUpdates = {
         ...scheduler.discord,
         lastUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -370,8 +392,14 @@ exports.processDiscordSchedulerUpdate = onTaskDispatched(
         if (finalizedNotifiedAt) {
           discordUpdates.finalizedNotifiedAt = finalizedNotifiedAt;
         }
+        discordUpdates.reopenedNotifiedAt = admin.firestore.FieldValue.delete();
       } else {
         discordUpdates.finalizedNotifiedAt = admin.firestore.FieldValue.delete();
+        if (reopenedNotifiedAt) {
+          discordUpdates.reopenedNotifiedAt = reopenedNotifiedAt;
+        } else {
+          discordUpdates.reopenedNotifiedAt = admin.firestore.FieldValue.delete();
+        }
       }
 
       await schedulerRef.set(

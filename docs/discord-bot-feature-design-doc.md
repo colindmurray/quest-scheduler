@@ -23,6 +23,7 @@ This design avoids Message Content privileged intent by using Discord Interactio
 - Users vote in Discord via a button that opens an ephemeral voting UI (select menus/buttons).
 - Votes sync to the poll in Quest Scheduler and are visible in the web UI.
 - When the poll is edited, reopened, or finalized, the bot edits or posts updates in Discord.
+- When a finalized poll is reopened, the bot posts a notification (with the configured notify role) so voters know to revisit.
 
 ## Discord Platform Constraints & Architecture
 - **Message content is a privileged intent**: Avoid reading messages. Use Interactions.
