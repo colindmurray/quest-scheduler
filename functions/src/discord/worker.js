@@ -742,6 +742,14 @@ async function handleClearVotes(interaction, schedulerId, noTimesWork) {
   const sessionRef = db.collection("discordVoteSessions").doc(
     buildSessionId(schedulerId, discordUserId)
   );
+  if (noTimesWork) {
+    await sessionRef.delete().catch(() => null);
+    return respondWithMessage(interaction, {
+      content: "Marked as unavailable for this poll.",
+      components: [],
+    });
+  }
+
   await sessionRef.set(
     {
       schedulerId,
@@ -778,9 +786,7 @@ async function handleClearVotes(interaction, schedulerId, noTimesWork) {
     pageCount: pageInfo.pageCount,
   });
 
-  const message = noTimesWork
-    ? "Marked as unavailable for this poll."
-    : "Votes cleared. You can pick new times below.";
+  const message = "Votes cleared. You can pick new times below.";
 
   return respondWithMessage(interaction, {
     content: formatVoteContent(message, pageInfo.pageIndex, pageInfo.pageCount),
