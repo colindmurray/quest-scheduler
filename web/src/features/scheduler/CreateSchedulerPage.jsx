@@ -1,4 +1,5 @@
 import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc, deleteDoc, getDocs, query, where } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
@@ -87,6 +88,8 @@ export default function CreateSchedulerPage() {
   const [timezoneInitialized, setTimezoneInitialized] = useState(false);
   const [loadedFromPoll, setLoadedFromPoll] = useState(false);
   const [initialSlotIds, setInitialSlotIds] = useState(new Set());
+  const [calendarUpdateOpen, setCalendarUpdateOpen] = useState(false);
+  const [calendarUpdateChecked, setCalendarUpdateChecked] = useState(false);
 
   const schedulerRef = useMemo(
     () => (isEditing ? doc(db, "schedulers", editId) : null),
@@ -429,157 +432,185 @@ export default function CreateSchedulerPage() {
     return response;
   };
 
-  const handleCreate = async (event) => {
-    event.preventDefault();
+  const getPollInputs = () => {
+    const explicitParticipants = Array.from(
+      new Set([user.email, ...inviteEmails].filter(Boolean).map(normalizeEmail))
+    );
+    const effectiveParticipants = Array.from(
+      new Set(
+        [...explicitParticipants, ...groupMemberEmails]
+          .filter(Boolean)
+          .map(normalizeEmail)
+      )
+    );
+    const pendingList = Array.from(
+      new Set(pendingInvites.filter(Boolean).map(normalizeEmail))
+    ).filter(
+      (email) => !explicitParticipants.includes(email) && !groupMemberSet.has(email)
+    );
+    const creatorEmail = normalizeEmail(user.email);
+    const pollTitle = title || "Untitled poll";
+    const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const timezoneModeForScheduler =
+      selectedTimezone === detectedTimezone ? "auto" : "manual";
+    return {
+      explicitParticipants,
+      effectiveParticipants,
+      pendingList,
+      creatorEmail,
+      pollTitle,
+      timezoneModeForScheduler,
+    };
+  };
 
-    if (!user) {
-      console.error("Create poll blocked: user not signed in");
-      toast.error("You must be signed in to create a session poll");
-      return;
+  const deleteCalendarEntry = async () => {
+    if (!editId) return;
+    const functions = getFunctions();
+    const deleteEvent = httpsCallable(functions, "googleCalendarDeleteEvent");
+    await deleteEvent({ schedulerId: editId });
+  };
+
+  const saveEdits = async ({ updateCalendar } = {}) => {
+    if (!schedulerRef || !editId) return false;
+    setSubmitting(true);
+    let success = false;
+    try {
+      const {
+        explicitParticipants,
+        effectiveParticipants,
+        pendingList,
+        creatorEmail,
+        pollTitle,
+        timezoneModeForScheduler,
+      } = getPollInputs();
+
+      if (updateCalendar && scheduler.data?.googleEventId) {
+        await deleteCalendarEntry();
+      }
+
+      const previousParticipants = new Set(
+        (scheduler.data?.participants || []).map((email) => normalizeEmail(email))
+      );
+      const previousPending = new Set(
+        (scheduler.data?.pendingInvites || []).map((email) => normalizeEmail(email))
+      );
+      const newAcceptedRecipients = explicitParticipants.filter(
+        (email) => !previousParticipants.has(email) && email !== creatorEmail
+      );
+      const newPendingRecipients = pendingList.filter(
+        (email) => !previousPending.has(email) && email !== creatorEmail
+      );
+      const removedPendingRecipients = Array.from(previousPending).filter(
+        (email) => !pendingList.includes(email)
+      );
+      await updateDoc(schedulerRef, {
+        title: pollTitle,
+        participants: explicitParticipants,
+        allowLinkSharing,
+        timezone: effectiveTimezone,
+        timezoneMode: timezoneModeForScheduler,
+        questingGroupId: selectedGroup?.id || null,
+        questingGroupName: selectedGroup?.name || null,
+        updatedAt: serverTimestamp(),
+      });
+
+      const currentSlotIds = new Set(slots.map((slot) => slot.id));
+      const removedIds = Array.from(initialSlotIds).filter(
+        (slotId) => !currentSlotIds.has(slotId)
+      );
+
+      await Promise.all(
+        slots.map((slot) => {
+          const slotRef = doc(db, "schedulers", editId, "slots", slot.id);
+          const data = {
+            start: slot.start.toISOString(),
+            end: slot.end.toISOString(),
+          };
+          if (!initialSlotIds.has(slot.id)) {
+            data.stats = { feasible: 0, preferred: 0 };
+          }
+          return setDoc(slotRef, data, { merge: true });
+        })
+      );
+
+      const participantSet = new Set(effectiveParticipants.map((email) => email.toLowerCase()));
+
+      if (removedIds.length > 0) {
+        await Promise.all(
+          removedIds.map((slotId) =>
+            deleteDoc(doc(db, "schedulers", editId, "slots", slotId))
+          )
+        );
+      }
+
+      await Promise.all(
+        votesSnapshot.data.map((voteDoc) => {
+          const userEmail = voteDoc.userEmail?.toLowerCase();
+          if (userEmail && !participantSet.has(userEmail)) {
+            return deleteDoc(doc(db, "schedulers", editId, "votes", voteDoc.id));
+          }
+          const votes = voteDoc.votes || {};
+          let changed = false;
+          const nextVotes = { ...votes };
+          removedIds.forEach((slotId) => {
+            if (nextVotes[slotId]) {
+              delete nextVotes[slotId];
+              changed = true;
+            }
+          });
+          if (!changed) return Promise.resolve();
+          return setDoc(
+            doc(db, "schedulers", editId, "votes", voteDoc.id),
+            { votes: nextVotes, updatedAt: serverTimestamp() },
+            { merge: true }
+          );
+        })
+      );
+
+      if (removedPendingRecipients.length > 0) {
+        await Promise.allSettled(
+          removedPendingRecipients.map((email) => revokePollInvite(editId, email))
+        );
+      }
+
+      if (newAcceptedRecipients.length > 0) {
+        try {
+          await sendAcceptedInvites(newAcceptedRecipients, editId, pollTitle);
+        } catch (inviteErr) {
+          console.error("Failed to send accepted invites:", inviteErr);
+        }
+      }
+
+      if (newPendingRecipients.length > 0) {
+        try {
+          await sendPendingInvites(newPendingRecipients, editId, pollTitle);
+        } catch (inviteErr) {
+          console.error("Failed to send pending invites:", inviteErr);
+          toast.error(inviteErr?.message || "Failed to send pending invites.");
+        }
+      }
+
+      navigate(`/scheduler/${editId}`);
+      success = true;
+    } catch (err) {
+      console.error("Failed to save session poll:", err);
+      toast.error(err.message || "Failed to save session poll");
+    } finally {
+      setSubmitting(false);
     }
+    return success;
+  };
 
-    if (!slots.length) {
-      console.error("Create poll blocked: no slots");
-      toast.error("Add at least one slot");
-      return;
-    }
-
-    if (hasInvalidSlots) {
-      console.error("Create poll blocked: past slots", { invalidSlotIds });
-      toast.error("Remove past slots before saving");
-      return;
-    }
-
+  const createPoll = async () => {
     setSubmitting(true);
     try {
-      const explicitParticipants = Array.from(
-        new Set([user.email, ...inviteEmails].filter(Boolean).map(normalizeEmail))
-      );
-      const effectiveParticipants = Array.from(
-        new Set(
-          [...explicitParticipants, ...groupMemberEmails]
-            .filter(Boolean)
-            .map(normalizeEmail)
-        )
-      );
-      const pendingList = Array.from(
-        new Set(pendingInvites.filter(Boolean).map(normalizeEmail))
-      ).filter(
-        (email) => !explicitParticipants.includes(email) && !groupMemberSet.has(email)
-      );
-      const creatorEmail = normalizeEmail(user.email);
-      const pollTitle = title || "Untitled poll";
-
-      const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const timezoneModeForScheduler =
-        selectedTimezone === detectedTimezone ? "auto" : "manual";
-
-      if (isEditing) {
-        const previousParticipants = new Set(
-          (scheduler.data?.participants || []).map((email) => normalizeEmail(email))
-        );
-        const previousPending = new Set(
-          (scheduler.data?.pendingInvites || []).map((email) => normalizeEmail(email))
-        );
-        const newAcceptedRecipients = explicitParticipants.filter(
-          (email) => !previousParticipants.has(email) && email !== creatorEmail
-        );
-        const newPendingRecipients = pendingList.filter(
-          (email) => !previousPending.has(email) && email !== creatorEmail
-        );
-        const removedPendingRecipients = Array.from(previousPending).filter(
-          (email) => !pendingList.includes(email)
-        );
-        await updateDoc(schedulerRef, {
-          title: pollTitle,
-          participants: explicitParticipants,
-          allowLinkSharing,
-          timezone: effectiveTimezone,
-          timezoneMode: timezoneModeForScheduler,
-          questingGroupId: selectedGroup?.id || null,
-          questingGroupName: selectedGroup?.name || null,
-          updatedAt: serverTimestamp(),
-        });
-
-        const currentSlotIds = new Set(slots.map((slot) => slot.id));
-        const removedIds = Array.from(initialSlotIds).filter(
-          (slotId) => !currentSlotIds.has(slotId)
-        );
-
-        await Promise.all(
-          slots.map((slot) => {
-            const slotRef = doc(db, "schedulers", editId, "slots", slot.id);
-            const data = {
-              start: slot.start.toISOString(),
-              end: slot.end.toISOString(),
-            };
-            if (!initialSlotIds.has(slot.id)) {
-              data.stats = { feasible: 0, preferred: 0 };
-            }
-            return setDoc(slotRef, data, { merge: true });
-          })
-        );
-
-        const participantSet = new Set(effectiveParticipants.map((email) => email.toLowerCase()));
-
-        if (removedIds.length > 0) {
-          await Promise.all(
-            removedIds.map((slotId) =>
-              deleteDoc(doc(db, "schedulers", editId, "slots", slotId))
-            )
-          );
-        }
-
-        await Promise.all(
-          votesSnapshot.data.map((voteDoc) => {
-            const userEmail = voteDoc.userEmail?.toLowerCase();
-            if (userEmail && !participantSet.has(userEmail)) {
-              return deleteDoc(doc(db, "schedulers", editId, "votes", voteDoc.id));
-            }
-            const votes = voteDoc.votes || {};
-            let changed = false;
-            const nextVotes = { ...votes };
-            removedIds.forEach((slotId) => {
-              if (nextVotes[slotId]) {
-                delete nextVotes[slotId];
-                changed = true;
-              }
-            });
-            if (!changed) return Promise.resolve();
-            return setDoc(
-              doc(db, "schedulers", editId, "votes", voteDoc.id),
-              { votes: nextVotes, updatedAt: serverTimestamp() },
-              { merge: true }
-            );
-          })
-        );
-
-        if (removedPendingRecipients.length > 0) {
-          await Promise.allSettled(
-            removedPendingRecipients.map((email) => revokePollInvite(editId, email))
-          );
-        }
-
-        if (newAcceptedRecipients.length > 0) {
-          try {
-            await sendAcceptedInvites(newAcceptedRecipients, editId, pollTitle);
-          } catch (inviteErr) {
-            console.error("Failed to send accepted invites:", inviteErr);
-          }
-        }
-
-        if (newPendingRecipients.length > 0) {
-          try {
-            await sendPendingInvites(newPendingRecipients, editId, pollTitle);
-          } catch (inviteErr) {
-            console.error("Failed to send pending invites:", inviteErr);
-            toast.error(inviteErr?.message || "Failed to send pending invites.");
-          }
-        }
-
-        navigate(`/scheduler/${editId}`);
-        return;
-      }
+      const {
+        explicitParticipants,
+        pendingList,
+        creatorEmail,
+        pollTitle,
+        timezoneModeForScheduler,
+      } = getPollInputs();
 
       const schedulerId = crypto.randomUUID();
       const newSchedulerRef = doc(db, "schedulers", schedulerId);
@@ -631,13 +662,55 @@ export default function CreateSchedulerPage() {
       }
 
       setCreatedId(schedulerId);
-      toast.success(isEditing ? "Session poll updated" : "Session poll created");
+      toast.success("Session poll created");
       navigate(`/scheduler/${schedulerId}`);
     } catch (err) {
       console.error("Failed to save session poll:", err);
       toast.error(err.message || "Failed to save session poll");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCreate = async (event) => {
+    event.preventDefault();
+
+    if (!user) {
+      console.error("Create poll blocked: user not signed in");
+      toast.error("You must be signed in to create a session poll");
+      return;
+    }
+
+    if (!slots.length) {
+      console.error("Create poll blocked: no slots");
+      toast.error("Add at least one slot");
+      return;
+    }
+
+    if (hasInvalidSlots) {
+      console.error("Create poll blocked: past slots", { invalidSlotIds });
+      toast.error("Remove past slots before saving");
+      return;
+    }
+
+    if (isEditing) {
+      if (scheduler.data?.googleEventId) {
+        setCalendarUpdateChecked(false);
+        setCalendarUpdateOpen(true);
+        return;
+      }
+      await saveEdits();
+      return;
+    }
+
+    await createPoll();
+  };
+
+  const confirmEditSave = async () => {
+    const success = await saveEdits({ updateCalendar: calendarUpdateChecked });
+    if (success) {
+      setCalendarUpdateOpen(false);
+      setCalendarUpdateChecked(false);
     }
   };
 
@@ -1189,6 +1262,54 @@ export default function CreateSchedulerPage() {
             </button>
           </div>
       </form>
+      <Dialog
+        open={calendarUpdateOpen}
+        onOpenChange={(open) => {
+          setCalendarUpdateOpen(open);
+          if (open) {
+            setCalendarUpdateChecked(false);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Update Google Calendar entry</DialogTitle>
+            <DialogDescription>
+              This poll has an existing calendar event. Confirm if it should be updated before saving changes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 rounded-2xl border border-slate-200/70 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={calendarUpdateChecked}
+                onChange={(event) => setCalendarUpdateChecked(event.target.checked)}
+              />
+              Yes, update Google Calendar entry (delete the linked event)
+            </label>
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              You can create a new event again when the poll is finalized.
+            </p>
+          </div>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setCalendarUpdateOpen(false)}
+              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmEditSave}
+              disabled={submitting}
+              className="rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:opacity-50"
+            >
+              {submitting ? "Saving..." : "Continue"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>

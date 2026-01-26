@@ -67,6 +67,7 @@
 ## Phase 7 — Re-open Workflow
 - [x] Re-open finalized scheduler
 - [x] Re-finalize with delete-old-event checkbox
+- [x] 2026-01-26: Add calendar update confirmation on reopen/edit/delete actions (delete linked event)
 
 ## Phase 8 — Settings
 - [x] Default session times per weekday

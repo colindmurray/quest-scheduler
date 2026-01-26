@@ -145,6 +145,9 @@ export default function SchedulerPage() {
   const [archiveSaving, setArchiveSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteSaving, setDeleteSaving] = useState(false);
+  const [deleteUpdateCalendar, setDeleteUpdateCalendar] = useState(false);
+  const [reopenOpen, setReopenOpen] = useState(false);
+  const [reopenUpdateCalendar, setReopenUpdateCalendar] = useState(false);
   const [invitePromptOpen, setInvitePromptOpen] = useState(false);
   const [invitePromptBusy, setInvitePromptBusy] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
@@ -799,6 +802,13 @@ export default function SchedulerPage() {
     }
   };
 
+  const deleteCalendarEntry = async () => {
+    if (!id) return;
+    const functions = getFunctions();
+    const deleteEvent = httpsCallable(functions, "googleCalendarDeleteEvent");
+    await deleteEvent({ schedulerId: id });
+  };
+
   const handleFinalize = async () => {
     if (!finalizeSlotId || !schedulerRef) return;
     setSaving(true);
@@ -934,20 +944,43 @@ export default function SchedulerPage() {
     }
   };
 
-  const handleReopen = async () => {
+  const handleReopen = async ({ updateCalendar } = {}) => {
     if (!schedulerRef) return;
     setSaving(true);
+    let success = false;
     try {
+      if (updateCalendar && scheduler.data?.googleEventId) {
+        await deleteCalendarEntry();
+      }
       await updateDoc(schedulerRef, {
         status: "OPEN",
         winningSlotId: null,
       });
       toast.success("Session poll re-opened");
+      success = true;
     } catch (err) {
       console.error("Failed to re-open session poll:", err);
       toast.error(err.message || "Failed to re-open session poll. Check your connection and try again.");
     } finally {
       setSaving(false);
+    }
+    return success;
+  };
+
+  const requestReopen = () => {
+    if (scheduler.data?.googleEventId) {
+      setReopenUpdateCalendar(false);
+      setReopenOpen(true);
+      return;
+    }
+    handleReopen();
+  };
+
+  const confirmReopen = async () => {
+    const success = await handleReopen({ updateCalendar: reopenUpdateCalendar });
+    if (success) {
+      setReopenOpen(false);
+      setReopenUpdateCalendar(false);
     }
   };
 
@@ -1101,6 +1134,9 @@ export default function SchedulerPage() {
     if (!schedulerRef || !id) return;
     setDeleteSaving(true);
     try {
+      if (deleteUpdateCalendar && scheduler.data?.googleEventId) {
+        await deleteCalendarEntry();
+      }
       // Delete all slots
       const slotsSnap = await getDocs(collection(db, "schedulers", id, "slots"));
       await Promise.all(slotsSnap.docs.map((docSnap) => deleteDoc(docSnap.ref)));
@@ -1295,7 +1331,7 @@ export default function SchedulerPage() {
                 {isCreator && scheduler.data?.status === "FINALIZED" && (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleReopen} disabled={saving}>
+                    <DropdownMenuItem onClick={requestReopen} disabled={saving}>
                       Re-open poll
                     </DropdownMenuItem>
                   </>
@@ -2162,7 +2198,66 @@ export default function SchedulerPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <Dialog
+        open={reopenOpen}
+        onOpenChange={(open) => {
+          setReopenOpen(open);
+          if (open) {
+            setReopenUpdateCalendar(false);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Re-open session poll</DialogTitle>
+            <DialogDescription>
+              Re-opening clears the winning slot and allows voting again.
+            </DialogDescription>
+          </DialogHeader>
+          {scheduler.data?.googleEventId && (
+            <div className="mt-4 rounded-2xl border border-slate-200/70 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={reopenUpdateCalendar}
+                  onChange={(event) => setReopenUpdateCalendar(event.target.checked)}
+                />
+                Update Google Calendar entry
+              </label>
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Delete the existing calendar event so the poll can be rescheduled.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setReopenOpen(false)}
+              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmReopen}
+              disabled={saving}
+              className="rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:opacity-50"
+            >
+              {saving ? "Re-opening..." : "Re-open poll"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(open) => {
+          setDeleteOpen(open);
+          if (open) {
+            setDeleteUpdateCalendar(false);
+          }
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Delete session poll</DialogTitle>
@@ -2178,6 +2273,16 @@ export default function SchedulerPage() {
               {participantEmails.length} participants · {slots.data?.length || 0} slots · {allVotes.data?.length || 0} votes
             </p>
           </div>
+          {scheduler.data?.googleEventId && (
+            <label className="mt-4 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <input
+                type="checkbox"
+                checked={deleteUpdateCalendar}
+                onChange={(event) => setDeleteUpdateCalendar(event.target.checked)}
+              />
+              Update Google Calendar entry (delete the linked event)
+            </label>
+          )}
           <DialogFooter>
             <button
               type="button"

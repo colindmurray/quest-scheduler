@@ -632,6 +632,62 @@ exports.googleCalendarFinalizePoll = functionsWithOAuthSecrets.https.onCall(asyn
   return { eventId, calendarId: calendarIdToSave };
 });
 
+exports.googleCalendarDeleteEvent = functionsWithOAuthSecrets.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Login required");
+  }
+  const { schedulerId, calendarId } = data || {};
+  if (!schedulerId) {
+    throw new functions.https.HttpsError("invalid-argument", "Missing scheduler id");
+  }
+
+  const schedulerRef = admin.firestore().collection("schedulers").doc(schedulerId);
+  const schedulerSnap = await schedulerRef.get();
+  if (!schedulerSnap.exists) {
+    throw new functions.https.HttpsError("not-found", "Scheduler not found");
+  }
+  const scheduler = schedulerSnap.data();
+  if (scheduler.creatorId !== context.auth.uid) {
+    throw new functions.https.HttpsError("permission-denied", "Only creator can update calendar");
+  }
+
+  if (!scheduler.googleEventId) {
+    await schedulerRef.update({ googleEventId: null });
+    return { deleted: false };
+  }
+
+  const refreshToken = await getRefreshToken(context.auth.uid);
+  if (!refreshToken) {
+    throw new functions.https.HttpsError("failed-precondition", "Google Calendar not linked");
+  }
+
+  const oauth2Client = getOAuthClient();
+  try {
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
+    const calendar = google.calendar({ version: "v3", auth: oauth2Client });
+    const calendarIdToDelete = scheduler.googleCalendarId || calendarId || "primary";
+    await calendar.events.delete({
+      calendarId: calendarIdToDelete,
+      eventId: scheduler.googleEventId,
+    });
+  } catch (err) {
+    if (isAuthExpiredError(err)) {
+      await clearRefreshToken(context.auth.uid);
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Google Calendar authorization expired. Re-link in Settings."
+      );
+    }
+    const status = err?.code || err?.response?.status;
+    if (status !== 404 && status !== 410) {
+      throw err;
+    }
+  }
+
+  await schedulerRef.update({ googleEventId: null });
+  return { deleted: true };
+});
+
 exports.sendFriendRequest = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError("unauthenticated", "Login required");
