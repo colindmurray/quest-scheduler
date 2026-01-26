@@ -163,3 +163,4 @@
 - [x] 2026-01-26: Add Discord account unlink flow (callable + Settings UI).
 - [x] 2026-01-26: Add Discord unlink-group slash command and handler.
 - [x] 2026-01-26: Add Discord link code rate limits, attempt caps, and admin permission checks.
+- [x] 2026-01-26: Show Discord poll sync status, View-in-Discord link, and Discord vote badges.

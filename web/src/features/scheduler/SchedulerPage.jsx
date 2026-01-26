@@ -188,6 +188,14 @@ export default function SchedulerPage() {
   );
   const questingGroupName =
     questingGroup.data?.name || scheduler.data?.questingGroupName || null;
+  const discordMessageUrl = scheduler.data?.discord?.messageUrl || null;
+  const discordStatus = scheduler.data?.discord?.messageId
+    ? "Posted to Discord"
+    : scheduler.data?.questingGroupId && questingGroup.data?.discord?.channelId
+      ? "Discord linked"
+      : scheduler.data?.questingGroupId
+        ? "Discord not linked"
+        : null;
   const questingGroupColor = useMemo(() => {
     const groupId = scheduler.data?.questingGroupId;
     if (!groupId) return null;
@@ -248,7 +256,11 @@ export default function SchedulerPage() {
     allVotes.data.forEach((voteDoc) => {
       if (!voteDoc?.userEmail) return;
       if (voteDoc.noTimesWork) return;
-      const userInfo = { email: voteDoc.userEmail, avatar: voteDoc.userAvatar };
+      const userInfo = {
+        email: voteDoc.userEmail,
+        avatar: voteDoc.userAvatar,
+        source: voteDoc.source || voteDoc.lastVotedFrom || "web",
+      };
       Object.entries(voteDoc.votes || {}).forEach(([slotId, value]) => {
         if (!map[slotId]) {
           map[slotId] = { preferred: [], feasible: [] };
@@ -1213,6 +1225,23 @@ export default function SchedulerPage() {
                   </span>
                 )}
               </div>
+              {discordStatus && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                    {discordStatus}
+                  </span>
+                  {discordMessageUrl && (
+                    <a
+                      href={discordMessageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-full border border-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+                    >
+                      View in Discord
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -1712,6 +1741,11 @@ export default function SchedulerPage() {
                                   <span className="text-slate-700 dark:text-slate-200">
                                     {voter.email}
                                   </span>
+                                  {voter.source === "discord" && (
+                                    <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 dark:border-indigo-700/60 dark:bg-indigo-900/40 dark:text-indigo-200">
+                                      Discord
+                                    </span>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -1742,6 +1776,11 @@ export default function SchedulerPage() {
                                   <span className="text-slate-700 dark:text-slate-200">
                                     {voter.email}
                                   </span>
+                                  {voter.source === "discord" && (
+                                    <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 dark:border-indigo-700/60 dark:bg-indigo-900/40 dark:text-indigo-200">
+                                      Discord
+                                    </span>
+                                  )}
                                 </div>
                               ))}
                             </div>

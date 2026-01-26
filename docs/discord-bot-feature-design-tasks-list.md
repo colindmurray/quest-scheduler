@@ -192,9 +192,9 @@ High bang-for-buck features that should be completed before releasing to users b
 
 | # | Task | Priority | Status | Dependencies | Notes |
 | --- | ------ | ---------- | --- | -------------- | ------- |
-| 81 | **Show Discord sync status on poll page** | P2 | [ ] | #38 | Indicator showing "Posted to Discord" with link to message. |
-| 82 | **Add "View in Discord" link** | P2 | [ ] | #81 | Use stored `discord.messageUrl`. |
-| 83 | **Show Discord vote source** | P2 | [ ] | #49 | Indicate which votes came from Discord vs web in vote summary. |
+| 81 | **Show Discord sync status on poll page** | P2 | [x] | #38 | Indicator showing "Posted to Discord" with link to message. Validation: no automated tests. |
+| 82 | **Add "View in Discord" link** | P2 | [x] | #81 | Use stored `discord.messageUrl`. Validation: no automated tests. |
+| 83 | **Show Discord vote source** | P2 | [x] | #49 | Indicate which votes came from Discord vs web in vote summary. Validation: no automated tests. |
 
 ---
 
