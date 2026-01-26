@@ -9,6 +9,7 @@ import SchedulerPage from "./features/scheduler/SchedulerPage";
 import CreateSchedulerPage from "./features/scheduler/CreateSchedulerPage";
 import PrivacyPage from "./features/legal/PrivacyPage";
 import TermsPage from "./features/legal/TermsPage";
+import DiscordBotPage from "./features/discord/DiscordBotPage";
 import ProtectedRoute from "./app/ProtectedRoute";
 import { useAuth } from "./app/AuthProvider";
 import AppLayout from "./app/AppLayout";
@@ -44,7 +45,7 @@ export default function App() {
   const { darkMode } = useTheme();
   const location = useLocation();
   const { user } = useAuth();
-  const isPublicRoute = location.pathname === "/" || location.pathname === "/privacy" || location.pathname === "/terms";
+  const isPublicRoute = ["/", "/privacy", "/terms", "/discord-bot"].includes(location.pathname);
   const forceDarkTheme = !user && isPublicRoute;
 
   return (
@@ -66,6 +67,7 @@ export default function App() {
           </RedirectWhenSignedIn>
         }
       />
+      <Route path="/discord-bot" element={<DiscordBotPage />} />
       <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route
