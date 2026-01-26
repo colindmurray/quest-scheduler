@@ -18,6 +18,8 @@
 - [x] 2026-01-26: Strengthen light-mode card borders for nested surfaces
 - [x] 2026-01-26: Add subtle light-mode shadow for nested cards
 - [x] 2026-01-26: Force landing page to dark theme + update branding text styling
+- [x] 2026-01-26: Update Privacy Policy + Terms for Discord integration and Google OAuth limited use
+- [x] 2026-01-26: Add external policy links and clarify token storage language in legal pages
 
 ## Phase 1 — Firebase Wiring
 - [x] Add Firebase config module
@@ -139,6 +141,7 @@
 - [x] 2026-01-26: Allow poll creators to clone and retain all votes via server-side clone
 - [x] 2026-01-26: Improve clone poll invitees (hide group members, show group card, filter recommendations)
 - [x] 2026-01-26: Add public Discord bot install page and invite flow
+- [x] 2026-01-26: Add Discord bot install link in account menu
 
 ## Phase 15 — Discord Integration (Design)
 - [x] Draft Discord bot feature design doc (poll voting for questing groups)

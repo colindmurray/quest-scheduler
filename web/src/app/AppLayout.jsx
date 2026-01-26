@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { Settings, LogOut, Users } from "lucide-react";
+import { Settings, LogOut, Users, Bot } from "lucide-react";
 import { useAuth } from "./AuthProvider";
 import { signOutUser } from "../lib/auth";
 import { UserAvatar } from "../components/ui/avatar";
@@ -66,6 +66,13 @@ export default function AppLayout({ children }) {
                 >
                   <Users className="h-4 w-4" />
                   Friends & Groups
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => navigate("/discord-bot")}
+                  className="flex items-center gap-2"
+                >
+                  <Bot className="h-4 w-4" />
+                  Add Discord bot
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => navigate("/settings")}
