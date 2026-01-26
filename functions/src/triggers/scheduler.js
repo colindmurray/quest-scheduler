@@ -8,6 +8,7 @@ const {
   DISCORD_REGION,
   DISCORD_BOT_TOKEN,
   DISCORD_SCHEDULER_TASK_QUEUE,
+  APP_URL,
 } = require("../discord/config");
 const { createChannelMessage, editChannelMessage } = require("../discord/discord-client");
 const { buildPollCard } = require("../discord/poll-card");
@@ -24,6 +25,13 @@ function hasNonDiscordChanges(beforeData, afterData) {
   delete beforeCopy.discord;
   delete afterCopy.discord;
   return JSON.stringify(beforeCopy) !== JSON.stringify(afterCopy);
+}
+
+function unixSeconds(iso) {
+  if (!iso) return null;
+  const value = new Date(iso).getTime();
+  if (Number.isNaN(value)) return null;
+  return Math.floor(value / 1000);
 }
 
 function computeSchedulerSyncHash(scheduler, slots) {
@@ -49,6 +57,19 @@ function computeSchedulerSyncHash(scheduler, slots) {
   };
 
   return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
+function buildFinalizationMention(notifyRoleId) {
+  if (!notifyRoleId) {
+    return { mention: "", allowedMentions: { parse: [] } };
+  }
+  if (notifyRoleId === "everyone") {
+    return { mention: "@everyone ", allowedMentions: { parse: ["everyone"] } };
+  }
+  return {
+    mention: `<@&${notifyRoleId}> `,
+    allowedMentions: { roles: [notifyRoleId] },
+  };
 }
 
 exports.postDiscordPollCard = onDocumentCreated(
@@ -208,16 +229,53 @@ exports.processDiscordSchedulerUpdate = onTaskDispatched(
         body: messageBody,
       });
 
+      let finalizedNotifiedAt = null;
+      if (scheduler.status === "FINALIZED" && !scheduler.discord?.finalizedNotifiedAt) {
+        const groupRef = scheduler.questingGroupId
+          ? db.collection("questingGroups").doc(scheduler.questingGroupId)
+          : null;
+        const groupSnap = groupRef ? await groupRef.get() : null;
+        const groupDiscord = groupSnap?.exists ? groupSnap.data()?.discord || {} : {};
+        const notifyRoleId = groupDiscord?.notifyRoleId || "everyone";
+        const { mention, allowedMentions } = buildFinalizationMention(notifyRoleId);
+        const winningSlot = slots.find((slot) => slot.id === scheduler.winningSlotId);
+        const winningUnix = unixSeconds(winningSlot?.start);
+        const winningText = winningUnix ? `<t:${winningUnix}:F>` : "a winning time";
+        const pollTitle = scheduler.title || "Quest Session";
+        const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
+
+        await createChannelMessage({
+          channelId: scheduler.discord.channelId,
+          body: {
+            content: `${mention}Poll finalized for **${pollTitle}**. Winning time: ${winningText}. View: ${pollUrl}`,
+            allowed_mentions: allowedMentions,
+          },
+        });
+        finalizedNotifiedAt = admin.firestore.FieldValue.serverTimestamp();
+      }
+
+      const discordUpdates = {
+        ...scheduler.discord,
+        lastUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastStatus: scheduler.status || "OPEN",
+        lastSyncedHash: syncHash,
+        pendingSync: admin.firestore.FieldValue.delete(),
+        pendingSyncAt: admin.firestore.FieldValue.delete(),
+        pendingSyncError: admin.firestore.FieldValue.delete(),
+      };
+
+      if (scheduler.status === "FINALIZED") {
+        if (finalizedNotifiedAt) {
+          discordUpdates.finalizedNotifiedAt = finalizedNotifiedAt;
+        }
+      } else {
+        discordUpdates.finalizedNotifiedAt = admin.firestore.FieldValue.delete();
+      }
+
       await schedulerRef.set(
         {
           discord: {
-            ...scheduler.discord,
-            lastUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            lastStatus: scheduler.status || "OPEN",
-            lastSyncedHash: syncHash,
-            pendingSync: admin.firestore.FieldValue.delete(),
-            pendingSyncAt: admin.firestore.FieldValue.delete(),
-            pendingSyncError: admin.firestore.FieldValue.delete(),
+            ...discordUpdates,
           },
         },
         { merge: true }

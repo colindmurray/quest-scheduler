@@ -371,7 +371,12 @@ async function handleLinkGroup(interaction) {
 
   const channelInfo = await fetchChannel({ channelId: interaction.channelId }).catch(() => null);
 
-  await db.collection("questingGroups").doc(codeData.groupId).set(
+  const groupRef = db.collection("questingGroups").doc(codeData.groupId);
+  const groupSnap = await groupRef.get();
+  const existingNotifyRoleId =
+    groupSnap.exists ? groupSnap.data()?.discord?.notifyRoleId : null;
+
+  await groupRef.set(
     {
       discord: {
         guildId: interaction.guildId,
@@ -379,6 +384,7 @@ async function handleLinkGroup(interaction) {
         channelName: channelInfo?.name || null,
         linkedAt: admin.firestore.FieldValue.serverTimestamp(),
         linkedByUserId: codeData.uid,
+        notifyRoleId: existingNotifyRoleId || "everyone",
       },
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     },

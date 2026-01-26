@@ -89,6 +89,7 @@ questingGroups/{groupId}:
     channelName
     linkedAt
     linkedByUserId
+    notifyRoleId   # role id to notify on finalization, or "everyone"
 
 schedulers/{schedulerId}:
   discord:
@@ -99,6 +100,10 @@ schedulers/{schedulerId}:
     lastUpdatedAt
     lastStatus
     lastSyncedHash
+    finalizedNotifiedAt
+    pendingSync
+    pendingSyncAt
+    pendingSyncError
 
 schedulers/{schedulerId}/votes/{userId}:
   source: "web" | "discord"
@@ -226,6 +231,7 @@ if (!isValid) {
 ## Event Handling Strategy
 Use **Firestore Triggers** to enqueue Cloud Tasks for poll updates.
 - **Debounce**: Use a `lastSyncedHash` and a 5-second delay on the Cloud Task to prevent rapid-fire edits (e.g., during a drag-and-drop reorder).
+- **Finalization announcement**: When status transitions to `FINALIZED`, post a new channel message with the winning time and mention `notifyRoleId` (including the `"everyone"` default).
 
 ## Idempotency & Retries
 - Discord may retry interactions; Cloud Tasks will retry on transient failures.

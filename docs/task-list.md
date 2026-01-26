@@ -166,3 +166,4 @@
 - [x] 2026-01-26: Show Discord poll sync status, View-in-Discord link, and Discord vote badges.
 - [x] 2026-01-26: Add Discord structured logging, latency tracking, and pendingSync retries.
 - [x] 2026-01-26: Close Discord vote panel when selecting "None work for me".
+- [x] 2026-01-26: Announce finalized polls in Discord with notifyRoleId/@everyone mentions.
