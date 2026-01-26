@@ -151,9 +151,9 @@ High bang-for-buck features that should be completed before releasing to users b
 
 | # | Task | Priority | Status | Dependencies | Notes |
 | --- | ------ | ---------- | --- | -------------- | ------- |
-| 65 | **Detect polls with >25 slots** | P1 | [ ] | #39 | Check slot count before building UI. |
-| 66 | **Implement pagination UI** | P1 | [ ] | #65 | "Next Page" / "Previous Page" buttons. Store page state in short-lived Firestore doc (TTL). |
-| 67 | **Merge selections across pages** | P1 | [ ] | #66 | Combine all page selections on final submit. |
+| 65 | **Detect polls with >25 slots** | P1 | [x] | #39 | Check slot count before building UI. Validation: no automated tests. |
+| 66 | **Implement pagination UI** | P1 | [x] | #65 | "Next Page" / "Previous Page" buttons. Store page state in short-lived Firestore doc (TTL). Validation: no automated tests. |
+| 67 | **Merge selections across pages** | P1 | [x] | #66 | Combine all page selections on final submit. Validation: no automated tests. |
 
 ### 2.3 User-Friendly Error Messages (P1)
 

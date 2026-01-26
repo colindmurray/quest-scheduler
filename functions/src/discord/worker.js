@@ -56,6 +56,27 @@ function hasLinkPermissions(memberPermissions) {
   }
 }
 
+function clampPageIndex(pageIndex, pageCount) {
+  if (pageCount <= 0) return 0;
+  if (pageIndex < 0) return 0;
+  if (pageIndex >= pageCount) return pageCount - 1;
+  return pageIndex;
+}
+
+function getVotePage(slots, pageIndex) {
+  const pageCount = Math.max(1, Math.ceil(slots.length / MAX_SELECT_OPTIONS));
+  const safeIndex = clampPageIndex(pageIndex || 0, pageCount);
+  const start = safeIndex * MAX_SELECT_OPTIONS;
+  const pageSlots = slots.slice(start, start + MAX_SELECT_OPTIONS);
+  return { pageIndex: safeIndex, pageCount, pageSlots };
+}
+
+function formatVoteContent(base, pageIndex, pageCount) {
+  if (pageCount > 1) {
+    return `${base} (Page ${pageIndex + 1} of ${pageCount})`;
+  }
+  return base;
+}
 
 function buildSessionId(schedulerId, discordUserId) {
   return `${schedulerId}:${discordUserId}`;
@@ -88,8 +109,10 @@ function buildVoteComponents({
   preferredIds,
   feasibleIds,
   timezone,
+  pageIndex,
+  pageCount,
 }) {
-  const options = slots.slice(0, MAX_SELECT_OPTIONS).map((slot) => ({
+  const options = slots.map((slot) => ({
     label: formatSlotLabel(slot.start, slot.end, timezone),
     value: slot.id,
   }));
@@ -106,6 +129,47 @@ function buildVoteComponents({
     ...option,
     default: feasibleSet.has(option.value),
   }));
+
+  const showPagination = pageCount > 1;
+  const actionButtons = [];
+  if (showPagination) {
+    actionButtons.push(
+      {
+        type: ComponentType.Button,
+        custom_id: `page_prev:${schedulerId}`,
+        style: 2,
+        label: "Previous",
+        disabled: pageIndex <= 0,
+      },
+      {
+        type: ComponentType.Button,
+        custom_id: `page_next:${schedulerId}`,
+        style: 2,
+        label: "Next",
+        disabled: pageIndex >= pageCount - 1,
+      }
+    );
+  }
+  actionButtons.push(
+    {
+      type: ComponentType.Button,
+      custom_id: `submit_vote:${schedulerId}`,
+      style: 1,
+      label: "Submit",
+    },
+    {
+      type: ComponentType.Button,
+      custom_id: `clear_votes:${schedulerId}`,
+      style: 2,
+      label: "Clear my votes",
+    },
+    {
+      type: ComponentType.Button,
+      custom_id: `none_work:${schedulerId}`,
+      style: 4,
+      label: "None work for me",
+    }
+  );
 
   return [
     {
@@ -128,7 +192,7 @@ function buildVoteComponents({
           custom_id: `vote_pref:${schedulerId}`,
           placeholder: "Select preferred times",
           min_values: 0,
-          max_values: Math.min(MAX_SELECT_OPTIONS, options.length),
+          max_values: options.length,
           options: preferredOptions,
         },
       ],
@@ -153,33 +217,14 @@ function buildVoteComponents({
           custom_id: `vote_feasible:${schedulerId}`,
           placeholder: "Select feasible times",
           min_values: 0,
-          max_values: Math.min(MAX_SELECT_OPTIONS, options.length),
+          max_values: options.length,
           options: feasibleOptions,
         },
       ],
     },
     {
       type: 1,
-      components: [
-        {
-          type: ComponentType.Button,
-          custom_id: `submit_vote:${schedulerId}`,
-          style: 1,
-          label: "Submit",
-        },
-        {
-          type: ComponentType.Button,
-          custom_id: `clear_votes:${schedulerId}`,
-          style: 2,
-          label: "Clear my votes",
-        },
-        {
-          type: ComponentType.Button,
-          custom_id: `none_work:${schedulerId}`,
-          style: 4,
-          label: "None work for me",
-        },
-      ],
+      components: actionButtons,
     },
   ];
 }
@@ -400,6 +445,7 @@ async function handleVoteButton(interaction, schedulerId) {
   const sessionRef = db.collection("discordVoteSessions").doc(
     buildSessionId(schedulerId, discordUserId)
   );
+  const pageInfo = getVotePage(slots, 0);
   await sessionRef.set(
     {
       schedulerId,
@@ -408,6 +454,7 @@ async function handleVoteButton(interaction, schedulerId) {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       preferredSlotIds: preferredIds,
       feasibleSlotIds: feasibleIds,
+      pageIndex: pageInfo.pageIndex,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       expiresAt: admin.firestore.Timestamp.fromDate(
         new Date(Date.now() + VOTE_SESSION_TTL_MINUTES * 60 * 1000)
@@ -418,14 +465,20 @@ async function handleVoteButton(interaction, schedulerId) {
 
   const components = buildVoteComponents({
     schedulerId,
-    slots,
+    slots: pageInfo.pageSlots,
     preferredIds,
     feasibleIds,
     timezone: scheduler?.timezone || null,
+    pageIndex: pageInfo.pageIndex,
+    pageCount: pageInfo.pageCount,
   });
 
   return respondWithMessage(interaction, {
-    content: "Select your preferred and feasible times, then press Submit.",
+    content: formatVoteContent(
+      "Select your preferred and feasible times, then press Submit.",
+      pageInfo.pageIndex,
+      pageInfo.pageCount
+    ),
     components,
   });
 }
@@ -446,11 +499,23 @@ async function handleVoteSelect(interaction, schedulerId, type) {
   const sessionData = sessionSnap.data() || {};
   const values = interaction?.data?.values || [];
 
+  const schedulerRef = db.collection("schedulers").doc(schedulerId);
+  const schedulerSnap = await schedulerRef.get();
+  const scheduler = schedulerSnap.exists ? schedulerSnap.data() : {};
+  const slotsSnap = await schedulerRef.collection("slots").get();
+  const slots = slotsSnap.docs
+    .map((doc) => ({ id: doc.id, ...doc.data() }))
+    .filter((slot) => slot.start && slot.end)
+    .sort((a, b) => new Date(a.start) - new Date(b.start));
+  const pageInfo = getVotePage(slots, sessionData.pageIndex || 0);
+  const pageSlotIds = new Set(pageInfo.pageSlots.map((slot) => slot.id));
+
   const update = {
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     expiresAt: admin.firestore.Timestamp.fromDate(
       new Date(Date.now() + VOTE_SESSION_TTL_MINUTES * 60 * 1000)
     ),
+    pageIndex: pageInfo.pageIndex,
   };
 
   const currentPreferred = sessionData.preferredSlotIds || [];
@@ -459,21 +524,63 @@ async function handleVoteSelect(interaction, schedulerId, type) {
   let nextFeasible = currentFeasible;
 
   if (type === "preferred") {
-    nextPreferred = values;
+    const preferredSet = new Set(
+      currentPreferred.filter((slotId) => !pageSlotIds.has(slotId))
+    );
+    values.forEach((slotId) => preferredSet.add(slotId));
+    nextPreferred = Array.from(preferredSet);
     const feasibleSet = new Set(currentFeasible);
-    values.forEach((slotId) => feasibleSet.add(slotId));
+    nextPreferred.forEach((slotId) => feasibleSet.add(slotId));
     nextFeasible = Array.from(feasibleSet);
     update.preferredSlotIds = nextPreferred;
     update.feasibleSlotIds = nextFeasible;
   } else {
-    nextFeasible = values;
-    const feasibleSet = new Set(values);
+    const feasibleSet = new Set(
+      currentFeasible.filter((slotId) => !pageSlotIds.has(slotId))
+    );
+    values.forEach((slotId) => feasibleSet.add(slotId));
+    nextFeasible = Array.from(feasibleSet);
     nextPreferred = currentPreferred.filter((slotId) => feasibleSet.has(slotId));
     update.feasibleSlotIds = nextFeasible;
     update.preferredSlotIds = nextPreferred;
   }
 
   await sessionRef.set(update, { merge: true });
+
+  const components = buildVoteComponents({
+    schedulerId,
+    slots: pageInfo.pageSlots,
+    preferredIds: nextPreferred,
+    feasibleIds: nextFeasible,
+    timezone: scheduler?.timezone || null,
+    pageIndex: pageInfo.pageIndex,
+    pageCount: pageInfo.pageCount,
+  });
+
+  return respondWithMessage(interaction, {
+    content: formatVoteContent(
+      "Selections saved. Submit when ready.",
+      pageInfo.pageIndex,
+      pageInfo.pageCount
+    ),
+    components,
+  });
+}
+
+async function handleVotePage(interaction, schedulerId, direction) {
+  const discordUserId = getDiscordUserId(interaction);
+  if (!discordUserId) {
+    return respondWithError(interaction, "Unable to identify your Discord account.");
+  }
+
+  const sessionRef = db.collection("discordVoteSessions").doc(
+    buildSessionId(schedulerId, discordUserId)
+  );
+  const sessionSnap = await sessionRef.get();
+  if (!sessionSnap.exists) {
+    return respondWithError(interaction, "Voting session expired. Click Vote again.");
+  }
+  const sessionData = sessionSnap.data() || {};
 
   const schedulerRef = db.collection("schedulers").doc(schedulerId);
   const schedulerSnap = await schedulerRef.get();
@@ -483,17 +590,42 @@ async function handleVoteSelect(interaction, schedulerId, type) {
     .map((doc) => ({ id: doc.id, ...doc.data() }))
     .filter((slot) => slot.start && slot.end)
     .sort((a, b) => new Date(a.start) - new Date(b.start));
+  if (slots.length === 0) {
+    return respondWithError(interaction, "No available slots to vote on.");
+  }
+
+  const currentPage = getVotePage(slots, sessionData.pageIndex || 0);
+  const nextIndex =
+    direction === "next" ? currentPage.pageIndex + 1 : currentPage.pageIndex - 1;
+  const pageInfo = getVotePage(slots, nextIndex);
+
+  await sessionRef.set(
+    {
+      pageIndex: pageInfo.pageIndex,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiresAt: admin.firestore.Timestamp.fromDate(
+        new Date(Date.now() + VOTE_SESSION_TTL_MINUTES * 60 * 1000)
+      ),
+    },
+    { merge: true }
+  );
 
   const components = buildVoteComponents({
     schedulerId,
-    slots,
-    preferredIds: nextPreferred,
-    feasibleIds: nextFeasible,
+    slots: pageInfo.pageSlots,
+    preferredIds: sessionData.preferredSlotIds || [],
+    feasibleIds: sessionData.feasibleSlotIds || [],
     timezone: scheduler?.timezone || null,
+    pageIndex: pageInfo.pageIndex,
+    pageCount: pageInfo.pageCount,
   });
 
   return respondWithMessage(interaction, {
-    content: "Selections saved. Submit when ready.",
+    content: formatVoteContent(
+      "Selections saved. Submit when ready.",
+      pageInfo.pageIndex,
+      pageInfo.pageCount
+    ),
     components,
   });
 }
@@ -568,6 +700,7 @@ async function handleClearVotes(interaction, schedulerId, noTimesWork) {
       qsUserId: linkedUser.uid,
       preferredSlotIds: [],
       feasibleSlotIds: [],
+      pageIndex: 0,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       expiresAt: admin.firestore.Timestamp.fromDate(
         new Date(Date.now() + VOTE_SESSION_TTL_MINUTES * 60 * 1000)
@@ -581,13 +714,16 @@ async function handleClearVotes(interaction, schedulerId, noTimesWork) {
     .map((doc) => ({ id: doc.id, ...doc.data() }))
     .filter((slot) => slot.start && slot.end)
     .sort((a, b) => new Date(a.start) - new Date(b.start));
+  const pageInfo = getVotePage(slots, 0);
 
   const components = buildVoteComponents({
     schedulerId,
-    slots,
+    slots: pageInfo.pageSlots,
     preferredIds: [],
     feasibleIds: [],
     timezone: scheduler?.timezone || null,
+    pageIndex: pageInfo.pageIndex,
+    pageCount: pageInfo.pageCount,
   });
 
   const message = noTimesWork
@@ -595,7 +731,7 @@ async function handleClearVotes(interaction, schedulerId, noTimesWork) {
     : "Votes cleared. You can pick new times below.";
 
   return respondWithMessage(interaction, {
-    content: message,
+    content: formatVoteContent(message, pageInfo.pageIndex, pageInfo.pageCount),
     components,
   });
 }
@@ -751,6 +887,22 @@ exports.processDiscordInteraction = onTaskDispatched(
           const schedulerId = customId.split(":")[1];
           if (schedulerId) {
             await handleSubmitVote(interaction, schedulerId);
+          } else {
+            await respondWithError(interaction, "Missing poll id.");
+          }
+          handled = true;
+        } else if (customId.startsWith("page_prev:")) {
+          const schedulerId = customId.split(":")[1];
+          if (schedulerId) {
+            await handleVotePage(interaction, schedulerId, "prev");
+          } else {
+            await respondWithError(interaction, "Missing poll id.");
+          }
+          handled = true;
+        } else if (customId.startsWith("page_next:")) {
+          const schedulerId = customId.split(":")[1];
+          if (schedulerId) {
+            await handleVotePage(interaction, schedulerId, "next");
           } else {
             await respondWithError(interaction, "Missing poll id.");
           }
