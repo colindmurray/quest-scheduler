@@ -89,7 +89,7 @@ questingGroups/{groupId}:
     channelName
     linkedAt
     linkedByUserId
-    notifyRoleId   # role id to notify on finalization, or "everyone"
+    notifyRoleId   # role id to notify on finalization, or "everyone" / "none"
 
 schedulers/{schedulerId}:
   discord:
@@ -232,6 +232,7 @@ if (!isValid) {
 Use **Firestore Triggers** to enqueue Cloud Tasks for poll updates.
 - **Debounce**: Use a `lastSyncedHash` and a 5-second delay on the Cloud Task to prevent rapid-fire edits (e.g., during a drag-and-drop reorder).
 - **Finalization announcement**: When status transitions to `FINALIZED`, post a new channel message with the winning time and mention `notifyRoleId` (including the `"everyone"` default).
+- **No-ping option**: If `notifyRoleId` is `"none"`, post the announcement without any mentions.
 - **Delete/unlink updates**: If a poll is deleted or unlinked from a channel, edit the existing Discord message to show the new status (e.g., DELETED or UNLINKED) and disable voting.
 
 ## Idempotency & Retries

@@ -168,3 +168,4 @@
 - [x] 2026-01-26: Close Discord vote panel when selecting "None work for me".
 - [x] 2026-01-26: Announce finalized polls in Discord with notifyRoleId/@everyone mentions.
 - [x] 2026-01-26: Sync Discord messages on poll delete/unlink/relink and expose notify role selection in group settings.
+- [x] 2026-01-26: Add "No ping" option for Discord finalization notifications.

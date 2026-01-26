@@ -78,7 +78,7 @@ async function updateDiscordStatusMessage({ discord, title, status, description 
 }
 
 function buildFinalizationMention(notifyRoleId) {
-  if (!notifyRoleId) {
+  if (!notifyRoleId || notifyRoleId === "none") {
     return { mention: "", allowedMentions: { parse: [] } };
   }
   if (notifyRoleId === "everyone") {

@@ -42,12 +42,16 @@ exports.discordListGuildRoles = onCall(
     }
 
     const roles = await fetchGuildRoles({ guildId });
-    const mapped = (roles || []).map((role) => {
+    const mapped = [
+      { id: "none", name: "No ping" },
+      { id: "everyone", name: "@everyone" },
+      ...(roles || []).map((role) => {
       if (role.id === guildId) {
         return { id: "everyone", name: "@everyone" };
       }
       return { id: role.id, name: role.name };
-    });
+      }),
+    ];
 
     const deduped = [];
     const seen = new Set();
