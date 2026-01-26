@@ -156,3 +156,4 @@
 - [x] 2026-01-25: Add inline labels above Discord vote dropdowns using disabled buttons.
 - [x] 2026-01-25: Keep preferred selections automatically included in feasible selections for Discord voting.
 - [x] 2026-01-26: Landing page highlights Discord voting support with a Discord callout.
+- [x] 2026-01-26: Add Discord voting actions for "Clear my votes" and "None work for me".

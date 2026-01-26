@@ -167,6 +167,18 @@ function buildVoteComponents({
           style: 1,
           label: "Submit",
         },
+        {
+          type: ComponentType.Button,
+          custom_id: `clear_votes:${schedulerId}`,
+          style: 2,
+          label: "Clear my votes",
+        },
+        {
+          type: ComponentType.Button,
+          custom_id: `none_work:${schedulerId}`,
+          style: 4,
+          label: "None work for me",
+        },
       ],
     },
   ];
@@ -486,6 +498,108 @@ async function handleVoteSelect(interaction, schedulerId, type) {
   });
 }
 
+async function handleClearVotes(interaction, schedulerId, noTimesWork) {
+  const schedulerRef = db.collection("schedulers").doc(schedulerId);
+  const schedulerSnap = await schedulerRef.get();
+  if (!schedulerSnap.exists) {
+    return respondWithError(interaction, "Poll not found.");
+  }
+  const scheduler = schedulerSnap.data();
+  if (scheduler.status !== "OPEN") {
+    return respondWithError(interaction, "Voting is closed for this poll.");
+  }
+  if (
+    scheduler.discord?.channelId &&
+    scheduler.discord.channelId !== interaction.channelId
+  ) {
+    return respondWithError(interaction, "This poll is linked to a different channel.");
+  }
+  if (
+    scheduler.discord?.guildId &&
+    scheduler.discord.guildId !== interaction.guildId
+  ) {
+    return respondWithError(interaction, "This poll is linked to a different server.");
+  }
+
+  const discordUserId = getDiscordUserId(interaction);
+  if (!discordUserId) {
+    return respondWithError(interaction, "Unable to identify your Discord account.");
+  }
+  const linkedUser = await getLinkedUser(discordUserId);
+  if (!linkedUser) {
+    return respondWithError(
+      interaction,
+      `Link your Discord account in Quest Scheduler: ${APP_URL}/settings?discord=link`
+    );
+  }
+
+  const userEmail = String(linkedUser.email || "").toLowerCase();
+  const isParticipant = await ensureParticipant(scheduler, userEmail);
+  if (!isParticipant) {
+    return respondWithError(
+      interaction,
+      "You're not a participant for this poll. Ask the organizer to invite you."
+    );
+  }
+
+  await schedulerRef
+    .collection("votes")
+    .doc(linkedUser.uid)
+    .set(
+      {
+        userEmail,
+        userAvatar: linkedUser.photoURL || null,
+        votes: {},
+        noTimesWork: Boolean(noTimesWork),
+        source: "discord",
+        lastVotedFrom: "discord",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+  const sessionRef = db.collection("discordVoteSessions").doc(
+    buildSessionId(schedulerId, discordUserId)
+  );
+  await sessionRef.set(
+    {
+      schedulerId,
+      discordUserId,
+      qsUserId: linkedUser.uid,
+      preferredSlotIds: [],
+      feasibleSlotIds: [],
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiresAt: admin.firestore.Timestamp.fromDate(
+        new Date(Date.now() + VOTE_SESSION_TTL_MINUTES * 60 * 1000)
+      ),
+    },
+    { merge: true }
+  );
+
+  const slotsSnap = await schedulerRef.collection("slots").get();
+  const slots = slotsSnap.docs
+    .map((doc) => ({ id: doc.id, ...doc.data() }))
+    .filter((slot) => slot.start && slot.end)
+    .sort((a, b) => new Date(a.start) - new Date(b.start));
+
+  const components = buildVoteComponents({
+    schedulerId,
+    slots,
+    preferredIds: [],
+    feasibleIds: [],
+    timezone: scheduler?.timezone || null,
+  });
+
+  const message = noTimesWork
+    ? "Marked as unavailable for this poll."
+    : "Votes cleared. You can pick new times below.";
+
+  return respondWithMessage(interaction, {
+    content: message,
+    components,
+  });
+}
+
 async function handleSubmitVote(interaction, schedulerId) {
   const discordUserId = getDiscordUserId(interaction);
   if (!discordUserId) {
@@ -637,6 +751,22 @@ exports.processDiscordInteraction = onTaskDispatched(
           const schedulerId = customId.split(":")[1];
           if (schedulerId) {
             await handleSubmitVote(interaction, schedulerId);
+          } else {
+            await respondWithError(interaction, "Missing poll id.");
+          }
+          handled = true;
+        } else if (customId.startsWith("clear_votes:")) {
+          const schedulerId = customId.split(":")[1];
+          if (schedulerId) {
+            await handleClearVotes(interaction, schedulerId, false);
+          } else {
+            await respondWithError(interaction, "Missing poll id.");
+          }
+          handled = true;
+        } else if (customId.startsWith("none_work:")) {
+          const schedulerId = customId.split(":")[1];
+          if (schedulerId) {
+            await handleClearVotes(interaction, schedulerId, true);
           } else {
             await respondWithError(interaction, "Missing poll id.");
           }

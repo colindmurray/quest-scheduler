@@ -144,8 +144,8 @@ High bang-for-buck features that should be completed before releasing to users b
 
 | # | Task | Priority | Status | Dependencies | Notes |
 | --- | ------ | ---------- | --- | -------------- | ------- |
-| 63 | **Add "Clear my votes" button** | P1 | [ ] | #40 | Writes empty vote set, clears `noTimesWork` flag. |
-| 64 | **Add "None work for me" button** | P1 | [ ] | #40 | Sets `noTimesWork: true`, clears slot votes. Distinct from clearing votes. |
+| 63 | **Add "Clear my votes" button** | P1 | [x] | #40 | Writes empty vote set, clears `noTimesWork` flag. Validation: no automated tests. |
+| 64 | **Add "None work for me" button** | P1 | [x] | #40 | Sets `noTimesWork: true`, clears slot votes. Distinct from clearing votes. Validation: no automated tests. |
 
 ### 2.2 Pagination for Large Polls (P1)
 
