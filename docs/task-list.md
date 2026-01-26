@@ -137,6 +137,7 @@
 - [x] 2026-01-25: Treat questing group members as implicit poll participants (rules + dashboard + Discord)
 - [x] 2026-01-26: Include questing group selection in clone poll dialog
 - [x] 2026-01-26: Allow poll creators to clone and retain all votes via server-side clone
+- [x] 2026-01-26: Improve clone poll invitees (hide group members, show group card, filter recommendations)
 
 ## Phase 15 — Discord Integration (Design)
 - [x] Draft Discord bot feature design doc (poll voting for questing groups)

@@ -57,6 +57,7 @@ import {
   buildColorMap,
   uniqueUsers,
 } from "../../components/ui/voter-avatars";
+import { UserAvatar } from "../../components/ui/avatar";
 import { LoadingState } from "../../components/ui/spinner";
 import { isValidEmail } from "../../lib/utils";
 import { createVoteSubmittedNotification, pollInviteNotificationId } from "../../lib/data/notifications";
@@ -205,10 +206,55 @@ export default function SchedulerPage() {
     if (!groupId) return null;
     return getGroupColor(groupId);
   }, [getGroupColor, scheduler.data?.questingGroupId]);
-  const { enrichUsers } = useUserProfiles(questingGroupMembers);
+  const cloneSelectedGroup = useMemo(() => {
+    if (!cloneGroupId) return null;
+    const match = groups.find((group) => group.id === cloneGroupId);
+    if (match) return match;
+    if (cloneGroupId === scheduler.data?.questingGroupId) {
+      return {
+        id: cloneGroupId,
+        name: questingGroup.data?.name || scheduler.data?.questingGroupName || "Questing group",
+        members: questingGroup.data?.members || [],
+      };
+    }
+    return {
+      id: cloneGroupId,
+      name: scheduler.data?.questingGroupName || "Questing group",
+      members: [],
+    };
+  }, [cloneGroupId, groups, questingGroup.data, scheduler.data?.questingGroupId, scheduler.data?.questingGroupName]);
+  const cloneGroupMembers = useMemo(
+    () => (cloneSelectedGroup?.members || []).filter(Boolean),
+    [cloneSelectedGroup]
+  );
+  const cloneGroupMemberEmails = useMemo(
+    () => cloneGroupMembers.map((email) => normalizeEmail(email)),
+    [cloneGroupMembers]
+  );
+  const cloneGroupMemberSet = useMemo(
+    () => new Set(cloneGroupMemberEmails),
+    [cloneGroupMemberEmails]
+  );
+  const cloneGroupColor = useMemo(
+    () => (cloneSelectedGroup?.id ? getGroupColor(cloneSelectedGroup.id) : null),
+    [cloneSelectedGroup?.id, getGroupColor]
+  );
+  const profileEmails = useMemo(() => {
+    const combined = new Set(
+      [...questingGroupMembers, ...cloneGroupMemberEmails]
+        .filter(Boolean)
+        .map((email) => normalizeEmail(email))
+    );
+    return Array.from(combined);
+  }, [questingGroupMembers, cloneGroupMemberEmails]);
+  const { enrichUsers } = useUserProfiles(profileEmails);
   const groupUsers = useMemo(
     () => enrichUsers(questingGroupMembers),
     [enrichUsers, questingGroupMembers]
+  );
+  const cloneGroupUsers = useMemo(
+    () => enrichUsers(cloneGroupMembers),
+    [enrichUsers, cloneGroupMembers]
   );
   const cloneGroupOptions = useMemo(() => {
     const base = groups.map((group) => ({
@@ -225,6 +271,26 @@ export default function SchedulerPage() {
     }
     return base;
   }, [groups, scheduler.data?.questingGroupId, scheduler.data?.questingGroupName]);
+  const cloneInviteSet = useMemo(
+    () => new Set(cloneInvites.map((email) => normalizeEmail(email))),
+    [cloneInvites]
+  );
+  const cloneRecommendedEmails = useMemo(() => {
+    const userEmail = user?.email ? normalizeEmail(user.email) : null;
+    return friends
+      .map((email) => normalizeEmail(email))
+      .filter(Boolean)
+      .filter((email) => email !== userEmail)
+      .filter((email) => !cloneInviteSet.has(email))
+      .filter((email) => !cloneGroupMemberSet.has(email));
+  }, [friends, cloneInviteSet, cloneGroupMemberSet, user?.email]);
+
+  useEffect(() => {
+    if (!cloneGroupId) return;
+    setCloneInvites((prev) =>
+      prev.filter((email) => !cloneGroupMemberSet.has(normalizeEmail(email)))
+    );
+  }, [cloneGroupId, cloneGroupMemberSet]);
 
   useEffect(() => {
     if (!scheduler.data || !user?.email || !id) return;
@@ -670,6 +736,14 @@ export default function SchedulerPage() {
       setCloneInviteError("You are already included as a participant.");
       return;
     }
+    if (cloneGroupMemberSet.has(normalized)) {
+      setCloneInviteError("That email is already included via the questing group.");
+      return;
+    }
+    if (cloneInvites.includes(normalized)) {
+      setCloneInviteError("That email is already invited.");
+      return;
+    }
     setCloneInvites((prev) => (prev.includes(normalized) ? prev : [...prev, normalized]));
     setCloneInviteInput("");
     setCloneInviteError(null);
@@ -1010,14 +1084,21 @@ export default function SchedulerPage() {
     // If user is NOT the original creator, they become the new owner:
     //   - exclude themselves from invites
     //   - add original creator to invites
-    const newInvites = participants.filter(
-      (email) => email && email.toLowerCase() !== user.email.toLowerCase()
-    );
+    const normalizedUser = normalizeEmail(user.email);
+    const baseInvites = participants
+      .filter(Boolean)
+      .map((email) => normalizeEmail(email))
+      .filter((email) => email !== normalizedUser);
+    const groupMemberSet = scheduler.data?.questingGroupId
+      ? questingGroupMemberSet
+      : new Set();
+    const newInvites = baseInvites.filter((email) => !groupMemberSet.has(email));
 
     // If not the creator, add original creator to invites
     if (!isCreator && originalCreatorEmail) {
-      if (!newInvites.some((e) => e.toLowerCase() === originalCreatorEmail.toLowerCase())) {
-        newInvites.push(originalCreatorEmail);
+      const normalizedCreator = normalizeEmail(originalCreatorEmail);
+      if (normalizedCreator && !newInvites.includes(normalizedCreator)) {
+        newInvites.push(normalizedCreator);
       }
     }
 
@@ -2185,6 +2266,35 @@ export default function SchedulerPage() {
                   You are included as {scheduler.data.creatorEmail}.
                 </p>
               )}
+              {cloneSelectedGroup && (
+                <div
+                  className="mt-3 rounded-2xl border px-3 py-3 text-xs"
+                  style={{
+                    borderColor: cloneGroupColor || "#10b981",
+                    backgroundColor: `${cloneGroupColor || "#10b981"}22`,
+                  }}
+                >
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-100">
+                    Members from {cloneSelectedGroup.name}
+                  </p>
+                  <div className="mt-2 grid gap-2">
+                    {cloneGroupUsers.length === 0 && (
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        No members listed for this group.
+                      </span>
+                    )}
+                    {cloneGroupUsers.map((member) => (
+                      <div
+                        key={member.email}
+                        className="flex items-center gap-2 rounded-xl border border-transparent bg-white/70 px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-slate-900/70 dark:text-slate-200"
+                      >
+                        <UserAvatar email={member.email} src={member.avatar} size={22} />
+                        <span>{member.email}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="mt-3 flex flex-wrap gap-2">
                 {cloneInvites.length === 0 && (
                   <span className="text-xs text-slate-400 dark:text-slate-500">
@@ -2204,13 +2314,13 @@ export default function SchedulerPage() {
                 ))}
               </div>
 
-              {friends.length > 0 && (
+              {cloneRecommendedEmails.length > 0 && (
                 <>
                   <p className="mt-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    Recommended
+                    Recommended (from friends)
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {friends.map((email) => (
+                    {cloneRecommendedEmails.map((email) => (
                       <button
                         key={email}
                         type="button"
