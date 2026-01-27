@@ -102,13 +102,22 @@ export async function revokePollInvite(schedulerId, inviteeEmail, inviteeUserId 
   });
 }
 
-export async function removeParticipantFromPoll(schedulerId, participantEmail, removeVotes = true) {
+export async function removeParticipantFromPoll(
+  schedulerId,
+  participantEmail,
+  removeVotes = true,
+  removePendingInvite = false
+) {
   const ref = doc(db, "schedulers", schedulerId);
   const normalizedEmail = participantEmail.toLowerCase();
   await updateDoc(ref, {
     participants: arrayRemove(normalizedEmail),
     updatedAt: serverTimestamp(),
   });
+
+  if (removePendingInvite) {
+    await revokePollInvite(schedulerId, normalizedEmail);
+  }
 
   if (removeVotes) {
     await removeVotesByEmail(schedulerId, normalizedEmail);

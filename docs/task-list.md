@@ -33,6 +33,7 @@
 ## Phase 2 — Data Model + Rules
 - [x] Define Firestore collections and document shapes (`docs/implementation-plan.md`)
 - [x] Implement security rules
+- [x] 2026-01-27: Allow poll creators to delete vote docs to unblock poll deletion with questing groups
 - [ ] Seed minimal test data (local only)
 
 ## Phase 3 — App Shell
@@ -78,6 +79,7 @@
 - [x] Add delete profile flow with confirmation
 - [x] Delete profile removes outgoing friend requests and accepted links
 - [x] Update legal pages with account deletion language
+- [x] 2026-01-27: Account deletion clears votes from all polls
 
 ## Phase 9 — Notifications
 - [ ] Configure SMTP credentials + deploy Trigger Email extension (installed; placeholders in `extensions/firestore-send-email.env`)
@@ -117,6 +119,8 @@
 - [ ] Verify Google OAuth scopes in production
 - [x] 2026-01-26: Remove calendar scopes from login; limit calendar OAuth scopes to calendar events + calendar list read
 - [x] 2026-01-26: Tighten privacy policy language to state no calendar event details are read
+- [x] 2026-01-26: Clarify friendRequests collection represents full friendship lifecycle in implementation plan
+- [x] 2026-01-26: Add Google Identity Services button on /auth with env-configured client ID
 - [x] Remove legacy App Hosting backend (`studio`) so only Hosting remains
 
 ## Phase 14 — Calendar Auth Integrity
@@ -147,6 +151,7 @@
 - [x] 2026-01-26: Remove bot permissions integer from UI and add Discord logo to install CTA
 - [x] 2026-01-26: Swap Discord CTA logo asset and restyle button to Discord palette
 - [x] 2026-01-26: Center Discord CTA and move permissions note below
+- [x] 2026-01-27: Clean up group member poll votes/invites via callable removal
 
 ## Phase 15 — Discord Integration (Design)
 - [x] Draft Discord bot feature design doc (poll voting for questing groups)
@@ -183,3 +188,15 @@
 - [x] 2026-01-26: Sync Discord messages on poll delete/unlink/relink and expose notify role selection in group settings.
 - [x] 2026-01-26: Add "No ping" option for Discord finalization notifications.
 - [x] 2026-01-26: Clear Discord voting UI for closed polls and post reopen alerts with @ mentions.
+
+## Phase 17 — Login & Registration Overhaul
+- [x] Add `/auth` route + unified auth UI (Google + Email/Password).
+- [x] Ensure user profile docs created on sign-in + auth trigger backup.
+- [x] Add verification banner and enforce verified email for poll/group creation.
+- [x] Add account linking UI + calendar linking conflict checks.
+- [x] Add admin user tool script for delete/suspend/invite allowance updates.
+- [x] 2026-01-27: Draft Discord login portal design doc (`docs/discord-login-protal.md`).
+- [ ] Manual QA for auth scenarios + Firebase Console checks (providers, one-account-per-email).
+
+## Phase 18 — Calendar Event Sync (Design)
+- [x] 2026-01-27: Draft calendar event sync design doc (`docs/calendar_event_sync_design_doc.md`)

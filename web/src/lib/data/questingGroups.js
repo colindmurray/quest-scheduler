@@ -1,4 +1,5 @@
 import { collection, doc, query, where, serverTimestamp, setDoc, updateDoc, deleteDoc, arrayUnion, arrayRemove, getDocs, getDoc, deleteField } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "../firebase";
 import { createGroupInviteNotification, createGroupMemberChangeNotification, createGroupInviteAcceptedNotification, groupInviteNotificationId, deleteNotification } from "./notifications";
 import { findUserIdByEmail } from "./users";
@@ -232,19 +233,10 @@ export async function getPollsUsingGroup(groupId) {
 
 // Remove member from all polls that use a group
 export async function removeMemberFromGroupPolls(groupId, memberEmail) {
-  const polls = await getPollsUsingGroup(groupId);
-
-  const results = await Promise.allSettled(
-    polls.map((poll) => {
-      const pollRef = doc(db, "schedulers", poll.id);
-      return updateDoc(pollRef, {
-        participants: arrayRemove(memberEmail.toLowerCase()),
-      });
-    })
-  );
-
-  const failures = results.filter((result) => result.status === "rejected");
-  if (failures.length > 0) {
-    console.warn("Some group poll participant removals failed:", failures);
-  }
+  const functions = getFunctions();
+  const cleanupPolls = httpsCallable(functions, "removeGroupMemberFromPolls");
+  await cleanupPolls({
+    groupId,
+    memberEmail: memberEmail.toLowerCase(),
+  });
 }

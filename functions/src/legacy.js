@@ -488,17 +488,41 @@ exports.googleCalendarOAuthCallback = functionsWithOAuthSecrets.https.onRequest(
       res.status(400).send("Missing refresh token. Please revoke and retry.");
       return;
     }
-    const authUser = await admin.auth().getUser(uid);
-    const expectedEmail = normalizeEmail(authUser.email);
     const tokenEmail = normalizeEmail(await getOAuthEmail(oauth2Client, tokens));
-    if (!expectedEmail || !tokenEmail || expectedEmail !== tokenEmail) {
+    if (!tokenEmail) {
       await admin.firestore().collection("oauthStates").doc(state).delete();
-      res
-        .status(403)
-        .send("Google account mismatch. Please use the same account you signed in with.");
+      res.status(400).send("Unable to determine Google account email.");
       return;
     }
+
+    try {
+      const existingUser = await admin.auth().getUserByEmail(tokenEmail);
+      if (existingUser.uid !== uid) {
+        await admin.firestore().collection("oauthStates").doc(state).delete();
+        res
+          .status(409)
+          .send("This Google account is already associated with another Quest Scheduler user.");
+        return;
+      }
+    } catch (error) {
+      if (error?.code !== "auth/user-not-found") {
+        throw error;
+      }
+    }
     await storeRefreshToken(uid, tokens.refresh_token);
+    await admin
+      .firestore()
+      .collection("users")
+      .doc(uid)
+      .set(
+        {
+          settings: {
+            linkedCalendarEmail: tokenEmail,
+          },
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
     await admin.firestore().collection("oauthStates").doc(state).delete();
     const { appUrl } = getConfig();
     const redirectUrl = appUrl ? `${appUrl}/settings?calendar=linked` : "/";
@@ -1161,6 +1185,95 @@ exports.revokePollInvite = functions.https.onCall(async (data, context) => {
   return { ok: true };
 });
 
+exports.removeGroupMemberFromPolls = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Login required");
+  }
+
+  const groupId = String(data?.groupId || "").trim();
+  const memberEmail = normalizeEmail(data?.memberEmail);
+  if (!groupId || !memberEmail) {
+    throw new functions.https.HttpsError("invalid-argument", "Missing group or member email.");
+  }
+
+  const db = admin.firestore();
+  const groupRef = db.collection("questingGroups").doc(groupId);
+  const groupSnap = await groupRef.get();
+  if (!groupSnap.exists) {
+    throw new functions.https.HttpsError("not-found", "Questing group not found.");
+  }
+
+  const group = groupSnap.data() || {};
+  const requesterUid = context.auth.uid;
+  const requesterEmail = normalizeEmail(context.auth.token.email);
+  const isCreator = group.creatorId === requesterUid;
+  const isMember = Array.isArray(group.members) && group.members.includes(requesterEmail);
+  const isManager = isCreator || (group.memberManaged === true && isMember);
+  const isSelf = requesterEmail && requesterEmail === memberEmail;
+
+  if (!isManager && !isSelf) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "Only group managers or the member themselves can remove poll data."
+    );
+  }
+
+  const memberUid = await findUserIdByEmail(memberEmail);
+  const pollsSnap = await db
+    .collection("schedulers")
+    .where("questingGroupId", "==", groupId)
+    .get();
+
+  const pollDocs = pollsSnap.docs;
+  if (pollDocs.length === 0) {
+    return { ok: true, polls: 0 };
+  }
+
+  const deleteVoteDocs = async (pollRef) => {
+    if (memberUid) {
+      await pollRef.collection("votes").doc(memberUid).delete().catch(() => undefined);
+    }
+    const voteSnap = await pollRef
+      .collection("votes")
+      .where("userEmail", "==", memberEmail)
+      .get();
+    if (!voteSnap.empty) {
+      await batchDelete(voteSnap.docs);
+    }
+  };
+
+  const notificationDeletes = [];
+  if (memberUid) {
+    pollDocs.forEach((pollDoc) => {
+      notificationDeletes.push(
+        db
+          .collection("users")
+          .doc(memberUid)
+          .collection("notifications")
+          .doc(`pollInvite:${pollDoc.id}`)
+          .delete()
+          .catch(() => undefined)
+      );
+    });
+  }
+
+  for (const pollDoc of pollDocs) {
+    await pollDoc.ref.update({
+      participants: admin.firestore.FieldValue.arrayRemove(memberEmail),
+      pendingInvites: admin.firestore.FieldValue.arrayRemove(memberEmail),
+      [`pendingInviteMeta.${memberEmail}`]: admin.firestore.FieldValue.delete(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    await deleteVoteDocs(pollDoc.ref);
+  }
+
+  if (notificationDeletes.length > 0) {
+    await Promise.all(notificationDeletes);
+  }
+
+  return { ok: true, polls: pollDocs.length };
+});
+
 exports.blockUser = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError("unauthenticated", "Login required");
@@ -1319,6 +1432,35 @@ async function batchDelete(docs) {
   await commitBatch(batch, count);
 }
 
+async function deleteUserVotesEverywhere(uid, email) {
+  const db = admin.firestore();
+  const seen = new Map();
+  if (uid) {
+    const votesById = await db
+      .collectionGroup("votes")
+      .where(admin.firestore.FieldPath.documentId(), "==", uid)
+      .get();
+    votesById.docs.forEach((docSnap) => {
+      seen.set(docSnap.ref.path, docSnap);
+    });
+  }
+  if (email) {
+    const votesByEmail = await db
+      .collectionGroup("votes")
+      .where("userEmail", "==", email)
+      .get();
+    votesByEmail.docs.forEach((docSnap) => {
+      if (!seen.has(docSnap.ref.path)) {
+        seen.set(docSnap.ref.path, docSnap);
+      }
+    });
+  }
+  const docs = Array.from(seen.values());
+  if (docs.length > 0) {
+    await batchDelete(docs);
+  }
+}
+
 exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError("unauthenticated", "Login required");
@@ -1341,6 +1483,7 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
     const isSuspended =
       userData?.suspended === true ||
       (typeof userData?.inviteAllowance === "number" && userData.inviteAllowance <= 0);
+    const discordUserId = userData?.discord?.userId ? String(userData.discord.userId) : null;
     if (isSuspended) {
       await db
         .collection("bannedEmails")
@@ -1354,6 +1497,23 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
           { merge: true }
         );
     }
+
+    step = "discord-cleanup";
+    const discordDeletes = [];
+    if (discordUserId) {
+      discordDeletes.push(
+        db.collection("discordUserLinks").doc(discordUserId).delete().catch(() => undefined)
+      );
+    }
+    discordDeletes.push(
+      db.collection("discordLinkCodeRateLimits").doc(uid).delete().catch(() => undefined)
+    );
+    const [linkCodesSnap, voteSessionsSnap] = await Promise.all([
+      db.collection("discordLinkCodes").where("uid", "==", uid).get(),
+      db.collection("discordVoteSessions").where("qsUserId", "==", uid).get(),
+    ]);
+    await batchDelete([...linkCodesSnap.docs, ...voteSessionsSnap.docs]);
+    await Promise.all(discordDeletes);
 
     step = "friend-requests";
     const [fromSnap, toSnap] = await Promise.all([
@@ -1408,8 +1568,9 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
       const friendNotifs = friendNotifSnap.docs.filter(
         (docSnap) => docSnap.data()?.type === "FRIEND_REQUEST"
       );
+      const inviteTypes = ["GROUP_INVITE", "POLL_INVITE", "SESSION_INVITE"];
       const groupOrPollInvites = groupInviteSnap.docs.filter((docSnap) =>
-        ["GROUP_INVITE", "POLL_INVITE"].includes(docSnap.data()?.type)
+        inviteTypes.includes(docSnap.data()?.type)
       );
       await batchDelete([...friendNotifs, ...groupOrPollInvites]);
     } catch (err) {
@@ -1421,6 +1582,9 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
     for (const pollDoc of createdPollsSnap.docs) {
       await db.recursiveDelete(pollDoc.ref);
     }
+
+    step = "all-votes";
+    await deleteUserVotesEverywhere(uid, email);
 
     step = "participant-polls";
     const participantPollsSnap = await db

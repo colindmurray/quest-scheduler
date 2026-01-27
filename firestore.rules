@@ -5,6 +5,11 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isEmailVerified() {
+      return request.auth.token.email_verified == true
+        || request.auth.token.firebase.sign_in_provider == 'google.com';
+    }
+
     function userEmail() {
       return request.auth.token.email;
     }
@@ -174,7 +179,9 @@ service cloud.firestore {
       );
 
       // Create: any authenticated user can create a group
-      allow create: if isSignedIn() && request.resource.data.creatorId == request.auth.uid;
+      allow create: if isSignedIn()
+        && isEmailVerified()
+        && request.resource.data.creatorId == request.auth.uid;
 
       // Update: creator always can update, members can update if memberManaged is true, invitees can accept/decline
       allow update: if isSignedIn() && (
@@ -259,6 +266,7 @@ service cloud.firestore {
 
       allow read: if canReadScheduler(resource.data);
       allow create: if isSignedIn()
+        && isEmailVerified()
         && request.resource.data.creatorId == request.auth.uid
         && (!request.resource.data.keys().hasAny(["pendingInviteMeta"]))
         && (request.resource.data.pendingInvites == null
@@ -278,9 +286,14 @@ service cloud.firestore {
 
       match /votes/{userId} {
         allow read: if canReadScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data);
-        allow write: if isSignedIn()
+        allow create, update: if isSignedIn()
           && request.auth.uid == userId
           && canVoteScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data);
+        allow delete: if isSignedIn() && (
+          (request.auth.uid == userId
+            && canVoteScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data))
+          || isCreator(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data)
+        );
       }
     }
 

@@ -215,6 +215,7 @@ export function useQuestingGroups() {
     async (groupId) => {
       if (!user?.email) return;
       await leaveGroup(groupId, user.email);
+      await removeMemberFromGroupPolls(groupId, user.email);
     },
     [user?.email]
   );

@@ -557,7 +557,7 @@ export default function SchedulerPage() {
     if (!id || !user?.email) return;
     setLeaveSaving(true);
     try {
-      await removeParticipantFromPoll(id, user.email, true);
+      await removeParticipantFromPoll(id, user.email, true, false);
       toast.success("You left the poll");
       setLeaveOpen(false);
       navigate("/dashboard");
@@ -576,7 +576,7 @@ export default function SchedulerPage() {
       return;
     }
     try {
-      await removeParticipantFromPoll(id, memberToRemove, true);
+      await removeParticipantFromPoll(id, memberToRemove, true, true);
       toast.success("Participant removed");
       setRemoveMemberOpen(false);
       setMemberToRemove(null);
