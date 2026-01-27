@@ -1,3 +1,4 @@
+import { updateProfile } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -6,7 +7,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { useAuth } from "../../app/AuthProvider";
 import { useTheme } from "../../app/ThemeProvider";
 import { db } from "../../lib/firebase";
-import { signOutUser } from "../../lib/auth";
+import { linkGoogleAccount, resendVerificationEmail, signOutUser } from "../../lib/auth";
 import { startDiscordOAuth, unlinkDiscordAccount } from "../../lib/data/discord";
 import { LoadingState } from "../../components/ui/spinner";
 import { Switch } from "../../components/ui/switch";
@@ -28,11 +29,12 @@ import {
 
 const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { darkMode, setDarkMode } = useTheme();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [displayName, setDisplayName] = useState("");
   const [defaultDuration, setDefaultDuration] = useState(240);
   const [defaultTitle, setDefaultTitle] = useState("Quest Session");
   const [defaultDescription, setDefaultDescription] = useState("");
@@ -46,6 +48,7 @@ export default function SettingsPage() {
   const [availableCalendars, setAvailableCalendars] = useState([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarError, setCalendarError] = useState(null);
+  const [linkedCalendarEmail, setLinkedCalendarEmail] = useState(null);
   const [calendarSyncPreference, setCalendarSyncPreference] = useState("poll");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
@@ -53,6 +56,8 @@ export default function SettingsPage() {
   const [discordInfo, setDiscordInfo] = useState(null);
   const [discordLinking, setDiscordLinking] = useState(false);
   const [discordUnlinking, setDiscordUnlinking] = useState(false);
+  const [googleLinking, setGoogleLinking] = useState(false);
+  const [verificationSending, setVerificationSending] = useState(false);
   const [defaultTimes, setDefaultTimes] = useState({
     1: "18:00",
     2: "18:00",
@@ -64,6 +69,18 @@ export default function SettingsPage() {
   });
 
   const userRef = useMemo(() => (user ? doc(db, "users", user.uid) : null), [user]);
+  const providerData = user?.providerData || [];
+  const hasPasswordProvider = providerData.some((provider) => provider.providerId === "password");
+  const googleProviderEmail =
+    providerData.find((provider) => provider.providerId === "google.com")?.email || null;
+  const googleEmailMismatch =
+    googleProviderEmail &&
+    user?.email &&
+    googleProviderEmail.toLowerCase() !== user.email.toLowerCase();
+  const calendarEmailMismatch =
+    linkedCalendarEmail &&
+    user?.email &&
+    linkedCalendarEmail.toLowerCase() !== user.email.toLowerCase();
 
   useEffect(() => {
     if (!userRef) return;
@@ -72,6 +89,7 @@ export default function SettingsPage() {
       .then((snap) => {
         if (snap.exists()) {
           const data = snap.data();
+          setDisplayName(data.displayName || user?.displayName || user?.email || "");
           setDefaultDuration(data.settings?.defaultDurationMinutes ?? 240);
           setDefaultTitle(data.settings?.defaultTitle ?? "Quest Session");
           setDefaultDescription(data.settings?.defaultDescription ?? "");
@@ -85,6 +103,7 @@ export default function SettingsPage() {
             data.settings?.timezone ??
               Intl.DateTimeFormat().resolvedOptions().timeZone
           );
+          setLinkedCalendarEmail(data.settings?.linkedCalendarEmail || null);
           if (!data.settings?.googleCalendarIds && data.settings?.googleCalendarId) {
             setCalendarIds([data.settings.googleCalendarId]);
           }
@@ -99,7 +118,12 @@ export default function SettingsPage() {
         toast.error("Failed to load settings: " + err.message);
       })
       .finally(() => setLoading(false));
-  }, [userRef]);
+  }, [userRef, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    setDisplayName((prev) => prev || user.displayName || user.email || "");
+  }, [user]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -205,10 +229,57 @@ export default function SettingsPage() {
     }
   };
 
+  const handleGoogleLink = async () => {
+    setGoogleLinking(true);
+    try {
+      await linkGoogleAccount();
+      await refreshUser();
+      toast.success("Google account linked.");
+    } catch (err) {
+      const code = err?.code || "";
+      const message =
+        code === "auth/credential-already-in-use"
+          ? "This Google account is already linked to another Quest Scheduler account."
+          : code === "auth/account-exists-with-different-credential"
+            ? "This email already has a different sign-in method. Log in first, then link Google."
+            : err?.message || "Failed to link Google account.";
+      toast.error(message);
+    } finally {
+      setGoogleLinking(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setVerificationSending(true);
+    try {
+      await resendVerificationEmail();
+      toast.success("Verification email sent.");
+    } catch (err) {
+      toast.error(err?.message || "Failed to send verification email.");
+    } finally {
+      setVerificationSending(false);
+    }
+  };
+
+  const handleRefreshVerification = async () => {
+    try {
+      const refreshed = await refreshUser();
+      if (refreshed?.emailVerified) {
+        toast.success("Email verified!");
+      } else {
+        toast("Still not verified. Check your inbox.");
+      }
+    } catch (err) {
+      toast.error("Failed to refresh verification status.");
+    }
+  };
+
   const handleSave = async () => {
     if (!userRef) return;
     setSaving(true);
     try {
+      const normalizedDisplayName =
+        displayName.trim() || user?.displayName || user?.email || "User";
       const primaryCalendarId = [...calendarIds].sort((a, b) => {
         const nameA = calendarNames[a] || a;
         const nameB = calendarNames[b] || b;
@@ -221,8 +292,8 @@ export default function SettingsPage() {
       await setDoc(
         userRef,
         {
-          email: user.email,
-          displayName: user.displayName,
+          email: user.email?.toLowerCase(),
+          displayName: normalizedDisplayName,
           photoURL: user.photoURL,
           calendarSyncPreference,
           settings: {
@@ -245,14 +316,19 @@ export default function SettingsPage() {
       await setDoc(
         doc(db, "usersPublic", user.uid),
         {
-          email: user.email,
-          displayName: user.displayName,
+          email: user.email?.toLowerCase(),
+          displayName: normalizedDisplayName,
           photoURL: user.photoURL,
           emailNotifications,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
+      if (user.displayName !== normalizedDisplayName) {
+        await updateProfile(user, { displayName: normalizedDisplayName });
+        await refreshUser();
+      }
+      setDisplayName(normalizedDisplayName);
       setAvailableCalendars([]);
       setCalendarError(null);
       toast.success("Settings saved successfully");
@@ -317,6 +393,87 @@ export default function SettingsPage() {
           <>
           <div className="mt-6 grid gap-6">
             <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Account</h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Manage your display name, sign-in methods, and verification status.
+              </p>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Display name
+                  <input
+                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                    value={displayName}
+                    onChange={(event) => setDisplayName(event.target.value)}
+                  />
+                </label>
+                <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Email
+                  <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
+                    {user?.email}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                <span className="font-semibold text-slate-600 dark:text-slate-200">Email status</span>
+                {user?.emailVerified ? (
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700 dark:border-emerald-700/60 dark:bg-emerald-900/30 dark:text-emerald-100">
+                    Verified
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-700 dark:border-amber-700/60 dark:bg-amber-900/30 dark:text-amber-100">
+                    Unverified
+                  </span>
+                )}
+                {hasPasswordProvider && !user?.emailVerified && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleResendVerification}
+                      disabled={verificationSending}
+                      className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      {verificationSending ? "Sending..." : "Resend email"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRefreshVerification}
+                      className="rounded-full bg-brand-primary px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-brand-primary/90"
+                    >
+                      Refresh status
+                    </button>
+                  </>
+                )}
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                <span className="font-semibold text-slate-600 dark:text-slate-200">Sign-in methods</span>
+                {hasPasswordProvider && (
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                    Email + Password
+                  </span>
+                )}
+                {googleProviderEmail && (
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700 dark:border-emerald-700/60 dark:bg-emerald-900/30 dark:text-emerald-100">
+                    Google ({googleProviderEmail})
+                  </span>
+                )}
+                {googleEmailMismatch && (
+                  <span className="text-[11px] text-amber-600 dark:text-amber-200">
+                    Google account differs from login email.
+                  </span>
+                )}
+                {hasPasswordProvider && !googleProviderEmail && (
+                  <button
+                    type="button"
+                    onClick={handleGoogleLink}
+                    disabled={googleLinking}
+                    className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    {googleLinking ? "Linking..." : "Link Google account"}
+                  </button>
+                )}
+              </div>
+            </section>
+            <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Timezone</h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 Default timezone for scheduling new sessions.
@@ -373,6 +530,16 @@ export default function SettingsPage() {
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 Connect a calendar with edit permissions for automatic session entries.
               </p>
+              {linkedCalendarEmail && (
+                <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  Linked calendar account: <span className="font-semibold">{linkedCalendarEmail}</span>
+                  {calendarEmailMismatch && (
+                    <span className="ml-2 text-[11px] text-amber-600 dark:text-amber-200">
+                      Different from login email.
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <button
                   type="button"

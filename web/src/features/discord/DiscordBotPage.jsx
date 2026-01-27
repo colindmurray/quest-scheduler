@@ -87,7 +87,7 @@ export default function DiscordBotPage() {
               Post session polls, vote inside Discord, and announce final times
               without leaving chat.
             </p>
-            <div className="mt-6 flex flex-wrap items-center gap-4">
+            <div className="mt-6 flex flex-col items-center gap-3">
               <a
                 href={DISCORD_INSTALL_URL}
                 target="_blank"
@@ -95,7 +95,7 @@ export default function DiscordBotPage() {
                 className="inline-flex items-center gap-3 rounded-xl bg-[#d7defc] px-6 py-3 text-sm font-semibold text-[#3d47c4] shadow-md shadow-[#3d47c4]/20 transition-colors hover:bg-[#c7d0fb]"
               >
                 <img
-                  src="/assets/discord-button-logo.png"
+                  src="/assets/Discord-Symbol-Blurple.svg"
                   alt="Discord logo"
                   className="h-5 w-5"
                 />

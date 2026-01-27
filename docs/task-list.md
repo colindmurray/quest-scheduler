@@ -195,8 +195,17 @@
 - [x] Add verification banner and enforce verified email for poll/group creation.
 - [x] Add account linking UI + calendar linking conflict checks.
 - [x] Add admin user tool script for delete/suspend/invite allowance updates.
-- [x] 2026-01-27: Draft Discord login portal design doc (`docs/discord-login-protal.md`).
+- [x] 2026-01-27: Draft Discord login portal design doc (`docs/discord-login-portal.md`).
+- [x] 2026-01-27: Update Discord login portal doc with Discord ID invites + display-name privacy requirements.
+- [x] 2026-01-27: Finalize Discord login email requirement (verified email required; compatible with UUID migration).
+- [x] 2026-01-27: Extend Discord login portal doc for username invites + blacklist/abuse rules.
 - [ ] Manual QA for auth scenarios + Firebase Console checks (providers, one-account-per-email).
 
 ## Phase 18 — Calendar Event Sync (Design)
 - [x] 2026-01-27: Draft calendar event sync design doc (`docs/calendar_event_sync_design_doc.md`)
+
+## Phase 19 — Display Names and Usernames (Design)
+- [x] 2026-01-27: Draft display names and usernames design doc (`docs/display-names-and-usernames.md`)
+- [x] 2026-01-27: Update UUID migration + Discord login portal docs with cross-references and extensibility notes
+- [x] 2026-01-27: Add invite identifier resolution section (email/Discord username/@username with error handling)
+- [x] 2026-01-27: Remove Discord User ID invites; simplify to Discord username only (no pending Discord invites)

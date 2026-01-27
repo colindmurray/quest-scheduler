@@ -162,6 +162,7 @@ Build a Firebase‑backed Quest Scheduler app for tabletop sessions with Google 
 ```
 
 ### 5.5 friendRequests/{requestId}
+This collection represents the full friendship lifecycle (pending, accepted, declined), not just notifications.
 ```json
 {
   "fromUserId": "uid_123",

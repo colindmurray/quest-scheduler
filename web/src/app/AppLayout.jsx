@@ -5,6 +5,7 @@ import { signOutUser } from "../lib/auth";
 import { UserAvatar } from "../components/ui/avatar";
 import { NotificationBell } from "../components/ui/notification-bell";
 import { useNotificationSync } from "../hooks/useNotificationSync";
+import VerificationBanner from "../components/VerificationBanner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -94,7 +95,12 @@ export default function AppLayout({ children }) {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+      <main className="mx-auto max-w-6xl px-6 py-8">
+        <div className="space-y-4">
+          <VerificationBanner />
+          {children}
+        </div>
+      </main>
       <footer className="mx-auto flex max-w-6xl flex-wrap gap-4 px-6 pb-8 text-xs text-slate-500 dark:text-slate-400">
         <Link to="/privacy" className="hover:text-slate-900 dark:hover:text-slate-100">
           Privacy Policy

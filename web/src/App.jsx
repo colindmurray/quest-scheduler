@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useNavigate, useLocation } from "react-router-
 import { useEffect } from "react";
 import { Toaster } from "sonner";
 import LandingPage from "./features/landing/LandingPage";
+import AuthPage from "./features/auth/AuthPage";
 import DashboardPage from "./features/dashboard/DashboardPage";
 import SettingsPage from "./features/settings/SettingsPage";
 import FriendsPage from "./features/friends/FriendsPage";
@@ -45,7 +46,9 @@ export default function App() {
   const { darkMode } = useTheme();
   const location = useLocation();
   const { user } = useAuth();
-  const isPublicRoute = ["/", "/privacy", "/terms", "/discord-bot"].includes(location.pathname);
+  const isPublicRoute = ["/", "/auth", "/privacy", "/terms", "/discord-bot"].includes(
+    location.pathname
+  );
   const forceDarkTheme = !user && isPublicRoute;
 
   return (
@@ -64,6 +67,14 @@ export default function App() {
         element={
           <RedirectWhenSignedIn>
             <LandingPage />
+          </RedirectWhenSignedIn>
+        }
+      />
+      <Route
+        path="/auth"
+        element={
+          <RedirectWhenSignedIn>
+            <AuthPage />
           </RedirectWhenSignedIn>
         }
       />

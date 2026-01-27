@@ -18,6 +18,7 @@ Optional Vite env overrides (prefix with `VITE_`):
 - `VITE_APP_URL` (default: current origin in browser, else `https://questscheduler.cc`)
 - `VITE_SUPPORT_EMAIL` (default: `support@questscheduler.cc`)
 - `VITE_APP_NAME` (default: `Quest Scheduler`)
+- `VITE_GOOGLE_OAUTH_CLIENT_ID` (Google Identity Services client ID for the web login button)
 
 ## Functions config (env)
 - Local dev: create `functions/.env` from `functions/.env.example`.
@@ -36,6 +37,21 @@ Optional Vite env overrides (prefix with `VITE_`):
 cat /path/to/client_secret.json | firebase functions:secrets:set QS_GOOGLE_OAUTH_CLIENT_JSON --format=json --project studio-473406021-87ead
 ```
 - Local dev: keep the JSON file at repo root (ignored) or set `QS_GOOGLE_OAUTH_CLIENT_SECRET_FILE`. Emulator overrides can go in `functions/.secret.local`.
+
+## Auth flows
+- `/auth` hosts login + registration for Google and Email/Password.
+- Email/password accounts must verify email before creating schedulers or questing groups (Firestore rules).
+- Password reset uses Firebase Auth for password accounts and callable `sendPasswordResetInfo` (functions/src/auth.js) for Google-only accounts (SendGrid via `mail` collection).
+
+## Admin user tool
+- Script: `functions/scripts/admin-user-tool.js`
+- Requires admin credentials (Application Default Credentials or `GOOGLE_APPLICATION_CREDENTIALS`).
+- Examples:
+  - `node functions/scripts/admin-user-tool.js info --email user@example.com`
+  - `node functions/scripts/admin-user-tool.js suspend --uid <uid> --commit`
+  - `node functions/scripts/admin-user-tool.js unsuspend --email user@example.com --allowance 50 --commit`
+  - `node functions/scripts/admin-user-tool.js set-allowance --email user@example.com --allowance 10 --commit`
+  - `node functions/scripts/admin-user-tool.js delete --uid <uid> --commit`
 
 ## Firebase deploy
 - Hosting + Firestore rules + Extensions (recommended):

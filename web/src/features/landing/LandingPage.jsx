@@ -1,5 +1,4 @@
 import { Link, useNavigate } from "react-router-dom";
-import { signInWithGoogle } from "../../lib/auth";
 import { useAuth } from "../../app/AuthProvider";
 import { AvatarStack } from "../../components/ui/voter-avatars";
 
@@ -50,9 +49,9 @@ export default function LandingPage() {
           </div>
         <button
           className="rounded-full bg-brand-primary px-5 py-2 text-sm font-semibold text-white shadow-md shadow-brand-primary/30 transition-colors hover:bg-brand-primary/90"
-          onClick={() => (user ? navigate("/dashboard") : signInWithGoogle())}
+          onClick={() => (user ? navigate("/dashboard") : navigate("/auth"))}
         >
-          {user ? "Go to Dashboard" : "Sign in with Google"}
+          {user ? "Go to Dashboard" : "Get started"}
         </button>
         </header>
 
@@ -91,7 +90,7 @@ export default function LandingPage() {
             </div>
             <div className="mt-6 flex items-center gap-4 rounded-2xl border border-slate-200/70 bg-slate-50 px-4 py-3 text-slate-700 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200">
               <img
-                src="/assets/discord-logo.png"
+                src="/assets/Discord-Symbol-Blurple.svg"
                 alt="Discord logo"
                 className="h-9 w-9 rounded-xl bg-slate-900/5 p-1 dark:bg-white/5"
               />

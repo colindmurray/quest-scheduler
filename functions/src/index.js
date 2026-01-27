@@ -6,6 +6,7 @@ const discordOAuth = require("./discord/oauth");
 const discordUnlink = require("./discord/unlink");
 const discordRoles = require("./discord/roles");
 const schedulerTriggers = require("./triggers/scheduler");
+const auth = require("./auth");
 
 module.exports = {
   ...legacy,
@@ -16,4 +17,5 @@ module.exports = {
   ...discordUnlink,
   ...discordRoles,
   ...schedulerTriggers,
+  ...auth,
 };

@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
+import { ensureUserProfile } from "../lib/data/users";
 
 const AuthContext = createContext(null);
 const bannedEmailKey = "qs_banned_email";
@@ -14,13 +15,25 @@ function encodeEmailId(email) {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [profileReady, setProfileReady] = useState(false);
   const [banned, setBanned] = useState(null);
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  const refreshUser = useCallback(async () => {
+    if (!auth.currentUser) return null;
+    await auth.currentUser.reload();
+    setUser(auth.currentUser);
+    setRefreshTick((prev) => prev + 1);
+    return auth.currentUser;
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
       const run = async () => {
         if (!isMounted) return;
+        setLoading(true);
+        setProfileReady(false);
         if (!nextUser) {
           const storedEmail = localStorage.getItem(bannedEmailKey);
           const storedReason = localStorage.getItem(bannedReasonKey);
@@ -30,6 +43,7 @@ export function AuthProvider({ children }) {
             setBanned(null);
           }
           setUser(null);
+          setProfileReady(false);
           setLoading(false);
           return;
         }
@@ -45,6 +59,7 @@ export function AuthProvider({ children }) {
             setBanned({ email, reason });
             await signOut(auth);
             setUser(null);
+            setProfileReady(false);
             setLoading(false);
             return;
           }
@@ -53,12 +68,20 @@ export function AuthProvider({ children }) {
         localStorage.removeItem(bannedEmailKey);
         localStorage.removeItem(bannedReasonKey);
         setBanned(null);
+        try {
+          await ensureUserProfile(nextUser);
+          setProfileReady(true);
+        } catch (err) {
+          console.error("Failed to ensure user profile:", err);
+          setProfileReady(true);
+        }
         setUser(nextUser);
         setLoading(false);
       };
       run().catch((err) => {
         console.error("Auth state check failed:", err);
         setUser(nextUser);
+        setProfileReady(true);
         setLoading(false);
       });
     });
@@ -69,7 +92,10 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const value = useMemo(() => ({ user, loading, banned }), [user, loading, banned]);
+  const value = useMemo(
+    () => ({ user, loading, banned, profileReady, refreshUser }),
+    [user, loading, banned, profileReady, refreshUser, refreshTick]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
