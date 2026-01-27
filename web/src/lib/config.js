@@ -1,6 +1,7 @@
 const DEFAULT_APP_URL = "https://questscheduler.cc";
 const DEFAULT_SUPPORT_EMAIL = "support@questscheduler.cc";
 const DEFAULT_APP_NAME = "Quest Scheduler";
+const DEFAULT_GOOGLE_OAUTH_CLIENT_ID = "";
 
 function trimTrailingSlash(value) {
   return value.replace(/\/+$/, "");
@@ -24,3 +25,6 @@ export const APP_URL = (() => {
 })();
 
 export const APP_LOGO_URL = `${APP_URL}/app_icon.png`;
+
+export const GOOGLE_OAUTH_CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || DEFAULT_GOOGLE_OAUTH_CLIENT_ID;
