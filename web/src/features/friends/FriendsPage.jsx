@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { Check, Users, UserPlus, X } from "lucide-react";
 import { useFriends } from "../../hooks/useFriends";
@@ -42,8 +42,12 @@ function TabButton({ active, onClick, children }) {
 
 export default function FriendsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get("tab") || "friends";
+  const [activeTab, setActiveTab] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("tab") || "friends";
+  });
   const requestId = searchParams.get("request");
   const inviteCode = searchParams.get("invite");
   const { user } = useAuth();
@@ -139,8 +143,14 @@ export default function FriendsPage() {
     });
   }, [friends]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    setActiveTab(params.get("tab") || "friends");
+  }, [location.search]);
+
   const handleTabChange = (tab) => {
-    const params = new URLSearchParams(searchParams);
+    setActiveTab(tab);
+    const params = new URLSearchParams(location.search);
     if (tab === "friends") {
       params.delete("tab");
     } else {
