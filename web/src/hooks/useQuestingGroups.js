@@ -201,7 +201,8 @@ export function useQuestingGroups() {
   // Remove a member (also removes from polls)
   const removeMember = useCallback(
     async (groupId, groupName, memberEmail, removeFromPolls = true) => {
-      await removeMemberFromGroup(groupId, groupName, memberEmail);
+      const memberUserId = await findUserIdByEmail(memberEmail);
+      await removeMemberFromGroup(groupId, groupName, memberEmail, memberUserId);
 
       if (removeFromPolls) {
         await removeMemberFromGroupPolls(groupId, memberEmail);
@@ -214,10 +215,10 @@ export function useQuestingGroups() {
   const leave = useCallback(
     async (groupId) => {
       if (!user?.email) return;
-      await leaveGroup(groupId, user.email);
+      await leaveGroup(groupId, user.email, user.uid);
       await removeMemberFromGroupPolls(groupId, user.email);
     },
-    [user?.email]
+    [user?.email, user?.uid]
   );
 
   // Delete a group

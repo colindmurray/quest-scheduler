@@ -21,6 +21,7 @@ import { isValidEmail } from "../../lib/utils";
 import { createSessionInviteNotification } from "../../lib/data/notifications";
 import { createEmailMessage } from "../../lib/emailTemplates";
 import { sendPendingPollInvites, revokePollInvite } from "../../lib/data/pollInvites";
+import { findUserIdsByEmails } from "../../lib/data/users";
 import {
   Select,
   SelectContent,
@@ -432,6 +433,17 @@ export default function CreateSchedulerPage() {
     return response;
   };
 
+  const resolveParticipantIds = async (emails) => {
+    const normalized = Array.from(
+      new Set((emails || []).filter(Boolean).map(normalizeEmail))
+    );
+    const resolved = await findUserIdsByEmails(normalized);
+    if (user?.uid && user?.email) {
+      resolved[normalizeEmail(user.email)] = user.uid;
+    }
+    return Array.from(new Set(Object.values(resolved).filter(Boolean)));
+  };
+
   const getPollInputs = () => {
     const explicitParticipants = Array.from(
       new Set([user.email, ...inviteEmails].filter(Boolean).map(normalizeEmail))
@@ -483,6 +495,7 @@ export default function CreateSchedulerPage() {
         pollTitle,
         timezoneModeForScheduler,
       } = getPollInputs();
+      const participantIds = await resolveParticipantIds(explicitParticipants);
 
       if (updateCalendar && scheduler.data?.googleEventId) {
         await deleteCalendarEntry();
@@ -506,6 +519,7 @@ export default function CreateSchedulerPage() {
       await updateDoc(schedulerRef, {
         title: pollTitle,
         participants: explicitParticipants,
+        participantIds,
         allowLinkSharing,
         timezone: effectiveTimezone,
         timezoneMode: timezoneModeForScheduler,
@@ -611,6 +625,7 @@ export default function CreateSchedulerPage() {
         pollTitle,
         timezoneModeForScheduler,
       } = getPollInputs();
+      const participantIds = await resolveParticipantIds(explicitParticipants);
 
       const schedulerId = crypto.randomUUID();
       const newSchedulerRef = doc(db, "schedulers", schedulerId);
@@ -621,6 +636,7 @@ export default function CreateSchedulerPage() {
         creatorEmail: user.email,
         status: "OPEN",
         participants: explicitParticipants,
+        participantIds,
         pendingInvites: [],
         allowLinkSharing,
         timezone: effectiveTimezone,

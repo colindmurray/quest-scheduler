@@ -188,6 +188,7 @@
 - [x] 2026-01-26: Sync Discord messages on poll delete/unlink/relink and expose notify role selection in group settings.
 - [x] 2026-01-26: Add "No ping" option for Discord finalization notifications.
 - [x] 2026-01-26: Clear Discord voting UI for closed polls and post reopen alerts with @ mentions.
+- [x] 2026-01-27: Show voting progress in Discord poll widget (X/Y voted with pending count).
 
 ## Phase 17 — Login & Registration Overhaul
 - [x] Add `/auth` route + unified auth UI (Google + Email/Password).
@@ -198,6 +199,15 @@
 - [x] 2026-01-27: Draft Discord login portal design doc (`docs/discord-login-portal.md`).
 - [x] 2026-01-27: Update Discord login portal doc with Discord ID invites + display-name privacy requirements.
 - [x] 2026-01-27: Finalize Discord login email requirement (verified email required; compatible with UUID migration).
+
+## Phase 18 — UUID Migration (Phase 1)
+- [x] 2026-01-28: Add scheduler `participantIds` + questing group `memberIds` on create/update flows.
+- [x] 2026-01-28: Add `voterId` to vote writes (client + clone paths).
+- [x] 2026-01-28: Allow `participantIds`/`memberIds` updates in Firestore rules.
+- [x] 2026-01-28: Switch friend request creation + accept-invite link to auto IDs (field-based lookup).
+- [x] 2026-01-28: Update block checks to support auto-ID blockedUsers docs and legacy email-keyed docs.
+- [x] 2026-01-28: Add `functions/scripts/migrate-uuid-identifiers.js` (participantIds/memberIds/voterId backfill).
+- [ ] 2026-01-28: Run UUID backfill script with qs-admin-tools service account.
 - [x] 2026-01-27: Extend Discord login portal doc for username invites + blacklist/abuse rules.
 - [ ] Manual QA for auth scenarios + Firebase Console checks (providers, one-account-per-email).
 

@@ -34,6 +34,34 @@ export async function findUserIdByEmail(email) {
   return snapshot.docs[0]?.id || null;
 }
 
+export async function findUserIdsByEmails(emails = []) {
+  const normalized = Array.from(
+    new Set((emails || []).filter(Boolean).map((email) => normalizeEmail(email)))
+  );
+  if (normalized.length === 0) return {};
+
+  const results = {};
+  const chunks = [];
+  for (let i = 0; i < normalized.length; i += 30) {
+    chunks.push(normalized.slice(i, i + 30));
+  }
+
+  await Promise.all(
+    chunks.map(async (chunk) => {
+      const q = query(collection(db, "usersPublic"), where("email", "in", chunk));
+      const snapshot = await getDocs(q);
+      snapshot.docs.forEach((doc) => {
+        const data = doc.data();
+        if (data?.email) {
+          results[normalizeEmail(data.email)] = doc.id;
+        }
+      });
+    })
+  );
+
+  return results;
+}
+
 export async function ensureUserProfile(user) {
   if (!user?.uid) return { profileReady: false };
   const email = normalizeEmail(user.email);

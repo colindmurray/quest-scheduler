@@ -52,6 +52,34 @@ async function findUserIdByEmail(email) {
   return snapshot.docs[0]?.id || null;
 }
 
+async function findUserIdsByEmails(emails = []) {
+  const normalized = Array.from(
+    new Set((emails || []).filter(Boolean).map((email) => normalizeEmail(email)))
+  );
+  if (normalized.length === 0) return {};
+  const results = {};
+  const chunks = [];
+  for (let i = 0; i < normalized.length; i += 30) {
+    chunks.push(normalized.slice(i, i + 30));
+  }
+  await Promise.all(
+    chunks.map(async (chunk) => {
+      const snapshot = await admin
+        .firestore()
+        .collection("usersPublic")
+        .where("email", "in", chunk)
+        .get();
+      snapshot.docs.forEach((doc) => {
+        const data = doc.data();
+        if (data?.email) {
+          results[normalizeEmail(data.email)] = doc.id;
+        }
+      });
+    })
+  );
+  return results;
+}
+
 async function ensureUserStatus(uid) {
   const db = admin.firestore();
   const ref = db.collection("users").doc(uid);
@@ -109,14 +137,18 @@ async function countOutstandingInvites(uid) {
 
 async function isBlockedByUser(targetUserId, senderEmail) {
   if (!targetUserId) return false;
-  const blockedRef = admin
-    .firestore()
+  const db = admin.firestore();
+  const blockedCollection = db
     .collection("users")
     .doc(targetUserId)
-    .collection("blockedUsers")
-    .doc(encodeEmailId(senderEmail));
-  const snap = await blockedRef.get();
-  return snap.exists;
+    .collection("blockedUsers");
+  const legacySnap = await blockedCollection.doc(encodeEmailId(senderEmail)).get();
+  if (legacySnap.exists) return true;
+  const emailSnap = await blockedCollection
+    .where("email", "==", normalizeEmail(senderEmail))
+    .limit(1)
+    .get();
+  return !emailSnap.empty;
 }
 
 async function adjustInviteAllowance(userId, delta) {
@@ -680,6 +712,13 @@ exports.cloneSchedulerPoll = functions.https.onCall(async (data, context) => {
     : [];
   const creatorEmail = normalizeEmail(context.auth.token.email);
   const participants = Array.from(new Set([creatorEmail, ...normalizedInvites].filter(Boolean)));
+  const participantIdsByEmail = await findUserIdsByEmails(participants);
+  if (creatorEmail) {
+    participantIdsByEmail[creatorEmail] = context.auth.uid;
+  }
+  const participantIds = Array.from(
+    new Set(Object.values(participantIdsByEmail).filter(Boolean))
+  );
 
   let groupNameToSave = null;
   let groupMembers = [];
@@ -703,6 +742,7 @@ exports.cloneSchedulerPoll = functions.https.onCall(async (data, context) => {
     creatorEmail,
     status: "OPEN",
     participants,
+    participantIds,
     timezone: scheduler.timezone || null,
     timezoneMode: scheduler.timezoneMode || null,
     winningSlotId: null,
@@ -757,6 +797,7 @@ exports.cloneSchedulerPoll = functions.https.onCall(async (data, context) => {
           .doc(voteDoc.id)
           .set(
             {
+              voterId: voteDoc.id,
               userEmail,
               userAvatar: voteData.userAvatar || null,
               votes: nextVotes,
@@ -853,24 +894,32 @@ exports.sendFriendRequest = functions.https.onCall(async (data, context) => {
     );
   }
 
-  const requestId = friendRequestIdForEmails(fromEmail, toEmail);
-  const reverseId = friendRequestIdForEmails(toEmail, fromEmail);
   const db = admin.firestore();
   const [directSnap, reverseSnap] = await Promise.all([
-    db.collection("friendRequests").doc(requestId).get(),
-    db.collection("friendRequests").doc(reverseId).get(),
+    db
+      .collection("friendRequests")
+      .where("fromEmail", "==", fromEmail)
+      .where("toEmail", "==", toEmail)
+      .limit(1)
+      .get(),
+    db
+      .collection("friendRequests")
+      .where("fromEmail", "==", toEmail)
+      .where("toEmail", "==", fromEmail)
+      .limit(1)
+      .get(),
   ]);
 
-  const existing = directSnap.exists ? directSnap : reverseSnap;
-  if (existing?.exists) {
-    const status = existing.data()?.status;
+  const existingDocs = [...directSnap.docs, ...reverseSnap.docs];
+  existingDocs.forEach((docSnap) => {
+    const status = docSnap.data()?.status;
     if (status === "pending") {
       throw new functions.https.HttpsError("failed-precondition", "Friend request already pending.");
     }
     if (status === "accepted") {
       throw new functions.https.HttpsError("failed-precondition", "You are already friends.");
     }
-  }
+  });
 
   const toUserId = await findUserIdByEmail(toEmail);
   if (await isBlockedByUser(toUserId, fromEmail)) {
@@ -888,14 +937,13 @@ exports.sendFriendRequest = functions.https.onCall(async (data, context) => {
     );
   }
 
-  if (directSnap.exists && directSnap.data()?.status && directSnap.data()?.status !== "pending") {
-    await db.collection("friendRequests").doc(requestId).delete();
-  }
-  if (reverseSnap.exists && reverseSnap.data()?.status && reverseSnap.data()?.status !== "pending") {
-    await db.collection("friendRequests").doc(reverseId).delete();
+  if (existingDocs.length > 0) {
+    await Promise.all(existingDocs.map((docSnap) => docSnap.ref.delete()));
   }
 
-  await db.collection("friendRequests").doc(requestId).set({
+  const requestRef = db.collection("friendRequests").doc();
+  const requestId = requestRef.id;
+  await requestRef.set({
     fromUserId,
     fromEmail,
     fromEmailRaw: context.auth.token.email || fromEmail,
@@ -950,16 +998,24 @@ exports.acceptFriendInviteLink = functions.https.onCall(async (data, context) =>
     throw new functions.https.HttpsError("failed-precondition", "You cannot accept your own invite link.");
   }
 
-  const requestId = friendRequestIdForEmails(senderEmail, userEmail);
-  const reverseId = friendRequestIdForEmails(userEmail, senderEmail);
   const [directSnap, reverseSnap] = await Promise.all([
-    db.collection("friendRequests").doc(requestId).get(),
-    db.collection("friendRequests").doc(reverseId).get(),
+    db
+      .collection("friendRequests")
+      .where("fromEmail", "==", senderEmail)
+      .where("toEmail", "==", userEmail)
+      .limit(1)
+      .get(),
+    db
+      .collection("friendRequests")
+      .where("fromEmail", "==", userEmail)
+      .where("toEmail", "==", senderEmail)
+      .limit(1)
+      .get(),
   ]);
 
-  const existing = directSnap.exists ? directSnap : reverseSnap;
-  if (existing?.exists) {
-    const status = existing.data()?.status;
+  const existingDoc = directSnap.docs[0] || reverseSnap.docs[0] || null;
+  if (existingDoc) {
+    const status = existingDoc.data()?.status;
     if (status === "accepted") {
       return {
         senderEmail,
@@ -967,21 +1023,20 @@ exports.acceptFriendInviteLink = functions.https.onCall(async (data, context) =>
       };
     }
     if (status === "pending") {
-      const docRef = db.collection("friendRequests").doc(existing.id);
-      await docRef.update({
+      await existingDoc.ref.update({
         status: "accepted",
         toUserId: context.auth.uid,
         respondedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
       await createFriendAcceptedNotification(senderDoc.id, {
-        requestId: existing.id,
+        requestId: existingDoc.id,
         friendEmail: userEmail,
       });
       await db
         .collection("users")
         .doc(context.auth.uid)
         .collection("notifications")
-        .doc(`friendRequest:${existing.id}`)
+        .doc(`friendRequest:${existingDoc.id}`)
         .delete()
         .catch(() => undefined);
       return {
@@ -991,7 +1046,9 @@ exports.acceptFriendInviteLink = functions.https.onCall(async (data, context) =>
     }
   }
 
-  await db.collection("friendRequests").doc(requestId).set({
+  const requestRef = db.collection("friendRequests").doc();
+  const requestId = requestRef.id;
+  await requestRef.set({
     fromUserId: senderDoc.id,
     fromEmail: senderEmail,
     fromEmailRaw: senderEmail,
@@ -1260,6 +1317,9 @@ exports.removeGroupMemberFromPolls = functions.https.onCall(async (data, context
   for (const pollDoc of pollDocs) {
     await pollDoc.ref.update({
       participants: admin.firestore.FieldValue.arrayRemove(memberEmail),
+      ...(memberUid
+        ? { participantIds: admin.firestore.FieldValue.arrayRemove(memberUid) }
+        : {}),
       pendingInvites: admin.firestore.FieldValue.arrayRemove(memberEmail),
       [`pendingInviteMeta.${memberEmail}`]: admin.firestore.FieldValue.delete(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1291,20 +1351,32 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
   }
 
   const db = admin.firestore();
-  const blockRef = db
+  const blockedCollection = db
     .collection("users")
     .doc(blockerId)
-    .collection("blockedUsers")
-    .doc(encodeEmailId(targetEmail));
-  const existingBlock = await blockRef.get();
-  if (existingBlock.exists) {
+    .collection("blockedUsers");
+  const legacyRef = blockedCollection.doc(encodeEmailId(targetEmail));
+  const legacySnap = await legacyRef.get();
+  if (legacySnap.exists) {
+    return { ok: true, alreadyBlocked: true };
+  }
+  const existingSnap = await blockedCollection
+    .where("email", "==", targetEmail)
+    .limit(1)
+    .get();
+  if (!existingSnap.empty) {
     return { ok: true, alreadyBlocked: true };
   }
 
-  const friendRequestId = friendRequestIdForEmails(targetEmail, blockerEmail);
-  const friendSnap = await db.collection("friendRequests").doc(friendRequestId).get();
-  const hasPendingFriend =
-    friendSnap.exists && friendSnap.data()?.status === "pending";
+  const friendSnap = await db
+    .collection("friendRequests")
+    .where("fromEmail", "==", targetEmail)
+    .where("toEmail", "==", blockerEmail)
+    .where("status", "==", "pending")
+    .limit(1)
+    .get();
+  const friendDoc = friendSnap.docs[0] || null;
+  const hasPendingFriend = Boolean(friendDoc);
 
   const pollSnap = await db
     .collection("schedulers")
@@ -1315,7 +1387,7 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
   const hasPendingPollInvites = !pollSnap.empty;
   let offenderUserId = null;
   if (hasPendingFriend) {
-    offenderUserId = friendSnap.data()?.fromUserId || null;
+    offenderUserId = friendDoc.data()?.fromUserId || null;
   }
   if (!offenderUserId && hasPendingPollInvites) {
     offenderUserId = pollSnap.docs[0]?.data()?.creatorId || null;
@@ -1323,6 +1395,7 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
 
   const shouldPenalize = Boolean(offenderUserId && (hasPendingFriend || hasPendingPollInvites));
 
+  const blockRef = blockedCollection.doc();
   await blockRef.set({
     email: targetEmail,
     blockedUserId: offenderUserId || null,
@@ -1335,12 +1408,12 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
   });
 
   if (hasPendingFriend) {
-    await db.collection("friendRequests").doc(friendRequestId).delete();
+    await friendDoc.ref.delete();
     await db
       .collection("users")
       .doc(blockerId)
       .collection("notifications")
-      .doc(`friendRequest:${friendRequestId}`)
+      .doc(`friendRequest:${friendDoc.id}`)
       .delete()
       .catch(() => undefined);
   }
@@ -1387,21 +1460,32 @@ exports.unblockUser = functions.https.onCall(async (data, context) => {
   }
 
   const db = admin.firestore();
-  const blockRef = db
+  const blockedCollection = db
     .collection("users")
     .doc(blockerId)
-    .collection("blockedUsers")
-    .doc(encodeEmailId(targetEmail));
-  const blockSnap = await blockRef.get();
-  if (!blockSnap.exists) {
+    .collection("blockedUsers");
+  const legacyRef = blockedCollection.doc(encodeEmailId(targetEmail));
+  const legacySnap = await legacyRef.get();
+  const querySnap = await blockedCollection.where("email", "==", targetEmail).get();
+  const blocks = [];
+  if (legacySnap.exists) {
+    blocks.push({ ref: legacyRef, data: legacySnap.data() || {} });
+  }
+  querySnap.docs.forEach((docSnap) => {
+    if (docSnap.id === legacyRef.id) return;
+    blocks.push({ ref: docSnap.ref, data: docSnap.data() || {} });
+  });
+
+  if (blocks.length === 0) {
     return { ok: true, alreadyUnblocked: true };
   }
-  const blockData = blockSnap.data() || {};
-  await blockRef.delete();
 
-  if (blockData.penalized) {
+  const penalizedBlock = blocks.find((block) => block.data?.penalized);
+  await Promise.all(blocks.map((block) => block.ref.delete()));
+
+  if (penalizedBlock) {
     const offenderUserId =
-      blockData.blockedUserId || (await findUserIdByEmail(targetEmail));
+      penalizedBlock.data.blockedUserId || (await findUserIdByEmail(targetEmail));
     if (offenderUserId) {
       await adjustInviteAllowance(offenderUserId, INVITE_BLOCK_PENALTY);
     }
@@ -1554,6 +1638,7 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
 
       await db.collection("questingGroups").doc(groupId).update({
         members: arrayRemove(email),
+        memberIds: arrayRemove(uid),
         pendingInvites: arrayRemove(email),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -1596,6 +1681,7 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
       if (pollData.creatorId === uid) continue;
       await pollDoc.ref.update({
         participants: arrayRemove(email),
+        participantIds: arrayRemove(uid),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
       await pollDoc.ref.collection("votes").doc(uid).delete();

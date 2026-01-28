@@ -19,6 +19,7 @@ import {
   deleteNotification,
   pollInviteNotificationId,
 } from "./notifications";
+import { findUserIdByEmail } from "./users";
 
 export const pollPendingInvitesQuery = (email) =>
   query(collection(db, "schedulers"), where("pendingInvites", "array-contains", email));
@@ -55,12 +56,16 @@ export async function acceptPollInvite(schedulerId, userEmail, userId = null) {
     (email) => email?.toLowerCase() === normalizedEmail
   );
   if (!wasParticipant) {
-    await updateDoc(ref, {
+    const updates = {
       participants: arrayUnion(normalizedEmail),
       pendingInvites: arrayRemove(normalizedEmail),
       [`pendingInviteMeta.${normalizedEmail}`]: deleteField(),
       updatedAt: serverTimestamp(),
-    });
+    };
+    if (userId) {
+      updates.participantIds = arrayUnion(userId);
+    }
+    await updateDoc(ref, updates);
   }
 
   if (userId) {
@@ -106,14 +111,21 @@ export async function removeParticipantFromPoll(
   schedulerId,
   participantEmail,
   removeVotes = true,
-  removePendingInvite = false
+  removePendingInvite = false,
+  participantUserId = null
 ) {
   const ref = doc(db, "schedulers", schedulerId);
   const normalizedEmail = participantEmail.toLowerCase();
-  await updateDoc(ref, {
+  const resolvedUserId =
+    participantUserId || (await findUserIdByEmail(participantEmail));
+  const updates = {
     participants: arrayRemove(normalizedEmail),
     updatedAt: serverTimestamp(),
-  });
+  };
+  if (resolvedUserId) {
+    updates.participantIds = arrayRemove(resolvedUserId);
+  }
+  await updateDoc(ref, updates);
 
   if (removePendingInvite) {
     await revokePollInvite(schedulerId, normalizedEmail);

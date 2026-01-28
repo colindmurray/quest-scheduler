@@ -2,6 +2,7 @@ const {
   onDocumentCreated,
   onDocumentUpdated,
   onDocumentDeleted,
+  onDocumentWritten,
 } = require("firebase-functions/v2/firestore");
 const { onTaskDispatched } = require("firebase-functions/v2/tasks");
 const { logger } = require("firebase-functions");
@@ -23,6 +24,23 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
+async function getVoteStats(schedulerRef, scheduler) {
+  const votesSnap = await schedulerRef.collection("votes").get();
+  const voteCount = votesSnap.size;
+
+  const participants = new Set((scheduler.participants || []).map((e) => String(e).toLowerCase()));
+
+  if (scheduler.questingGroupId) {
+    const groupSnap = await db.collection("questingGroups").doc(scheduler.questingGroupId).get();
+    if (groupSnap.exists) {
+      const groupMembers = groupSnap.data()?.members || [];
+      groupMembers.forEach((email) => participants.add(String(email).toLowerCase()));
+    }
+  }
+
+  return { voteCount, totalParticipants: participants.size };
+}
+
 function hasNonDiscordChanges(beforeData, afterData) {
   const beforeCopy = { ...(beforeData || {}) };
   const afterCopy = { ...(afterData || {}) };
@@ -38,7 +56,7 @@ function unixSeconds(iso) {
   return Math.floor(value / 1000);
 }
 
-function computeSchedulerSyncHash(scheduler, slots) {
+function computeSchedulerSyncHash(scheduler, slots, voteCount, totalParticipants) {
   const normalizedSlots = slots
     .filter((slot) => slot.start && slot.end)
     .map((slot) => ({
@@ -58,6 +76,8 @@ function computeSchedulerSyncHash(scheduler, slots) {
     title: scheduler?.title || "",
     status: scheduler?.status || "OPEN",
     slots: normalizedSlots,
+    voteCount: voteCount ?? null,
+    totalParticipants: totalParticipants ?? null,
   };
 
   return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
@@ -114,9 +134,22 @@ exports.postDiscordPollCard = onDocumentCreated(
       return;
     }
 
-    const slotsSnap = await db.collection("schedulers").doc(schedulerId).collection("slots").get();
+    const schedulerRef = db.collection("schedulers").doc(schedulerId);
+    const slotsSnap = await schedulerRef.collection("slots").get();
     const slots = slotsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    const messageBody = buildPollCard({ schedulerId, scheduler, slots });
+
+    const groupMembers = (group.members || []).map((e) => String(e).toLowerCase());
+    const participants = new Set((scheduler.participants || []).map((e) => String(e).toLowerCase()));
+    groupMembers.forEach((email) => participants.add(email));
+    const totalParticipants = participants.size;
+
+    const messageBody = buildPollCard({
+      schedulerId,
+      scheduler,
+      slots,
+      voteCount: 0,
+      totalParticipants,
+    });
 
     try {
       const message = await createChannelMessage({
@@ -215,16 +248,16 @@ exports.updateDiscordPollCard = onDocumentUpdated(
           }
 
           if (hasNextLink) {
-            const slotsSnap = await db
-              .collection("schedulers")
-              .doc(schedulerId)
-              .collection("slots")
-              .get();
+            const schedulerRef = db.collection("schedulers").doc(schedulerId);
+            const slotsSnap = await schedulerRef.collection("slots").get();
             const slots = slotsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+            const { voteCount, totalParticipants } = await getVoteStats(schedulerRef, afterData);
             const messageBody = buildPollCard({
               schedulerId,
               scheduler: afterData,
               slots,
+              voteCount,
+              totalParticipants,
             });
             const message = await createChannelMessage({
               channelId: nextGroupDiscord.channelId,
@@ -314,7 +347,8 @@ exports.processDiscordSchedulerUpdate = onTaskDispatched(
     try {
       const slotsSnap = await schedulerRef.collection("slots").get();
       const slots = slotsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      const syncHash = computeSchedulerSyncHash(scheduler, slots);
+      const { voteCount, totalParticipants } = await getVoteStats(schedulerRef, scheduler);
+      const syncHash = computeSchedulerSyncHash(scheduler, slots, voteCount, totalParticipants);
 
       if (scheduler.discord?.lastSyncedHash === syncHash) {
         logger.info("Skipping Discord poll update; hash unchanged", {
@@ -323,7 +357,13 @@ exports.processDiscordSchedulerUpdate = onTaskDispatched(
         return;
       }
 
-      const messageBody = buildPollCard({ schedulerId, scheduler, slots });
+      const messageBody = buildPollCard({
+        schedulerId,
+        scheduler,
+        slots,
+        voteCount,
+        totalParticipants,
+      });
 
       await editChannelMessage({
         channelId: scheduler.discord.channelId,
@@ -455,6 +495,45 @@ exports.handleDiscordPollDelete = onDocumentDeleted(
       logger.info("Updated Discord poll card for deleted scheduler", { schedulerId });
     } catch (err) {
       logger.error("Failed to update Discord poll card on delete", {
+        schedulerId,
+        error: err?.message,
+      });
+    }
+  }
+);
+
+exports.updateDiscordPollOnVote = onDocumentWritten(
+  {
+    document: "schedulers/{schedulerId}/votes/{voteId}",
+    region: DISCORD_REGION,
+  },
+  async (event) => {
+    const schedulerId = event.params.schedulerId;
+
+    const schedulerSnap = await db.collection("schedulers").doc(schedulerId).get();
+    if (!schedulerSnap.exists) {
+      return;
+    }
+    const scheduler = schedulerSnap.data() || {};
+    if (!scheduler.discord?.messageId) {
+      return;
+    }
+
+    try {
+      const queueName =
+        DISCORD_REGION === "us-central1"
+          ? DISCORD_SCHEDULER_TASK_QUEUE
+          : `locations/${DISCORD_REGION}/functions/${DISCORD_SCHEDULER_TASK_QUEUE}`;
+      const queue = getFunctions().taskQueue(queueName);
+      await queue.enqueue(
+        { schedulerId },
+        {
+          scheduleDelaySeconds: 2,
+        }
+      );
+      logger.info("Enqueued Discord poll update on vote change", { schedulerId });
+    } catch (err) {
+      logger.error("Failed to enqueue Discord poll update on vote change", {
         schedulerId,
         error: err?.message,
       });

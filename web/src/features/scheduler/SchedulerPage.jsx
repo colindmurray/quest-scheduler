@@ -62,7 +62,7 @@ import { LoadingState } from "../../components/ui/spinner";
 import { isValidEmail } from "../../lib/utils";
 import { createVoteSubmittedNotification, pollInviteNotificationId } from "../../lib/data/notifications";
 import { createSessionFinalizedNotification } from "../../lib/data/notifications";
-import { findUserIdByEmail } from "../../lib/data/users";
+import { findUserIdByEmail, findUserIdsByEmails } from "../../lib/data/users";
 import { acceptPollInvite, declinePollInvite, removeParticipantFromPoll, revokePollInvite } from "../../lib/data/pollInvites";
 import { createEmailMessage } from "../../lib/emailTemplates";
 import "react-big-calendar/lib/css/react-big-calendar.css";
@@ -557,7 +557,7 @@ export default function SchedulerPage() {
     if (!id || !user?.email) return;
     setLeaveSaving(true);
     try {
-      await removeParticipantFromPoll(id, user.email, true, false);
+      await removeParticipantFromPoll(id, user.email, true, false, user.uid);
       toast.success("You left the poll");
       setLeaveOpen(false);
       navigate("/dashboard");
@@ -765,6 +765,7 @@ export default function SchedulerPage() {
       await setDoc(
         userVoteRef,
         {
+          voterId: user.uid,
           userEmail: user.email,
           userAvatar: user.photoURL,
           votes: noTimesWork ? {} : draftVotes,
@@ -874,6 +875,7 @@ export default function SchedulerPage() {
       await setDoc(
         userVoteRef,
         {
+          voterId: user.uid,
           userEmail: user.email,
           userAvatar: user.photoURL,
           votes: {},
@@ -1122,6 +1124,11 @@ export default function SchedulerPage() {
       const participants = Array.from(
         new Set([newCreatorEmail, ...cloneInvites].filter(Boolean).map((e) => e.toLowerCase()))
       );
+      const participantIdsByEmail = await findUserIdsByEmails(participants);
+      participantIdsByEmail[normalizeEmail(newCreatorEmail)] = newCreatorId;
+      const participantIds = Array.from(
+        new Set(Object.values(participantIdsByEmail).filter(Boolean))
+      );
 
       const cloneGroup = cloneGroupId
         ? groups.find((group) => group.id === cloneGroupId) || null
@@ -1170,6 +1177,7 @@ export default function SchedulerPage() {
         creatorEmail: newCreatorEmail,
         status: "OPEN",
         participants,
+        participantIds,
         timezone: scheduler.data.timezone,
         timezoneMode: scheduler.data.timezoneMode,
         winningSlotId: null,
@@ -1212,6 +1220,7 @@ export default function SchedulerPage() {
             return setDoc(
               doc(db, "schedulers", newId, "votes", voteDoc.id),
               {
+                voterId: voteDoc.id,
                 userEmail: voteDoc.userEmail,
                 userAvatar: voteDoc.userAvatar,
                 votes: nextVotes,

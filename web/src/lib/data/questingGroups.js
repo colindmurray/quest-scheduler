@@ -54,6 +54,7 @@ export async function createQuestingGroup({ name, creatorId, creatorEmail, membe
     creatorEmail: normalizedEmail,
     memberManaged,
     members: [normalizedEmail],
+    memberIds: [creatorId],
     pendingInvites: [],
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -129,6 +130,7 @@ export async function acceptGroupInvitation(groupId, userEmail, userId = null) {
 
   await updateDoc(ref, {
     members: arrayUnion(normalizedEmail),
+    ...(userId ? { memberIds: arrayUnion(userId) } : {}),
     pendingInvites: arrayRemove(normalizedEmail),
     [`pendingInviteMeta.${normalizedEmail}`]: deleteField(),
     updatedAt: serverTimestamp(),
@@ -188,6 +190,7 @@ export async function removeMemberFromGroup(groupId, groupName, memberEmail, mem
 
   await updateDoc(ref, {
     members: arrayRemove(memberEmail.toLowerCase()),
+    ...(memberUserId ? { memberIds: arrayRemove(memberUserId) } : {}),
     updatedAt: serverTimestamp(),
   });
 
@@ -205,11 +208,12 @@ export async function removeMemberFromGroup(groupId, groupName, memberEmail, mem
 }
 
 // Leave a group (self-removal)
-export async function leaveGroup(groupId, userEmail) {
+export async function leaveGroup(groupId, userEmail, userId = null) {
   const ref = questingGroupRef(groupId);
 
   await updateDoc(ref, {
     members: arrayRemove(userEmail.toLowerCase()),
+    ...(userId ? { memberIds: arrayRemove(userId) } : {}),
     updatedAt: serverTimestamp(),
   });
 }

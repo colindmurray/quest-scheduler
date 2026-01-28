@@ -7,7 +7,7 @@ function unixSeconds(iso) {
   return Math.floor(value / 1000);
 }
 
-function buildPollCard({ schedulerId, scheduler, slots }) {
+function buildPollCard({ schedulerId, scheduler, slots, voteCount, totalParticipants }) {
   const title = scheduler.title || "Quest Session";
   const description = `Vote in Quest Scheduler: ${APP_URL}/scheduler/${schedulerId}`;
 
@@ -27,6 +27,15 @@ function buildPollCard({ schedulerId, scheduler, slots }) {
       inline: true,
     },
   ];
+
+  if (typeof voteCount === "number" && typeof totalParticipants === "number" && totalParticipants > 0) {
+    const pending = totalParticipants - voteCount;
+    fields.push({
+      name: "Votes",
+      value: `${voteCount}/${totalParticipants} voted${pending > 0 ? ` (${pending} pending)` : ""}`,
+      inline: true,
+    });
+  }
 
   if (firstSlot && lastSlot) {
     const startUnix = unixSeconds(firstSlot.start);

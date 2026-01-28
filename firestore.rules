@@ -148,6 +148,7 @@ service cloud.firestore {
         return isGroupInvitee(data)
           && request.resource.data.diff(data).affectedKeys().hasOnly([
             "members",
+            "memberIds",
             "pendingInvites",
             "pendingInviteMeta",
             "updatedAt"
@@ -163,6 +164,7 @@ service cloud.firestore {
         return isGroupMember(data)
           && request.resource.data.diff(data).affectedKeys().hasOnly([
             "members",
+            "memberIds",
             "updatedAt"
           ])
           && userEmail() in data.members
@@ -215,6 +217,7 @@ service cloud.firestore {
           && isSchedulerInvitee(data)
           && request.resource.data.diff(data).affectedKeys().hasOnly([
             "participants",
+            "participantIds",
             "pendingInvites",
             "pendingInviteMeta",
             "updatedAt"
@@ -235,6 +238,7 @@ service cloud.firestore {
           && data.allowLinkSharing == true
           && request.resource.data.diff(data).affectedKeys().hasOnly([
             "participants",
+            "participantIds",
             "pendingInvites",
             "pendingInviteMeta",
             "updatedAt"
@@ -248,6 +252,7 @@ service cloud.firestore {
         return isSchedulerParticipant(data)
           && request.resource.data.diff(data).affectedKeys().hasOnly([
             "participants",
+            "participantIds",
             "updatedAt"
           ])
           && userEmail() in data.participants

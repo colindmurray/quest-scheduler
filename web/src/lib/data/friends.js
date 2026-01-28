@@ -198,10 +198,12 @@ export async function removeFriend(requestId, { userEmail }) {
 
   const primaryId = friendRequestIdForEmails(data.fromEmail, data.toEmail);
   const reverseId = friendRequestIdForEmails(data.toEmail, data.fromEmail);
+  const legacyIds = new Set([primaryId, reverseId]);
+  legacyIds.delete(requestId);
 
   await Promise.allSettled([
-    deleteDoc(friendRequestRef(primaryId)),
-    deleteDoc(friendRequestRef(reverseId)),
+    deleteDoc(ref),
+    ...Array.from(legacyIds).map((id) => deleteDoc(friendRequestRef(id))),
   ]);
 }
 
