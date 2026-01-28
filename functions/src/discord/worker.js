@@ -314,21 +314,52 @@ async function getLinkedUser(discordUserId) {
   }
 }
 
-async function ensureParticipant(scheduler, userId) {
-  if (!userId) return false;
-  const participantIds = scheduler.participantIds || [];
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+async function getParticipationDecision(scheduler, linkedUser) {
+  if (!linkedUser?.uid) {
+    return { allowed: false, message: ERROR_MESSAGES.notParticipant };
+  }
+
+  const userId = linkedUser.uid;
+  const email = linkedUser.email ? normalizeEmail(linkedUser.email) : null;
+  const participantIds = (scheduler.participantIds || []).map((id) => String(id));
+  const pendingInvites = (scheduler.pendingInvites || []).map((invite) =>
+    normalizeEmail(invite)
+  );
+
   if (participantIds.includes(userId)) {
-    return true;
+    return { allowed: true };
   }
+
   if (!scheduler.questingGroupId) {
-    return false;
+    if (email && pendingInvites.includes(email)) {
+      return { allowed: false, message: ERROR_MESSAGES.pendingInvite };
+    }
+    return { allowed: false, message: ERROR_MESSAGES.notInvited };
   }
+
   const groupSnap = await db.collection("questingGroups").doc(scheduler.questingGroupId).get();
   if (!groupSnap.exists) {
-    return false;
+    return { allowed: false, message: ERROR_MESSAGES.groupMissing };
   }
-  const memberIds = groupSnap.data()?.memberIds || [];
-  return memberIds.includes(userId);
+
+  const groupData = groupSnap.data() || {};
+  const memberIds = (groupData.memberIds || []).map((id) => String(id));
+  if (memberIds.includes(userId)) {
+    return { allowed: true };
+  }
+
+  const groupPendingInvites = (groupData.pendingInvites || []).map((invite) =>
+    normalizeEmail(invite)
+  );
+  if (email && groupPendingInvites.includes(email)) {
+    return { allowed: false, message: ERROR_MESSAGES.pendingInvite };
+  }
+
+  return { allowed: false, message: ERROR_MESSAGES.notGroupMember };
 }
 
 async function handleLinkGroup(interaction) {
@@ -480,9 +511,12 @@ async function handleVoteButton(interaction, schedulerId) {
   }
   const userEmail = linkedUser.email || null;
 
-  const isParticipant = await ensureParticipant(scheduler, linkedUser.uid);
-  if (!isParticipant) {
-    return respondWithError(interaction, ERROR_MESSAGES.notParticipant);
+  const participation = await getParticipationDecision(scheduler, linkedUser);
+  if (!participation.allowed) {
+    return respondWithError(
+      interaction,
+      participation.message || ERROR_MESSAGES.notParticipant
+    );
   }
 
   const slotsSnap = await schedulerRef.collection("slots").get();
@@ -739,9 +773,12 @@ async function handleClearVotes(interaction, schedulerId, noTimesWork) {
   }
   const userEmail = linkedUser.email || null;
 
-  const isParticipant = await ensureParticipant(scheduler, linkedUser.uid);
-  if (!isParticipant) {
-    return respondWithError(interaction, ERROR_MESSAGES.notParticipant);
+  const participation = await getParticipationDecision(scheduler, linkedUser);
+  if (!participation.allowed) {
+    return respondWithError(
+      interaction,
+      participation.message || ERROR_MESSAGES.notParticipant
+    );
   }
 
   await schedulerRef
@@ -860,9 +897,12 @@ async function handleSubmitVote(interaction, schedulerId) {
     );
   }
 
-  const isParticipant = await ensureParticipant(scheduler, linkedUser.uid);
-  if (!isParticipant) {
-    return respondWithError(interaction, ERROR_MESSAGES.notParticipant);
+  const participation = await getParticipationDecision(scheduler, linkedUser);
+  if (!participation.allowed) {
+    return respondWithError(
+      interaction,
+      participation.message || ERROR_MESSAGES.notParticipant
+    );
   }
 
   const slotsSnap = await schedulerRef.collection("slots").get();

@@ -4,7 +4,7 @@ function buildSettingsUrl(appUrl) {
 }
 
 function buildUserNotLinkedMessage(appUrl) {
-  return `Link your Discord account to Quest Scheduler to vote. Visit ${buildSettingsUrl(appUrl)}`;
+  return `Link your Discord account to Quest Scheduler to vote. If you already have an account, visit ${buildSettingsUrl(appUrl)}. If you don't have one yet, create an account first.`;
 }
 
 const ERROR_MESSAGES = {
@@ -22,6 +22,13 @@ const ERROR_MESSAGES = {
   missingDiscordUser: "Unable to identify your Discord account.",
   notParticipant:
     "You're not a participant in this poll. Ask the organizer to invite you.",
+  notInvited: "You're not invited to this poll. Ask the organizer to add you.",
+  notGroupMember:
+    "You're not a member of the questing group for this poll. Ask the host to add you.",
+  pendingInvite:
+    "You've been invited but haven't accepted yet. Open Quest Scheduler to accept the invite, then vote here.",
+  groupMissing:
+    "This poll's questing group no longer exists. Ask the host to re-share the poll.",
   noSlots: "No available slots to vote on.",
   sessionExpired: "Voting session expired. Click Vote again.",
   staleSlots: "The poll was updated. Please tap Vote again.",
