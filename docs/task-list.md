@@ -1,8 +1,8 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-28 — Added Cloud Functions unit tests for Discord modules (oauth, worker, link-codes, nudge, roles); vitest run passed (1 skipped).
-- Next Step: Add tests for legacy callables in `functions/src/legacy.js`.
+- Last Completed: 2026-01-28 — Added tests for legacy callables in `functions/src/legacy.js` (vitest run passed).
+- Next Step: Add hook tests in `web/src/hooks/` (useUserSettings, useQuestingGroups, usePollInvites, useBlockedUsers, etc.).
 - Open Issues: `npm run test:rules` failed — firebase-tools requires JDK 21+. Playwright install warned about missing system deps (`npx playwright install-deps` or apt libs). `npm install` reported 4 vulnerabilities (3 moderate, 1 high) — run audit once test plan allows. `functions/npm install` reports 2 moderate vulnerabilities. Functions tests emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Worker tests log expected warnings on missing secrets.
 - Last Updated (YYYY-MM-DD): 2026-01-28
 
@@ -21,7 +21,7 @@
 ### P1 — Functions + Hooks
 - [x] 2026-01-28: Add `vitest` + `firebase-functions-test` to `functions/package.json` with `functions/vitest.config.js`.
 - [x] 2026-01-28: Add Cloud Functions unit tests for Discord modules (oauth, worker, link-codes, nudge, roles) (1 skipped: roles mapping needs bot token/REST stub).
-- [ ] Add tests for legacy callables in `functions/src/legacy.js`.
+- [x] 2026-01-28: Add tests for legacy callables in `functions/src/legacy.js`.
 - [ ] Add hook tests in `web/src/hooks/` (useUserSettings, useQuestingGroups, usePollInvites, useBlockedUsers, etc.).
 
 ### P2 — UI Components
