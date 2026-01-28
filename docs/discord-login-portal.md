@@ -11,7 +11,7 @@ Add Discord OAuth login as a first-class auth provider without replacing Google 
 - Allow linking Google and Email/Password later in Settings.
 - Block Discord unlink if it is the only login method.
 - Use Discord branding assets and colors correctly, without imitating Discord's UI.
-- Use Discord OAuth email scope to set user email when available and verified (if the verification flag is present).
+- Use Discord OAuth email scope only for **login flow** (account creation). Email is **not required** when linking Discord to an existing account.
 - Allow friend, questing group, and scheduler invites by Discord username (auto-detected).
 - Defer final display rules to Phase 3 (`docs/display-names-and-usernames.md`); Phase 2 should prefer displayName but may still show email in some contexts.
 
@@ -42,7 +42,7 @@ Add Discord OAuth login as a first-class auth provider without replacing Google 
 ### Discord OAuth Linking (`functions/src/discord/oauth.js`)
 - **`discordOAuthStart`** (callable function, lines 18-50):
   - **Requires authentication** - throws `"unauthenticated"` if `!request.auth`.
-  - Scope is `identify` only (no email).
+  - Scope is `identify` only (no email). This is fine because **linking does not require Discord email**.
   - Stores state in `oauthStates/{state}` with `uid`, `provider: "discord"`, 10-minute TTL.
   - Returns `{ authUrl }` for client redirect.
 - **`discordOAuthCallback`** (HTTP endpoint, lines 52-163):
@@ -147,7 +147,7 @@ Response: 302 redirect to Discord authorize URL
      expiresAt: now + 10 minutes
    }
    ```
-3. Redirect to Discord:
+3. Redirect to Discord (login flow uses email scope):
    ```
    https://discord.com/oauth2/authorize
      ?client_id={DISCORD_CLIENT_ID}
@@ -238,9 +238,9 @@ Note: This route should NOT be wrapped in `RedirectWhenSignedIn` since it needs 
 
 ## Email Handling
 
-### Decision: Verified email is REQUIRED for Discord login
+### Decision: Verified email is REQUIRED for Discord login (new account only)
 
-**Email is required for all accounts.** Discord OAuth login will fail if Discord does not provide a verified email address. This ensures:
+**Email is required for all accounts.** Discord OAuth **login** will fail if Discord does not provide a verified email address. This ensures:
 - Compatibility with the UUID migration plan (see `docs/uuid_migration_plan.md`)
 - All Firestore rules that depend on `userEmail()` continue to work
 - Email-based pending invites work for all users
@@ -283,7 +283,7 @@ The Firestore rules `isEmailVerified()` function (line 8-11) checks:
 request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'google.com'
 ```
 
-Custom token users don't satisfy either condition by default. **We must set `emailVerified` in Firebase Auth** when creating/updating users from Discord:
+Custom token users don't satisfy either condition by default. **We must set `emailVerified` in Firebase Auth** when creating/updating users from Discord **during the login flow**:
 
 ```javascript
 // When creating new user:
@@ -303,7 +303,7 @@ await admin.auth().updateUser(uid, {
 
 ### Email collision handling
 
-When Discord provides an email and `verified: true` that matches an existing user:
+When Discord login provides an email and `verified: true` that matches an existing user:
 
 1. **If that user has no Discord linked:** Attach Discord to that account (auto-link).
 2. **If that user has a different Discord linked:** Reject with error "This email is associated with another account that has a different Discord linked. Please log in with your existing method."
@@ -658,3 +658,10 @@ Display user-friendly messages on `/auth` page based on `error` query param.
 3. **Token delivery:** Keep token in URL redirect, or use server session + fetch pattern for extra security?
 
 4. **Existing link flow update:** Should we also add `intent: "link"` to existing `discordOAuthStart` state records for consistency, or leave the existing flow unchanged?
+### Linking flow does NOT require Discord email
+
+If a user is already signed in (Google or email/password) and links Discord:
+- **Do not require Discord email**.
+- The link flow can remain `identify`-only.
+- The user's existing email stays authoritative.
+This preserves the ability to link Discord even if the Discord account has no verified email.
