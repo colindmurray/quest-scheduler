@@ -1,9 +1,9 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-28 — Added `web/src/lib/firebase.test.js` and expanded emulator-connection mocks; verified `npm --prefix web run test` (117 tests).
-- Next Step: Evaluate core feature component coverage (Dashboard, Friends, Scheduler pages) and prioritize next unit tests.
-- Open Issues: Functions tests still emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning. Overall coverage remains low outside UI components.
+- Last Completed: 2026-01-28 — Expanded hook coverage (useNotifications/useQuestingGroups) and re-ran `npm --prefix web run test:coverage` (163 tests). Hooks now 89%+ and core data layer 84%+.
+- Next Step: Decide whether to add coverage for large feature pages (Dashboard/Friends/Scheduler) or leave as UI-heavy/low-risk.
+- Open Issues: Roles mapping test still skipped (needs Discord bot token/REST stubbing). Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning. Overall coverage remains low because feature pages are untested.
 - Last Updated (YYYY-MM-DD): 2026-01-28
 
 ## Automated Testing Overhaul (Unit / Integration / E2E)

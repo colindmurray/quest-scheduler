@@ -37,12 +37,17 @@ QS_GOOGLE_OAUTH_CLIENT_SECRET_FILE=functions/credentials/quest_scheduler_test_oa
 ```
 
 Place the Google OAuth client JSON at `functions/credentials/quest_scheduler_test_oauth_client.json`
-(the path is gitignored).
+(the path is gitignored) and keep `QS_GOOGLE_OAUTH_CLIENT_SECRET_FILE` pointed at that file.
 
 ## Unit Tests
 ```bash
 npm --prefix web run test
 npm --prefix functions run test
+```
+
+## Coverage (Web)
+```bash
+npm --prefix web run test:coverage
 ```
 
 ## Rules Tests (Firestore + Storage)
@@ -73,3 +78,4 @@ npm --prefix web run test:e2e:emulators
 ## Notes
 - The seed script creates/updates the test auth user (from `web/.env.e2e.local`) and writes a scheduler with slots into the emulator.
 - Emulator logs may still show `punycode` deprecation warnings and firebase-functions version warnings; tests can still pass.
+- Google OAuth test creds must be created in Google Cloud Console (OAuth client for Web). Download the JSON and place it in `functions/credentials/quest_scheduler_test_oauth_client.json`.

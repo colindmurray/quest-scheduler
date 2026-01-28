@@ -64,6 +64,15 @@ This file is the working contract for all agents (including Codex) contributing 
 - Update `docs/task-list.md` as work progresses.
 - Use `docs/testing.md` as the source of truth for local test commands and emulator setup.
 
+## Testing
+- Follow `docs/testing.md` for setup, env files, and emulator steps.
+- Common commands:
+  - `npm --prefix web run test`
+  - `npm --prefix functions run test`
+  - `npm --prefix web run test:rules`
+  - `npm --prefix web run test:e2e:emulators`
+  - `npm --prefix web run test:coverage`
+
 ## 5) Implementation Workflow (for Codex)
 - Work in small, reviewable steps.
 - After each compact step, update `docs/task-list.md` with progress notes.

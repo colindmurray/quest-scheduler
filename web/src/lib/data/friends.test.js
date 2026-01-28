@@ -2,9 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   createFriendRequest,
   acceptFriendRequest,
+  declineFriendRequest,
+  removeFriend,
+  ensureFriendInviteCode,
   acceptFriendInviteLink,
+  syncFriendRequestNotifications,
+  normalizeFriendRequestId,
 } from "./friends";
-import { setDoc, updateDoc, getDoc } from "firebase/firestore";
+import { setDoc, updateDoc, getDoc, deleteDoc } from "firebase/firestore";
 import { createFriendAcceptedNotification } from "./notifications";
 import { findUserIdByEmail } from "./users";
 import { resolveIdentifier } from "../identifiers";
@@ -17,6 +22,7 @@ vi.mock("firebase/firestore", () => ({
   serverTimestamp: vi.fn(() => "ts"),
   setDoc: vi.fn(),
   updateDoc: vi.fn(),
+  deleteDoc: vi.fn(),
   getDoc: vi.fn(),
   getDocs: vi.fn(),
 }));
@@ -79,6 +85,35 @@ describe("friends data helpers", () => {
     expect(setDoc).toHaveBeenCalled();
   });
 
+  it("throws when trying to friend yourself", async () => {
+    resolveIdentifier.mockResolvedValue({
+      email: "self@example.com",
+      userId: null,
+      userData: null,
+    });
+
+    await expect(
+      createFriendRequest({
+        fromUserId: "user_1",
+        fromEmail: "self@example.com",
+        toIdentifier: "self@example.com",
+      })
+    ).rejects.toThrow("You cannot add yourself as a friend.");
+  });
+
+  it("skips email queue when sendEmail is false", async () => {
+    await createFriendRequest(
+      {
+        fromUserId: "user_1",
+        fromEmail: "sender@example.com",
+        toIdentifier: "friend@example.com",
+      },
+      { sendEmail: false }
+    );
+
+    expect(setDoc).not.toHaveBeenCalled();
+  });
+
   it("accepts a pending friend request and notifies sender", async () => {
     getDoc.mockResolvedValue({
       exists: () => true,
@@ -103,11 +138,103 @@ describe("friends data helpers", () => {
     });
   });
 
+  it("accepts request by resolving sender id when missing", async () => {
+    getDoc.mockResolvedValue({
+      exists: () => true,
+      data: () => ({
+        toEmail: "friend@example.com",
+        status: "pending",
+        fromEmail: "sender@example.com",
+      }),
+    });
+    findUserIdByEmail.mockResolvedValue("sender_2");
+
+    await acceptFriendRequest("req_2", {
+      userId: "friend_1",
+      userEmail: "friend@example.com",
+    });
+
+    expect(createFriendAcceptedNotification).toHaveBeenCalledWith("sender_2", {
+      requestId: "req_2",
+      friendEmail: "friend@example.com",
+      friendUserId: "friend_1",
+    });
+  });
+
+  it("declines request and removes notification", async () => {
+    getDoc.mockResolvedValue({
+      exists: () => true,
+      data: () => ({
+        toEmail: "friend@example.com",
+        status: "pending",
+      }),
+    });
+
+    await declineFriendRequest("req_3", {
+      userId: "friend_1",
+      userEmail: "friend@example.com",
+    });
+
+    expect(updateDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "declined" })
+    );
+  });
+
+  it("removes accepted friend requests and legacy ids", async () => {
+    getDoc.mockResolvedValue({
+      exists: () => true,
+      data: () => ({
+        status: "accepted",
+        fromEmail: "a@example.com",
+        toEmail: "b@example.com",
+      }),
+    });
+
+    await removeFriend("req_4", { userEmail: "a@example.com" });
+
+    expect(deleteDoc).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns existing invite code without writing", async () => {
+    getDoc.mockResolvedValue({
+      data: () => ({ friendInviteCode: "code-123" }),
+    });
+
+    const code = await ensureFriendInviteCode({
+      userId: "user_1",
+      email: "user@example.com",
+    });
+
+    expect(code).toBe("code-123");
+    expect(setDoc).not.toHaveBeenCalled();
+  });
+
   it("accepts a friend invite link by creating and accepting request", async () => {
     await acceptFriendInviteLink("invite_code", {
       userId: "friend_1",
       userEmail: "friend@example.com",
     });
     expect(setDoc).not.toHaveBeenCalled();
+  });
+
+  it("syncs friend request notifications for pending requests", async () => {
+    await syncFriendRequestNotifications("user_1", [
+      { id: "req_1", fromEmail: "sender@example.com", fromUserId: "sender_1" },
+    ]);
+
+    const { ensureFriendRequestNotification } = await import("./notifications");
+    expect(ensureFriendRequestNotification).toHaveBeenCalledWith("user_1", {
+      requestId: "req_1",
+      fromEmail: "sender@example.com",
+      fromUserId: "sender_1",
+    });
+  });
+
+  it("normalizes legacy friend request ids", () => {
+    expect(normalizeFriendRequestId("friendRequest:foo@bar.com__a@b.com")).toContain(
+      "friendRequest:"
+    );
+    expect(normalizeFriendRequestId(null)).toBeNull();
   });
 });

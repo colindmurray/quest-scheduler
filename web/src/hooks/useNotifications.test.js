@@ -1,8 +1,10 @@
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 
+let currentUser = { uid: 'user-1' };
+
 vi.mock('../app/useAuth', () => ({
-  useAuth: () => ({ user: { uid: 'user-1' } }),
+  useAuth: () => ({ user: currentUser }),
 }));
 
 const useFirestoreCollectionMock = vi.fn();
@@ -29,6 +31,7 @@ import { useNotifications } from './useNotifications';
 describe('useNotifications', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    currentUser = { uid: 'user-1' };
     useFirestoreCollectionMock.mockReturnValue({
       data: [
         { id: 'n1', read: false },
@@ -53,5 +56,60 @@ describe('useNotifications', () => {
 
     expect(markNotificationReadMock).toHaveBeenCalledWith('user-1', 'n1');
     expect(result.current.notifications.find((n) => n.id === 'n1')?.read).toBe(true);
+  });
+
+  test('markRead reverts local state when backend fails', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    markNotificationReadMock.mockRejectedValueOnce(new Error('nope'));
+    const { result } = renderHook(() => useNotifications());
+
+    await act(async () => {
+      await result.current.markRead('n1');
+    });
+
+    expect(markNotificationReadMock).toHaveBeenCalledWith('user-1', 'n1');
+    expect(result.current.notifications.find((n) => n.id === 'n1')?.read).toBe(false);
+    errorSpy.mockRestore();
+  });
+
+  test('dismiss removes locally and calls backend', async () => {
+    const { result } = renderHook(() => useNotifications());
+
+    await act(async () => {
+      await result.current.dismiss('n1');
+    });
+
+    expect(dismissNotificationMock).toHaveBeenCalledWith('user-1', 'n1');
+    expect(result.current.notifications.some((n) => n.id === 'n1')).toBe(false);
+  });
+
+  test('dismissAll clears locally and calls backend', async () => {
+    const { result } = renderHook(() => useNotifications());
+
+    await act(async () => {
+      await result.current.dismissAll();
+    });
+
+    expect(dismissAllNotificationsMock).toHaveBeenCalledWith('user-1', expect.any(Array));
+    await waitFor(() => {
+      expect(result.current.notifications).toHaveLength(0);
+    });
+  });
+
+  test('no-ops when user is missing', async () => {
+    currentUser = null;
+    const { result } = renderHook(() => useNotifications());
+
+    await act(async () => {
+      await result.current.markRead('n1');
+      await result.current.dismiss('n1');
+      await result.current.markAllRead();
+      await result.current.dismissAll();
+    });
+
+    expect(markNotificationReadMock).not.toHaveBeenCalled();
+    expect(dismissNotificationMock).not.toHaveBeenCalled();
+    expect(markAllNotificationsReadMock).not.toHaveBeenCalled();
+    expect(dismissAllNotificationsMock).not.toHaveBeenCalled();
   });
 });
