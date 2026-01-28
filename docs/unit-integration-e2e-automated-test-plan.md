@@ -2689,8 +2689,8 @@ export async function clearTestData() {
 - [x] Install and configure Playwright
 - [ ] Write auth flow E2E tests (Google + Discord login)
 - [x] Write scheduler flow E2E tests
-- [ ] Write friends/groups E2E tests (identifier invites)
-- [ ] Write settings/profile E2E tests (avatar source selection)
+- [x] Write friends/groups E2E tests (identifier invites)
+- [x] Write settings/profile E2E tests (avatar source selection)
 
 ### Phase 5: Cloud Functions (Week 9-10)
 - [x] Add Vitest + `firebase-functions-test` to functions/package.json

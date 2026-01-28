@@ -1,9 +1,9 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-28 — Added integration tests for UID poll invite flows and ran `npm run test:integration`.
-- Next Step: Add remaining E2E coverage (friends/groups + settings/profile, and Google login flow).
-- Open Issues: Functions tests still emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning.
+- Last Completed: 2026-01-28 — Added friends/groups + settings/profile E2E coverage and ran `npm run test:e2e:emulators` (18/18).
+- Next Step: Add Google login E2E coverage (OAuth creds) and remaining CI/coverage tasks.
+- Open Issues: Functions tests still emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning. Google auth E2E still pending (requires test OAuth creds).
 - Last Updated (YYYY-MM-DD): 2026-01-28
 
 ## Automated Testing Overhaul (Unit / Integration / E2E)

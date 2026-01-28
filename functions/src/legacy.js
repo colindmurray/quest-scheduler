@@ -1,5 +1,6 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const { FieldValue } = require("firebase-admin/firestore");
 const { google } = require("googleapis");
 const { defineJsonSecret } = require("firebase-functions/params");
 const crypto = require("crypto");
@@ -178,7 +179,7 @@ async function ensureUserStatus(uid) {
       {
         inviteAllowance: currentAllowance,
         suspended,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
@@ -272,14 +273,14 @@ async function adjustInviteAllowance(userId, delta) {
     const updates = {
       inviteAllowance: next,
       suspended: isSuspended,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     };
 
     if (isSuspended && !data.suspended) {
-      updates.suspendedAt = admin.firestore.FieldValue.serverTimestamp();
+      updates.suspendedAt = FieldValue.serverTimestamp();
     }
     if (!isSuspended && data.suspended) {
-      updates.suspendedAt = admin.firestore.FieldValue.delete();
+      updates.suspendedAt = FieldValue.delete();
     }
 
     transaction.set(ref, updates, { merge: true });
@@ -309,7 +310,7 @@ async function createFriendRequestNotification(userId, { requestId, fromEmail, f
       },
       read: false,
       dismissed: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
@@ -337,7 +338,7 @@ async function createFriendAcceptedNotification(userId, { requestId, friendEmail
     },
     read: false,
     dismissed: false,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 }
 
@@ -368,7 +369,7 @@ async function createPollInviteNotification(
       },
       read: false,
       dismissed: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
@@ -550,7 +551,7 @@ async function storeRefreshToken(uid, refreshToken) {
       {
         googleCalendar: {
           refreshToken: encrypted,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         },
       },
       { merge: true }
@@ -564,7 +565,7 @@ async function clearRefreshToken(uid) {
     .doc(uid)
     .set(
       {
-        googleCalendar: admin.firestore.FieldValue.delete(),
+        googleCalendar: FieldValue.delete(),
       },
       { merge: true }
     );
@@ -606,7 +607,7 @@ exports.googleCalendarStartAuth = functionsWithOAuthSecrets.https.onCall(async (
   const state = crypto.randomBytes(16).toString("hex");
   await admin.firestore().collection("oauthStates").doc(state).set({
     uid: context.auth.uid,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: "offline",
@@ -668,7 +669,7 @@ exports.googleCalendarOAuthCallback = functionsWithOAuthSecrets.https.onRequest(
           settings: {
             linkedCalendarEmail: tokenEmail,
           },
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
       );
@@ -870,7 +871,7 @@ exports.cloneSchedulerPoll = functions.https.onCall(async (data, context) => {
     googleCalendarId: null,
     questingGroupId: questingGroupId || null,
     questingGroupName: groupNameToSave,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 
   const slotsSnap = await schedulerRef.collection("slots").get();
@@ -919,7 +920,7 @@ exports.cloneSchedulerPoll = functions.https.onCall(async (data, context) => {
               userAvatar: voteData.userAvatar || null,
               votes: nextVotes,
               noTimesWork: Boolean(voteData.noTimesWork),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              updatedAt: FieldValue.serverTimestamp(),
             },
             { merge: true }
           );
@@ -1077,7 +1078,7 @@ exports.sendFriendRequest = functions.https.onCall(async (data, context) => {
     toEmail,
     toUserId: toUserId || null,
     status: "pending",
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 
   if (toUserId) {
@@ -1153,7 +1154,7 @@ exports.acceptFriendInviteLink = functions.https.onCall(async (data, context) =>
       await existingDoc.ref.update({
         status: "accepted",
         toUserId: context.auth.uid,
-        respondedAt: admin.firestore.FieldValue.serverTimestamp(),
+        respondedAt: FieldValue.serverTimestamp(),
       });
       await createFriendAcceptedNotification(senderDoc.id, {
         requestId: existingDoc.id,
@@ -1184,8 +1185,8 @@ exports.acceptFriendInviteLink = functions.https.onCall(async (data, context) =>
     toEmail: userEmail,
     toUserId: context.auth.uid,
     status: "accepted",
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    respondedAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
+    respondedAt: FieldValue.serverTimestamp(),
   });
 
   await createFriendAcceptedNotification(senderDoc.id, {
@@ -1300,14 +1301,14 @@ exports.sendPollInvites = functions.https.onCall(async (data, context) => {
     nextMeta[email] = {
       invitedByEmail: inviterEmail,
       invitedByUserId: inviterId,
-      invitedAt: admin.firestore.FieldValue.serverTimestamp(),
+      invitedAt: FieldValue.serverTimestamp(),
     };
   });
 
   await schedulerRef.update({
     pendingInvites: nextPending,
     pendingInviteMeta: nextMeta,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
   const schedulerTitle = data?.schedulerTitle || scheduler.title || "Session Poll";
@@ -1374,7 +1375,7 @@ exports.registerQsUsername = functions.https.onCall(async (data, context) => {
       );
     }
 
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = FieldValue.serverTimestamp();
     if (!usernameSnap.exists) {
       tx.set(usernameRef, { uid, username: raw, createdAt: now, updatedAt: now });
     } else {
@@ -1435,7 +1436,7 @@ exports.revokePollInvite = functions.https.onCall(async (data, context) => {
   await schedulerRef.update({
     pendingInvites: nextPending,
     pendingInviteMeta: nextMeta,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
   const inviteeUserId = await findUserIdByEmail(inviteeEmail);
@@ -1514,13 +1515,13 @@ exports.sendGroupInvite = functions.https.onCall(async (data, context) => {
   }
 
   await groupRef.update({
-    pendingInvites: admin.firestore.FieldValue.arrayUnion(inviteeEmail),
+    pendingInvites: FieldValue.arrayUnion(inviteeEmail),
     [`pendingInviteMeta.${inviteeEmail}`]: {
       invitedByEmail: inviterEmail,
       invitedByUserId: inviterId,
-      invitedAt: admin.firestore.FieldValue.serverTimestamp(),
+      invitedAt: FieldValue.serverTimestamp(),
     },
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
   return { added: true, inviteeUserId: inviteeUserId || null };
@@ -1560,9 +1561,9 @@ exports.revokeGroupInvite = functions.https.onCall(async (data, context) => {
   }
 
   await groupRef.update({
-    pendingInvites: admin.firestore.FieldValue.arrayRemove(inviteeEmail),
-    [`pendingInviteMeta.${inviteeEmail}`]: admin.firestore.FieldValue.delete(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    pendingInvites: FieldValue.arrayRemove(inviteeEmail),
+    [`pendingInviteMeta.${inviteeEmail}`]: FieldValue.delete(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
   const inviteeUserId = await findUserIdByEmail(inviteeEmail);
@@ -1654,10 +1655,10 @@ exports.removeGroupMemberFromPolls = functions.https.onCall(async (data, context
 
   for (const pollDoc of pollDocs) {
     await pollDoc.ref.update({
-      ...(memberUid ? { participantIds: admin.firestore.FieldValue.arrayRemove(memberUid) } : {}),
-      pendingInvites: admin.firestore.FieldValue.arrayRemove(memberEmail),
-      [`pendingInviteMeta.${memberEmail}`]: admin.firestore.FieldValue.delete(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      ...(memberUid ? { participantIds: FieldValue.arrayRemove(memberUid) } : {}),
+      pendingInvites: FieldValue.arrayRemove(memberEmail),
+      [`pendingInviteMeta.${memberEmail}`]: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
     });
     await deleteVoteDocs(pollDoc.ref);
   }
@@ -1839,11 +1840,11 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
     blockedUserId: offenderUserId || targetUserId || null,
     discordUsernameLower: targetDiscordUsername || null,
     qsUsernameLower: targetQsUsername || null,
-    blockedAt: admin.firestore.FieldValue.serverTimestamp(),
+    blockedAt: FieldValue.serverTimestamp(),
     penalized: shouldPenalize,
     penaltyValue: shouldPenalize ? INVITE_BLOCK_PENALTY : 0,
     penaltyAppliedAt: shouldPenalize
-      ? admin.firestore.FieldValue.serverTimestamp()
+      ? FieldValue.serverTimestamp()
       : null,
   });
 
@@ -1869,7 +1870,7 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
       await pollDoc.ref.update({
         pendingInvites,
         pendingInviteMeta: nextMeta,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       });
       await db
         .collection("users")
@@ -1892,7 +1893,7 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
       await groupDoc.ref.update({
         pendingInvites,
         pendingInviteMeta: nextMeta,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       });
       await db
         .collection("users")
@@ -2071,7 +2072,7 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
     }
 
     const db = admin.firestore();
-    const arrayRemove = admin.firestore.FieldValue.arrayRemove;
+    const arrayRemove = FieldValue.arrayRemove;
 
     step = "check-suspension";
     const userSnap = await db.collection("users").doc(uid).get();
@@ -2087,7 +2088,7 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
         .set(
           {
             email,
-            bannedAt: admin.firestore.FieldValue.serverTimestamp(),
+            bannedAt: FieldValue.serverTimestamp(),
             reason: "suspended",
           },
           { merge: true }
@@ -2151,7 +2152,7 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
       await db.collection("questingGroups").doc(groupId).update({
         memberIds: arrayRemove(uid),
         pendingInvites: arrayRemove(email),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       });
     }
 
@@ -2192,7 +2193,7 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
       if (pollData.creatorId === uid) continue;
       await pollDoc.ref.update({
         participantIds: arrayRemove(uid),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       });
       await pollDoc.ref.collection("votes").doc(uid).delete();
     }
@@ -2205,8 +2206,8 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
     for (const pollDoc of pendingPollsSnap.docs) {
       await pollDoc.ref.update({
         pendingInvites: arrayRemove(email),
-        [`pendingInviteMeta.${email}`]: admin.firestore.FieldValue.delete(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        [`pendingInviteMeta.${email}`]: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
       });
     }
 
