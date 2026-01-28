@@ -1,9 +1,9 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-28 — Added Playwright E2E scaffold + initial Discord/poll access checks (playwright run passed; 6 skipped pending emulator + test creds).
-- Next Step: Add `vitest` + `firebase-functions-test` to `functions/package.json` with `functions/vitest.config.js`.
-- Open Issues: `npm run test:rules` failed — firebase-tools requires JDK 21+. Playwright install warned about missing system deps (`npx playwright install-deps` or apt libs). `npm install` reported 4 vulnerabilities (3 moderate, 1 high) — run audit once test plan allows.
+- Last Completed: 2026-01-28 — Added vitest + firebase-functions-test to functions package with `functions/vitest.config.js`.
+- Next Step: Add Cloud Functions unit tests for Discord modules (oauth, worker, link-codes, nudge, roles).
+- Open Issues: `npm run test:rules` failed — firebase-tools requires JDK 21+. Playwright install warned about missing system deps (`npx playwright install-deps` or apt libs). `npm install` reported 4 vulnerabilities (3 moderate, 1 high) — run audit once test plan allows. `functions/npm install` reports 2 moderate vulnerabilities. `functions/npm test` exits 1 until tests exist (no test files yet).
 - Last Updated (YYYY-MM-DD): 2026-01-28
 
 ## Automated Testing Overhaul (Unit / Integration / E2E)
@@ -19,7 +19,7 @@
 - [x] 2026-01-28: Add Playwright E2E scaffold + critical flows (Discord + UID-only polling) (6 skipped: OAuth + UID poll need emulator/test creds).
 
 ### P1 — Functions + Hooks
-- [ ] Add `vitest` + `firebase-functions-test` to `functions/package.json` with `functions/vitest.config.js`.
+- [x] 2026-01-28: Add `vitest` + `firebase-functions-test` to `functions/package.json` with `functions/vitest.config.js`.
 - [ ] Add Cloud Functions unit tests for Discord modules (oauth, worker, link-codes, nudge, roles).
 - [ ] Add tests for legacy callables in `functions/src/legacy.js`.
 - [ ] Add hook tests in `web/src/hooks/` (useUserSettings, useQuestingGroups, usePollInvites, useBlockedUsers, etc.).
