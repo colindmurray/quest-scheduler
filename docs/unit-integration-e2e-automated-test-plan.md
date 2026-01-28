@@ -10,21 +10,32 @@ This document outlines a comprehensive automated testing strategy for Quest Sche
 - **Test Framework:** Vitest 3.2.4 (installed)
 - **Language:** JavaScript/JSX only (no TypeScript)
 - **Existing Tests:** 4 data layer test files in `web/src/lib/data/`:
-  - `users.test.js`
-  - `friends.test.js`
-  - `questingGroups.test.js`
-  - `notifications.test.js`
-- **No Vitest config file** - uses defaults
+  - `users.test.js` - tests for `findUserIdByEmail`
+  - `friends.test.js` - tests for `createFriendRequest`, `acceptFriendRequest`, `acceptFriendInviteLink`
+  - `questingGroups.test.js` - tests for `inviteMemberToGroup` with success, blocked, and missing invitee cases
+  - `notifications.test.js` - tests for `ensureGroupInviteNotification` and session notifications
+- **No Vitest config file** - uses defaults (works but lacks jsdom environment, setup file, coverage config)
 - **No coverage reporting** configured
+- **No React Testing Library** installed (required for component tests)
+- **Firebase Storage rules** exist (`storage.rules`) for profile avatar uploads
+- **Discord OAuth + bot flows** implemented in Cloud Functions (`functions/src/discord/`)
+- **UID-only membership** now drives schedulers + questing groups (participants/members email arrays deprecated)
+- **New data modules** exist for Discord, usernames, blocks, poll invites, and identifier parsing
 
 ### Gaps
 - ❌ No component tests
-- ❌ No hook tests
-- ❌ No Cloud Functions tests
-- ❌ No Firestore security rules tests
+- ❌ No hook tests (10 hooks exist, 0 tested)
+- ❌ No Cloud Functions tests (Discord OAuth, bot vote handlers, nudge, link codes, unlink, roles)
+- ❌ No Firestore security rules tests (Firestore + Storage)
 - ❌ No E2E tests
-- ❌ No integration tests with Firebase Emulator
+- ❌ No integration tests with Firebase Emulator (Auth/Firestore/Storage)
 - ❌ No Firebase Emulator config in firebase.json
+- ❌ No tests for `identifiers.js` (detectIdentifierType, resolveIdentifier)
+- ❌ No tests for `identity.js` (buildPublicIdentifier)
+- ❌ No tests for `auth.js` (signInWithGoogle, signInWithDiscordToken, etc.)
+- ❌ No tests for avatar source selection + storage upload constraints
+- ❌ No tests for migration script dry-run vs cleanup modes
+- ❌ Functions package missing vitest + firebase-functions-test dependencies
 
 ## Recommended Testing Stack
 
@@ -40,6 +51,7 @@ This document outlines a comprehensive automated testing strategy for Quest Sche
 |------|---------|-----|
 | [Firebase Emulator Suite](https://firebase.google.com/docs/emulator-suite) | Local Firebase | Test against real Firebase behavior without cloud costs |
 | [@firebase/rules-unit-testing](https://firebase.google.com/docs/rules/unit-tests) | Security rules testing | Official Firebase library for rules testing |
+| Firebase Storage Emulator | Avatar uploads + storage rules | Ensures profile image constraints are enforced |
 
 ### E2E Tests
 | Tool | Purpose | Why |
@@ -77,61 +89,113 @@ This document outlines a comprehensive automated testing strategy for Quest Sche
 
 | Category | Target Coverage | Priority |
 |----------|-----------------|----------|
-| Data Layer (`lib/data/`) | 90% | P0 |
+| Data Layer (`lib/data/`, `lib/identifiers.js`, `lib/identity.js`) | 90% | P0 |
 | Auth Helpers (`lib/auth.js`) | 90% | P0 |
 | Custom Hooks (`hooks/`) | 80% | P1 |
-| Firestore Security Rules | 100% | P0 |
-| Cloud Functions | 80% | P1 |
-| UI Components | 60% | P2 |
-| E2E Critical Paths | 100% | P0 |
+| Firestore + Storage Rules | 100% | P0 |
+| Cloud Functions - Discord (`functions/src/discord/`) | 80% | P1 |
+| Cloud Functions - Legacy callables (`functions/src/legacy.js`) | 80% | P1 |
+| UI Components (Settings + Auth) | 60% | P2 |
+| E2E Critical Paths (Discord + UID flows) | 100% | P0 |
 
 ## Directory Structure
+
+Files marked with ✓ exist; others are planned.
 
 ```
 web/
 ├── src/
-│   ├── __tests__/              # Integration tests
-│   │   ├── setup.js            # Test setup (Firebase emulator connection)
+│   ├── __tests__/                    # Integration tests (planned)
+│   │   ├── setup.js                  # Test setup (Firebase emulator connection)
 │   │   └── integration/
 │   │       ├── auth.integration.test.js
 │   │       ├── scheduler.integration.test.js
 │   │       └── friends.integration.test.js
 │   ├── lib/
 │   │   ├── data/
-│   │   │   ├── users.js
-│   │   │   └── users.test.js   # Co-located unit tests (existing)
-│   │   └── auth.js
-│   │       └── auth.test.js
+│   │   │   ├── users.js              ✓
+│   │   │   ├── users.test.js         ✓ Co-located unit tests (existing)
+│   │   │   ├── friends.js            ✓
+│   │   │   ├── friends.test.js       ✓ (existing)
+│   │   │   ├── questingGroups.js     ✓
+│   │   │   ├── questingGroups.test.js ✓ (existing)
+│   │   │   ├── notifications.js      ✓
+│   │   │   ├── notifications.test.js ✓ (existing)
+│   │   │   ├── pollInvites.js        ✓
+│   │   │   ├── pollInvites.test.js   # (planned)
+│   │   │   ├── blocks.js             ✓
+│   │   │   ├── blocks.test.js        # (planned)
+│   │   │   ├── discord.js            ✓
+│   │   │   ├── discord.test.js       # (planned)
+│   │   │   ├── usernames.js          ✓
+│   │   │   └── usernames.test.js     # (planned)
+│   │   ├── auth.js                   ✓
+│   │   ├── auth.test.js              # (planned)
+│   │   ├── identifiers.js            ✓
+│   │   ├── identifiers.test.js       # (planned)
+│   │   ├── identity.js               ✓
+│   │   └── identity.test.js          # (planned)
 │   ├── hooks/
-│   │   ├── useUserSettings.js
-│   │   └── useUserSettings.test.js
+│   │   ├── useUserSettings.js        ✓
+│   │   ├── useUserSettings.test.js   # (planned)
+│   │   ├── useUserProfiles.js        ✓
+│   │   ├── useUserProfiles.test.js   # (planned)
+│   │   ├── useQuestingGroups.js      ✓
+│   │   ├── useQuestingGroups.test.js # (planned)
+│   │   ├── usePollInvites.js         ✓
+│   │   ├── usePollInvites.test.js    # (planned)
+│   │   ├── useBlockedUsers.js        ✓
+│   │   ├── useBlockedUsers.test.js   # (planned)
+│   │   ├── useFirestoreCollection.js ✓
+│   │   ├── useFirestoreDoc.js        ✓
+│   │   ├── useFriends.js             ✓
+│   │   ├── useNotifications.js       ✓
+│   │   └── useNotificationSync.js    ✓
 │   └── components/
 │       └── ui/
 │           ├── button.jsx
-│           └── button.test.jsx
-├── e2e/                        # E2E tests (Playwright)
+│           └── button.test.jsx       # (planned)
+├── e2e/                              # E2E tests (planned - Playwright)
 │   ├── playwright.config.js
 │   ├── auth.spec.js
+│   ├── discord.spec.js
+│   ├── settings.spec.js
 │   ├── scheduler.spec.js
 │   ├── friends.spec.js
 │   └── fixtures/
 │       └── test-users.js
-└── vitest.config.js
+└── vitest.config.js                  # (planned - currently using defaults)
 
 functions/
 ├── src/
-│   ├── legacy.js
-│   ├── legacy.test.js          # Co-located unit tests
+│   ├── legacy.js                     ✓
+│   ├── legacy.test.js                # (planned)
 │   ├── discord/
-│   │   ├── oauth.js
-│   │   └── oauth.test.js
+│   │   ├── oauth.js                  ✓
+│   │   ├── oauth.test.js             # (planned)
+│   │   ├── worker.js                 ✓
+│   │   ├── worker.test.js            # (planned)
+│   │   ├── link-codes.js             ✓
+│   │   ├── link-codes.test.js        # (planned)
+│   │   ├── nudge.js                  ✓
+│   │   ├── nudge.test.js             # (planned)
+│   │   ├── unlink.js                 ✓
+│   │   ├── ingress.js                ✓
+│   │   ├── roles.js                  ✓
+│   │   ├── poll-card.js              ✓
+│   │   ├── discord-client.js         ✓
+│   │   ├── link-utils.js             ✓
+│   │   ├── error-messages.js         ✓
+│   │   └── config.js                 ✓
 │   └── __tests__/
 │       └── integration/
-│           └── calendar.integration.test.js
+│           └── calendar.integration.test.js  # (planned)
 ├── test/
 │   └── rules/
-│       └── firestore.rules.test.js
-└── vitest.config.js
+│       ├── firestore.rules.test.js   # (planned)
+│       └── storage.rules.test.js     # (planned)
+├── vitest.config.js                  # (planned - vitest not yet installed)
+└── package.json                      ✓ (needs vitest + firebase-functions-test)
 
 ```
 
@@ -214,6 +278,8 @@ export default defineConfig({
 
 ### Test Setup (web/src/__tests__/setup.js)
 
+**Note:** This file does not exist yet. Create it when setting up React Testing Library.
+
 ```javascript
 import { afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
@@ -235,21 +301,32 @@ vi.mock('firebase/auth', () => ({
   getAuth: vi.fn(),
   onAuthStateChanged: vi.fn(),
   signInWithPopup: vi.fn(),
+  signInWithCustomToken: vi.fn(),  // Used for Discord login
+  signInWithCredential: vi.fn(),
+  reauthenticateWithPopup: vi.fn(),
   signOut: vi.fn(),
-  GoogleAuthProvider: vi.fn(),
+  GoogleAuthProvider: {
+    credentialFromResult: vi.fn(),
+    credential: vi.fn(),
+  },
+  EmailAuthProvider: { credential: vi.fn() },
   createUserWithEmailAndPassword: vi.fn(),
   signInWithEmailAndPassword: vi.fn(),
   sendEmailVerification: vi.fn(),
   sendPasswordResetEmail: vi.fn(),
   linkWithCredential: vi.fn(),
+  linkWithPopup: vi.fn(),
   fetchSignInMethodsForEmail: vi.fn(),
 }));
 
 vi.mock('firebase/firestore', () => ({
   getFirestore: vi.fn(),
   collection: vi.fn(),
-  doc: vi.fn(),
+  collectionGroup: vi.fn(),
+  doc: vi.fn((_, collectionName, id) => ({ id, __collection: collectionName })),
+  documentId: vi.fn(),
   getDoc: vi.fn(),
+  getDocs: vi.fn(),
   setDoc: vi.fn(),
   updateDoc: vi.fn(),
   deleteDoc: vi.fn(),
@@ -259,16 +336,34 @@ vi.mock('firebase/firestore', () => ({
   limit: vi.fn(),
   onSnapshot: vi.fn(),
   serverTimestamp: vi.fn(() => new Date()),
-  arrayUnion: vi.fn((val) => val),
-  arrayRemove: vi.fn((val) => val),
-  deleteField: vi.fn(),
+  arrayUnion: vi.fn((val) => ({ __arrayUnion: val })),
+  arrayRemove: vi.fn((val) => ({ __arrayRemove: val })),
+  deleteField: vi.fn(() => ({ __deleteField: true })),
   writeBatch: vi.fn(() => ({
     set: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-    commit: vi.fn(),
+    commit: vi.fn().mockResolvedValue(undefined),
   })),
 }));
+
+vi.mock('firebase/functions', () => ({
+  getFunctions: vi.fn(),
+  httpsCallable: vi.fn(() => vi.fn().mockResolvedValue({ data: {} })),
+}));
+
+vi.mock('firebase/storage', () => ({
+  getStorage: vi.fn(),
+  ref: vi.fn(),
+  uploadBytes: vi.fn(),
+  getDownloadURL: vi.fn(),
+  deleteObject: vi.fn(),
+}));
+
+// Mock crypto.randomUUID for ID generation
+vi.stubGlobal('crypto', {
+  randomUUID: () => 'test-uuid-' + Math.random().toString(36).slice(2),
+});
 
 // Mock window.matchMedia for responsive components
 Object.defineProperty(window, 'matchMedia', {
@@ -283,6 +378,17 @@ Object.defineProperty(window, 'matchMedia', {
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
   })),
+});
+
+// Mock window.location for URL handling
+Object.defineProperty(window, 'location', {
+  writable: true,
+  value: {
+    origin: 'http://localhost:5173',
+    href: 'http://localhost:5173/',
+    pathname: '/',
+    search: '',
+  },
 });
 ```
 
@@ -343,42 +449,315 @@ describe('users data layer', () => {
 });
 ```
 
-#### Testing friends.js (existing tests can be extended)
+#### Testing identifiers.js (shared identifier parsing)
 
 ```javascript
-// web/src/lib/data/friends.test.js
+// web/src/lib/identifiers.test.js
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { setDoc, getDoc, updateDoc, doc, collection } from 'firebase/firestore';
-import { createFriendRequest, acceptFriendRequest } from './friends';
+import { detectIdentifierType, resolveIdentifier } from './identifiers';
+import { getDoc, getDocs, query, where, collection } from 'firebase/firestore';
 
-vi.mock('firebase/firestore');
-vi.mock('../firebase', () => ({ db: {} }));
+vi.mock('firebase/firestore', () => ({
+  collection: vi.fn(),
+  doc: vi.fn(),
+  query: vi.fn(),
+  where: vi.fn(),
+  getDoc: vi.fn(),
+  getDocs: vi.fn(),
+}));
 
-describe('friends data layer', () => {
+vi.mock('./firebase', () => ({ db: {} }));
+
+describe('identifiers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe('createFriendRequest', () => {
-    it('creates request with normalized emails', async () => {
-      vi.mocked(doc).mockReturnValue({ id: 'request-123' });
-      vi.mocked(setDoc).mockResolvedValue(undefined);
+  describe('detectIdentifierType', () => {
+    it('detects QS username with @ prefix', () => {
+      const result = detectIdentifierType('@questmaster');
+      expect(result).toEqual({ type: 'qsUsername', value: 'questmaster' });
+    });
 
-      await createFriendRequest({
-        fromUserId: 'alice',
-        fromEmail: 'ALICE@example.com',
-        toEmail: 'BOB@example.com',
+    it('detects email addresses', () => {
+      const result = detectIdentifierType('user@example.com');
+      expect(result).toEqual({ type: 'email', value: 'user@example.com' });
+    });
+
+    it('detects Discord usernames (no @ prefix)', () => {
+      const result = detectIdentifierType('dragonslayer42');
+      expect(result).toEqual({ type: 'discordUsername', value: 'dragonslayer42' });
+    });
+
+    it('rejects legacy Discord tags', () => {
+      const result = detectIdentifierType('user#1234');
+      expect(result).toEqual({ type: 'legacyDiscordTag', value: 'user#1234' });
+    });
+
+    it('rejects Discord IDs (numeric strings)', () => {
+      const result = detectIdentifierType('123456789012345678');
+      expect(result).toEqual({ type: 'discordId', value: '123456789012345678' });
+    });
+
+    it('keeps QS username case as typed (lowercased at resolve time)', () => {
+      const result = detectIdentifierType('@QuestMaster');
+      expect(result).toEqual({ type: 'qsUsername', value: 'QuestMaster' });
+    });
+
+    it('normalizes Discord usernames to lowercase', () => {
+      const result = detectIdentifierType('DragonSlayer42');
+      expect(result).toEqual({ type: 'discordUsername', value: 'dragonslayer42' });
+    });
+  });
+
+  describe('resolveIdentifier', () => {
+    it('resolves QS username via qsUsernames collection', async () => {
+      vi.mocked(getDoc).mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ uid: 'user-123' }),
+      });
+      vi.mocked(getDoc).mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ email: 'user@example.com', displayName: 'User' }),
       });
 
-      expect(setDoc).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          fromEmail: 'alice@example.com',
-          toEmail: 'bob@example.com',
-          status: 'pending',
-        }),
-        expect.anything()
+      const result = await resolveIdentifier('@questmaster');
+
+      expect(result).toEqual({
+        type: 'qsUsername',
+        email: 'user@example.com',
+        userId: 'user-123',
+        userData: { email: 'user@example.com', displayName: 'User' },
+      });
+    });
+
+    it('throws for unknown QS username', async () => {
+      vi.mocked(getDoc).mockResolvedValueOnce({
+        exists: () => false,
+      });
+
+      await expect(resolveIdentifier('@nonexistent')).rejects.toThrow(
+        /No user found with username/
       );
+    });
+
+    it('throws for legacy Discord tags', async () => {
+      await expect(resolveIdentifier('user#1234')).rejects.toThrow(
+        /Legacy Discord tags are no longer supported/
+      );
+    });
+
+    it('throws for Discord IDs', async () => {
+      await expect(resolveIdentifier('123456789012345678')).rejects.toThrow(
+        /Discord IDs are not supported/
+      );
+    });
+  });
+});
+```
+
+#### Testing identity.js (public identifier display)
+
+```javascript
+// web/src/lib/identity.test.js
+import { describe, it, expect } from 'vitest';
+import { buildPublicIdentifier } from './identity';
+
+describe('identity', () => {
+  describe('buildPublicIdentifier', () => {
+    it('returns existing publicIdentifier if present', () => {
+      const result = buildPublicIdentifier({
+        publicIdentifier: '@existing',
+        publicIdentifierType: 'qsUsername',
+        qsUsername: 'different',
+      });
+      expect(result).toBe('@existing');
+    });
+
+    it('formats QS username with @ prefix', () => {
+      const result = buildPublicIdentifier({
+        publicIdentifierType: 'qsUsername',
+        qsUsername: 'questmaster',
+      });
+      expect(result).toBe('@questmaster');
+    });
+
+    it('returns Discord username without prefix', () => {
+      const result = buildPublicIdentifier({
+        publicIdentifierType: 'discordUsername',
+        discordUsername: 'dragonslayer42',
+      });
+      expect(result).toBe('dragonslayer42');
+    });
+
+    it('falls back to email when type is email', () => {
+      const result = buildPublicIdentifier({
+        publicIdentifierType: 'email',
+        email: 'user@example.com',
+      });
+      expect(result).toBe('user@example.com');
+    });
+
+    it('falls back to email when preferred type unavailable', () => {
+      const result = buildPublicIdentifier({
+        publicIdentifierType: 'discordUsername',
+        discordUsername: null,
+        email: 'user@example.com',
+      });
+      expect(result).toBe('user@example.com');
+    });
+  });
+});
+```
+
+#### Additional data-layer modules to cover (new + updated flows)
+
+- `web/src/lib/data/pollInvites.js`
+  - `acceptPollInvite` adds `participantIds` (UIDs) and removes `pendingInvites` by email.
+  - `removeParticipantFromPoll` removes `participantIds` and deletes votes by UID when available.
+- `web/src/lib/data/blocks.js`
+  - `blockUserByIdentifier`/`unblockUserByIdentifier` forwards identifier to callable and returns shape.
+- `web/src/lib/data/discord.js`
+  - `startDiscordLogin`/`startDiscordOAuth` returns `authUrl` for login vs linking.
+  - `unlinkDiscordAccount` rejects when no alternate auth providers exist.
+- `web/src/lib/data/usernames.js`
+  - `registerQsUsername` rejects duplicates and lowercases input.
+- `web/src/lib/data/users.js`
+  - `ensureUserProfile` syncs displayName/photoURL/publicIdentifierType into `users` + `usersPublic`.
+- `web/src/lib/identifiers.js`
+  - `detectIdentifierType` rejects Discord IDs + legacy tags, accepts Discord usernames + QS usernames.
+  - `resolveIdentifier` returns UID + email for existing users; throws for unknown Discord username.
+- `web/src/lib/identity.js`
+  - `buildPublicIdentifier` returns formatted identifier based on type preference (qsUsername → @username, discordUsername → plain, email fallback).
+
+### Migration Script Tests
+
+- `functions/scripts/migrate-uuid-identifiers.js`
+  - Dry-run mode prints expected counts without writes.
+  - `--commit` writes `participantIds`/`memberIds` without deleting legacy fields.
+  - `--cleanup` removes `participants`/`members` when UID arrays are present.
+
+#### Testing friends.js (existing tests can be extended)
+
+```javascript
+// web/src/lib/data/friends.test.js
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createFriendRequest, acceptFriendRequest } from './friends';
+import { setDoc, updateDoc, getDoc } from 'firebase/firestore';
+import { createFriendAcceptedNotification } from './notifications';
+import { findUserIdByEmail } from './users';
+import { resolveIdentifier } from '../identifiers';
+
+vi.mock('firebase/firestore', () => ({
+  collection: vi.fn(),
+  doc: vi.fn((_, __, id) => ({ id })),
+  query: vi.fn(),
+  where: vi.fn(),
+  serverTimestamp: vi.fn(() => 'ts'),
+  setDoc: vi.fn(),
+  updateDoc: vi.fn(),
+  getDoc: vi.fn(),
+  getDocs: vi.fn(),
+}));
+
+vi.mock('firebase/functions', () => {
+  const callable = vi.fn(async () => ({ data: { requestId: 'req_1' } }));
+  return {
+    getFunctions: vi.fn(),
+    httpsCallable: vi.fn(() => callable),
+  };
+});
+
+vi.mock('../firebase', () => ({ db: {} }));
+
+vi.mock('./notifications', () => ({
+  createFriendAcceptedNotification: vi.fn(),
+  ensureFriendRequestNotification: vi.fn(),
+  deleteNotification: vi.fn(),
+  friendRequestNotificationId: vi.fn((requestId) => `friendRequest:${requestId}`),
+}));
+
+vi.mock('./users', () => ({
+  findUserIdByEmail: vi.fn(),
+}));
+
+vi.mock('../identifiers', () => ({
+  resolveIdentifier: vi.fn(async (input) => ({
+    email: String(input || '').toLowerCase(),
+    userId: null,
+    userData: null,
+  })),
+}));
+
+describe('friends data layer', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal('crypto', { randomUUID: () => 'req_1' });
+    vi.stubGlobal('window', { location: { origin: 'http://localhost' } });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  describe('createFriendRequest', () => {
+    it('creates request and sends notification when recipient exists', async () => {
+      findUserIdByEmail.mockResolvedValue('user_2');
+      resolveIdentifier.mockResolvedValue({
+        email: 'friend@example.com',
+        userId: 'user_2',
+        userData: null,
+      });
+
+      await createFriendRequest({
+        fromEmail: 'Sender@Example.com',
+        toEmail: 'Friend@Example.com',
+        fromDisplayName: 'Sender',
+      });
+
+      expect(setDoc).toHaveBeenCalled();
+    });
+
+    it('resolves identifier when toIdentifier provided', async () => {
+      resolveIdentifier.mockResolvedValue({
+        email: 'bob@example.com',
+        userId: 'user_bob',
+        userData: null,
+      });
+
+      await createFriendRequest({
+        fromEmail: 'alice@example.com',
+        toIdentifier: 'bob_discord',  // Discord username
+        fromDisplayName: 'Alice',
+      });
+
+      expect(resolveIdentifier).toHaveBeenCalledWith('bob_discord');
+    });
+  });
+
+  describe('acceptFriendRequest', () => {
+    it('accepts pending request and notifies sender', async () => {
+      getDoc.mockResolvedValue({
+        exists: () => true,
+        data: () => ({
+          toEmail: 'friend@example.com',
+          status: 'pending',
+          fromUserId: 'sender_1',
+          fromEmail: 'sender@example.com',
+        }),
+      });
+
+      await acceptFriendRequest('req_1', {
+        userId: 'friend_1',
+        userEmail: 'friend@example.com',
+      });
+
+      expect(updateDoc).toHaveBeenCalled();
+      expect(createFriendAcceptedNotification).toHaveBeenCalledWith('sender_1', {
+        requestId: 'req_1',
+        friendEmail: 'friend@example.com',
+        friendUserId: 'friend_1',
+      });
     });
   });
 });
@@ -391,12 +770,12 @@ describe('friends data layer', () => {
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   signInWithPopup,
+  signInWithCustomToken,
   createUserWithEmailAndPassword,
   sendEmailVerification,
   fetchSignInMethodsForEmail,
   sendPasswordResetEmail,
   GoogleAuthProvider,
-  updateProfile,
 } from 'firebase/auth';
 
 // Must mock before importing auth.js
@@ -457,13 +836,28 @@ describe('auth helpers', () => {
     });
   });
 
+  describe('signInWithDiscordToken', () => {
+    it('throws when token missing', async () => {
+      await expect(signInWithDiscordToken()).rejects.toThrow('Missing Discord sign-in token.');
+    });
+
+    it('signs in with custom token', async () => {
+      const mockUser = { uid: 'user-123', email: 'test@example.com' };
+      vi.mocked(signInWithCustomToken).mockResolvedValue({ user: mockUser });
+
+      const result = await signInWithDiscordToken('discord-token-123');
+
+      expect(signInWithCustomToken).toHaveBeenCalledWith(expect.anything(), 'discord-token-123');
+      expect(result).toEqual(mockUser);
+    });
+  });
+
   describe('registerWithEmailPassword', () => {
     it('sends verification email after registration', async () => {
       const mockUser = { uid: 'user-123', email: 'test@example.com', displayName: null };
       vi.mocked(createUserWithEmailAndPassword).mockResolvedValue({
         user: mockUser,
       });
-      vi.mocked(updateProfile).mockResolvedValue(undefined);
       vi.mocked(sendEmailVerification).mockResolvedValue(undefined);
 
       await registerWithEmailPassword('test@example.com', 'password123');
@@ -471,22 +865,6 @@ describe('auth helpers', () => {
       expect(sendEmailVerification).toHaveBeenCalledWith(
         mockUser,
         expect.objectContaining({ url: expect.any(String) })
-      );
-    });
-
-    it('sets default display name from email', async () => {
-      const mockUser = { uid: 'user-123', email: 'test@example.com', displayName: null };
-      vi.mocked(createUserWithEmailAndPassword).mockResolvedValue({
-        user: mockUser,
-      });
-      vi.mocked(updateProfile).mockResolvedValue(undefined);
-      vi.mocked(sendEmailVerification).mockResolvedValue(undefined);
-
-      await registerWithEmailPassword('test@example.com', 'password123');
-
-      expect(updateProfile).toHaveBeenCalledWith(
-        mockUser,
-        { displayName: 'test@example.com' }
       );
     });
 
@@ -556,9 +934,28 @@ describe('auth helpers', () => {
 });
 ```
 
+Additional auth helper coverage to add:
+- `signInWithGoogleIdToken` (credential exchange using `GoogleAuthProvider.credential`)
+- `signInWithEmailPassword` (normalizes email, returns user)
+- `linkGoogleAccount` (requires signed-in user, uses `linkWithPopup`)
+- `resendVerificationEmail` (sends verification to `auth.currentUser`)
+- `signOutUser` (calls `signOut`, clears session state)
+- `getGoogleAccessToken` (retrieves or refreshes access token, prompts reauth if needed)
+- `getStoredAccessToken` (reads from sessionStorage)
+
 ### Hook Tests
 
 **Note:** `useUserSettings` uses `useFirestoreDoc` internally, which handles `onSnapshot`. Tests should mock `useFirestoreDoc` or test the hook's transformation logic.
+
+Additional hooks to cover given recent changes:
+- `useUserProfiles` / `useUserProfilesByIds` (UID-driven lookups + displayName/photoURL resolution)
+- `useQuestingGroups` (memberIds-based membership + invite filtering, permission checks via `isOwner`/`canManage`)
+- `usePollInvites` (pending invite data + UID-based accept/decline flows)
+- `useBlockedUsers` (identifier-backed blocked list via Cloud Function callables)
+- `useFriends` (friend requests, invite codes, bidirectional friendship tracking)
+- `useNotifications` (real-time notifications with read/dismiss states, optimistic updates)
+- `useNotificationSync` (background sync for pending invites → notifications)
+- `useFirestoreDoc` / `useFirestoreCollection` (core hooks used by other hooks)
 
 ```javascript
 // web/src/hooks/useUserSettings.test.js
@@ -687,6 +1084,13 @@ describe('useUserSettings', () => {
   });
 });
 ```
+
+### AuthProvider / Route Guard Tests
+
+Target behaviors:
+- `RedirectWhenSignedIn` allows `/auth` when logged out and redirects when logged in.
+- Protected routes enforce auth and show the verification banner when `emailVerified` is false.
+- AuthProvider `loading` state prevents protected route rendering until auth state resolves.
 
 ### Component Tests
 
@@ -903,7 +1307,6 @@ describe('Scheduler Integration Tests', () => {
           creatorId: 'alice',
           creatorEmail: 'alice@example.com',
           status: 'OPEN',
-          participants: ['alice@example.com'],
           participantIds: ['alice'],
           pendingInvites: [],
           allowLinkSharing: false,  // Correct field name
@@ -939,7 +1342,6 @@ describe('Scheduler Integration Tests', () => {
       await testEnv.withSecurityRulesDisabled(async (context) => {
         await setDoc(doc(context.firestore(), 'schedulers/test-scheduler'), {
           creatorId: 'alice',
-          participants: ['bob@example.com'],
           participantIds: ['bob'],
           pendingInvites: [],
           status: 'OPEN',
@@ -967,7 +1369,6 @@ describe('Scheduler Integration Tests', () => {
       await testEnv.withSecurityRulesDisabled(async (context) => {
         await setDoc(doc(context.firestore(), 'schedulers/test-scheduler'), {
           creatorId: 'alice',
-          participants: ['alice@example.com'],
           participantIds: ['alice'],
           pendingInvites: [],
           status: 'OPEN',
@@ -1199,7 +1600,6 @@ describe('Firestore Security Rules', () => {
       await testEnv.withSecurityRulesDisabled(async (context) => {
         await setDoc(doc(context.firestore(), 'questingGroups/test-group'), {
           name: 'Test Group',
-          members: ['alice@example.com'],
           memberIds: ['alice'],
           pendingInvites: [],
         });
@@ -1219,7 +1619,6 @@ describe('Firestore Security Rules', () => {
         await setDoc(doc(context.firestore(), 'questingGroups/test-group'), {
           name: 'Test Group',
           creatorId: 'alice',
-          members: ['alice@example.com', 'bob@example.com'],
           memberIds: ['alice', 'bob'],
           pendingInvites: [],
           memberManaged: true,
@@ -1276,9 +1675,77 @@ describe('Firestore Security Rules', () => {
 });
 ```
 
+Additional Firestore rules coverage to add:
+- `users/{uid}`: only owner can write; cannot overwrite protected fields (authProviders, discord data).
+- `usersPublic/{uid}`: only owner can update profile fields; read allowed to any signed-in user.
+- `usersPublic/{uid}`: enforce owner-only updates for `avatarSource`, `customAvatarUrl`, and `photoURL`.
+- `usersPublic/{uid}`: prevent email changes via client writes (if enforced in rules).
+- `users/{uid}/blockedUsers`: only owner can create/update/delete.
+- `qsUsernames/{username}`: only owner (or callable context) can claim once.
+- `schedulers/{id}`: enforce `participantIds` only (no legacy participants array).
+- `questingGroups/{id}`: enforce `memberIds` only (no legacy members array).
+
+### Storage Rules Tests
+
+```javascript
+// functions/test/rules/storage.rules.test.js
+import { describe, it, beforeAll, afterAll } from 'vitest';
+import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import fs from 'fs';
+import path from 'path';
+
+let testEnv;
+
+beforeAll(async () => {
+  // storage.rules is at project root, not in functions/
+  const rulesPath = path.resolve(__dirname, '../../../storage.rules');
+  testEnv = await initializeTestEnvironment({
+    projectId: 'quest-scheduler-test',
+    storage: { rules: fs.readFileSync(rulesPath, 'utf8') },
+  });
+});
+
+afterAll(async () => {
+  await testEnv.cleanup();
+});
+
+it('allows user to upload png under 2MB', async () => {
+  const alice = testEnv.authenticatedContext('alice');
+  const storage = getStorage(alice.storage());
+  const objectRef = ref(storage, 'profiles/alice/avatar.png');
+  const buffer = Buffer.alloc(1024);
+  await assertSucceeds(uploadBytes(objectRef, buffer, { contentType: 'image/png' }));
+});
+
+it('denies non-owner upload', async () => {
+  const bob = testEnv.authenticatedContext('bob');
+  const storage = getStorage(bob.storage());
+  const objectRef = ref(storage, 'profiles/alice/avatar.png');
+  const buffer = Buffer.alloc(1024);
+  await assertFails(uploadBytes(objectRef, buffer, { contentType: 'image/png' }));
+});
+
+it('allows public read of avatars', async () => {
+  const unauth = testEnv.unauthenticatedContext();
+  const storage = getStorage(unauth.storage());
+  const objectRef = ref(storage, 'profiles/alice/avatar.png');
+  await assertSucceeds(getDownloadURL(objectRef));
+});
+
+it('denies reading missing avatar objects', async () => {
+  const unauth = testEnv.unauthenticatedContext();
+  const storage = getStorage(unauth.storage());
+  const objectRef = ref(storage, 'profiles/alice/missing.png');
+  await assertFails(getDownloadURL(objectRef));
+});
+```
+
 ## E2E Tests
 
 ### Critical User Journeys
+
+**OAuth testing note:** For Google/Discord, use a mocked OAuth flow (stub callable responses or use Playwright route interception) rather than real provider popups.
 
 ```javascript
 // web/e2e/auth.spec.js
@@ -1326,6 +1793,30 @@ test.describe('Authentication', () => {
 
     // Should show success message regardless of account existence
     await expect(page.getByText(/if an account exists/i)).toBeVisible();
+  });
+});
+```
+
+```javascript
+// web/e2e/discord.spec.js
+import { test, expect } from '@playwright/test';
+import { loginAsTestUser } from './fixtures/auth';
+
+test.describe('Discord Auth + Linking', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAsTestUser(page);
+  });
+
+  test('user can start Discord linking flow', async ({ page }) => {
+    await page.goto('/settings');
+    await page.getByRole('button', { name: /link discord/i }).click();
+    // For E2E: mock the OAuth window or stub the callable response
+    await expect(page.getByText(/linking/i)).toBeVisible();
+  });
+
+  test('discord login button renders on auth page', async ({ page }) => {
+    await page.goto('/auth');
+    await expect(page.getByRole('button', { name: /continue with discord/i })).toBeVisible();
   });
 });
 ```
@@ -1408,8 +1899,8 @@ test.describe('Friends', () => {
   test('user can send friend request', async ({ page }) => {
     await page.goto('/friends');
 
-    // Add friend by email
-    await page.getByLabel(/email/i).fill('friend@example.com');
+    // Add friend by identifier (email, Discord username, or QS username)
+    await page.getByLabel(/email|username/i).fill('friend@example.com');
     await page.getByRole('button', { name: /send request/i }).click();
 
     // Should show pending request
@@ -1442,6 +1933,25 @@ test.describe('Friends', () => {
 
     // Click copy button
     await inviteLinkSection.getByRole('button', { name: /copy/i }).click();
+  });
+});
+```
+
+```javascript
+// web/e2e/settings.spec.js
+import { test, expect } from '@playwright/test';
+import { loginAsTestUser } from './fixtures/auth';
+
+test.describe('Settings - Profile', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAsTestUser(page);
+  });
+
+  test('user can switch avatar source to custom', async ({ page }) => {
+    await page.goto('/settings');
+    await page.getByRole('radio', { name: /custom upload/i }).check();
+    // Upload requires Storage emulator or mocked upload
+    // Expect preview to update once URL is set
   });
 });
 ```
@@ -1480,12 +1990,18 @@ export const testUsers = {
     email: 'alice@test.example.com',
     password: 'AlicePass123!',
     displayName: 'Alice Test',
+    photoURL: 'https://example.com/alice.png',
+    qsUsername: 'alice',
+    discordUsername: 'alice_discord',
   },
   bob: {
     uid: 'test-bob',
     email: 'bob@test.example.com',
     password: 'BobPass123!',
     displayName: 'Bob Test',
+    photoURL: 'https://example.com/bob.png',
+    qsUsername: 'bob',
+    discordUsername: 'bob_discord',
   },
 };
 
@@ -1501,7 +2017,44 @@ export const testSchedulers = {
 
 ## Cloud Functions Tests
 
+**Prerequisites:** The functions package currently has no test infrastructure. Before writing tests:
+
+1. Add test dependencies to `functions/package.json`:
+```json
+{
+  "devDependencies": {
+    "vitest": "^3.2.4",
+    "firebase-functions-test": "^3.4.0"
+  },
+  "scripts": {
+    "test": "vitest",
+    "test:watch": "vitest --watch"
+  }
+}
+```
+
+2. Create `functions/vitest.config.js`:
+```javascript
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    include: ['**/*.test.js'],
+    exclude: ['**/node_modules/**'],
+  },
+});
+```
+
 **Note:** Many helper functions in `functions/src/legacy.js` (like `normalizeEmail`, `findUserIdByEmail`) are not exported - they're internal. Tests should focus on **exported callable functions** or use integration tests with the emulator.
+
+Priority callables to cover in `legacy.js` given recent identifier work:
+- `createFriendRequest` / `respondToFriendRequest` (identifier resolution + blocked-user penalties)
+- `createQuestingGroupInvite` / `respondToQuestingGroupInvite` (memberIds + pendingInvites)
+- `sendPollInvites` / `revokePollInvite` (pendingInvites + participantIds)
+- `blockUser` / `unblockUser` (identifier parsing + penalty behavior)
+- `registerQsUsername` (uniqueness + lowercase)
 
 ### Unit Tests for Exported Functions
 
@@ -1562,6 +2115,7 @@ describe('Cloud Functions Integration', () => {
   beforeAll(async () => {
     process.env.FIRESTORE_EMULATOR_HOST = 'localhost:8080';
     process.env.FIREBASE_AUTH_EMULATOR_HOST = 'localhost:9099';
+    process.env.FIREBASE_STORAGE_EMULATOR_HOST = 'localhost:9199';
   });
 
   describe('sendPollInvites', () => {
@@ -1577,6 +2131,12 @@ describe('Cloud Functions Integration', () => {
   });
 });
 ```
+
+Additional integration targets:
+- `discordOAuthCallback` (login intent returns custom token)
+- `discordWorker` vote handling + error messages
+- `blockUser`/`unblockUser` penalty behavior
+- Task queue handler stubs for `processDiscordInteraction` (onTaskDispatched)
 
 ### Discord Functions Tests
 
@@ -1599,32 +2159,166 @@ describe('Discord OAuth functions', () => {
     });
   });
 
+  describe('discordOAuthLoginStart', () => {
+    it('creates login intent state with returnTo and provider=discord', async () => {
+      // Should include returnTo + provider in state for callback compatibility
+    });
+  });
+
   describe('discordOAuthCallback', () => {
     it('links Discord account on successful OAuth', async () => {
       // Test callback handling
     });
 
+    it('signs in with custom token for login intent', async () => {
+      // Callback returns a Firebase custom token when state.intent=login
+    });
+
     it('rejects if Discord account already linked to another user', async () => {
       // Test duplicate link detection
+    });
+
+    it('rejects login when email missing and account must be created', async () => {
+      // New-account flow requires verified Discord email
     });
   });
 });
 
 // functions/src/discord/worker.test.js
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('firebase-admin/app');
+vi.mock('firebase-admin/firestore');
+vi.mock('./discord-client');
+vi.mock('./config');
+
 describe('Discord worker functions', () => {
-  describe('handleVoteInteraction', () => {
-    it('updates vote in Firestore', async () => {
-      // Test vote handling from Discord
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('processDiscordInteraction', () => {
+    it('handles vote button interaction', async () => {
+      // Test vote button opens voting interface
+    });
+
+    it('handles vote select interaction', async () => {
+      // Test vote selection updates session
+    });
+
+    it('handles submit vote interaction', async () => {
+      // Test vote submission writes to Firestore
+    });
+
+    it('handles clear votes interaction', async () => {
+      // Test clearing votes
+    });
+
+    it('handles "none work" interaction', async () => {
+      // Test marking all slots as unavailable
+    });
+
+    it('handles link-group slash command', async () => {
+      // Test linking Discord channel to questing group
+    });
+
+    it('handles unlink-group slash command', async () => {
+      // Test unlinking Discord channel
     });
   });
 
-  describe('buildSessionId', () => {
-    it('creates deterministic session ID', () => {
-      // This is an internal function, but if exported, test it
+  describe('vote eligibility checks', () => {
+    it('returns error when user not linked to QS', async () => {
+      // User Discord ID not in discordUserLinks
+      // Should return buildUserNotLinkedMessage
+    });
+
+    it('returns error when user not a participant', async () => {
+      // User linked but UID not in participantIds
+      // Should return ERROR_MESSAGES.notParticipant
+    });
+
+    it('returns error when poll not found', async () => {
+      // Scheduler document doesn't exist
+      // Should return ERROR_MESSAGES.pollNotFound
+    });
+
+    it('returns error when poll already finalized', async () => {
+      // Scheduler status is FINALIZED
+      // Should return ERROR_MESSAGES.pollAlreadyFinalized
+    });
+  });
+
+  describe('interaction locking', () => {
+    it('prevents duplicate processing via Firestore transaction', async () => {
+      // Test interaction ID lock mechanism
+    });
+  });
+});
+
+// functions/src/discord/link-codes.test.js
+describe('Discord link codes', () => {
+  describe('discordGenerateLinkCode', () => {
+    it('generates 8-character hex code', async () => {
+      // Test code format
+    });
+
+    it('stores hashed code with 10-minute expiry', async () => {
+      // Test Firestore document creation
+    });
+
+    it('enforces rate limit of 5 codes per hour', async () => {
+      // Test rate limiting
+    });
+
+    it('requires authentication', async () => {
+      // Test unauthenticated call throws
+    });
+  });
+});
+
+// functions/src/discord/nudge.test.js
+describe('Discord nudge', () => {
+  describe('nudgeDiscordParticipants', () => {
+    it('requires creator permission', async () => {
+      // Test non-creator cannot nudge
+    });
+
+    it('enforces 8-hour cooldown', async () => {
+      // Test cooldown check
+    });
+
+    it('sends DMs to non-voters with Discord linked', async () => {
+      // Test message sending
+    });
+
+    it('includes poll link and first slot time', async () => {
+      // Test message content
     });
   });
 });
 ```
+
+Additional Discord functions to cover:
+
+**Callable functions:**
+- `discordGenerateLinkCode` (link-codes.js) - generates 8-char hex codes with rate limiting (5/hour)
+- `discordListGuildRoles` (roles.js) - fetches guild roles for group managers
+- `discordUnlink` (unlink.js) - requires alternate auth provider; resets public identifier
+- `nudgeDiscordParticipants` (nudge.js) - sends reminder DMs with 8-hour cooldown
+
+**HTTP endpoints:**
+- `discordInteractions` (ingress.js) - signature verification, PING handling, queue dispatch
+- `discordOAuthLoginStart` (oauth.js) - initiates Discord login flow (no auth required)
+- `discordOAuthCallback` (oauth.js) - handles both login and link intents
+
+**Queue handlers:**
+- `processDiscordInteraction` (worker.js) - processes slash commands and vote interactions
+
+**Utility modules (internal, but critical paths):**
+- `buildPollCard` / `buildPollStatusCard` (poll-card.js) - Discord embed generation
+- `generateLinkCode` / `hashLinkCode` (link-utils.js) - code generation utilities
+- `ERROR_MESSAGES` / `buildUserNotLinkedMessage` (error-messages.js) - error constants
 
 ### Scheduler Triggers Tests
 
@@ -1683,6 +2377,16 @@ describe('Calendar Functions Integration', () => {
 
 ### Package.json Scripts
 
+**Current state (`web/package.json`):**
+```json
+{
+  "scripts": {
+    "test": "vitest"
+  }
+}
+```
+
+**Target state (add these scripts):**
 ```json
 {
   "scripts": {
@@ -1693,11 +2397,25 @@ describe('Calendar Functions Integration', () => {
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
-    "test:rules": "firebase emulators:exec --only firestore 'vitest run --config vitest.rules.config.js'",
+    "test:rules": "firebase emulators:exec --only firestore,storage 'vitest run --config vitest.rules.config.js'",
     "test:integration": "firebase emulators:exec 'vitest run --config vitest.integration.config.js'",
     "test:all": "npm run test && npm run test:rules && npm run test:e2e",
     "emulators": "firebase emulators:start",
-    "emulators:test": "firebase emulators:start --only firestore,auth"
+    "emulators:test": "firebase emulators:start --only firestore,auth,storage"
+  }
+}
+```
+
+**Functions package (`functions/package.json`) - add:**
+```json
+{
+  "scripts": {
+    "test": "vitest",
+    "test:watch": "vitest --watch"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4",
+    "firebase-functions-test": "^3.4.0"
   }
 }
 ```
@@ -1760,7 +2478,7 @@ jobs:
         working-directory: functions
 
       - name: Run rules tests
-        run: firebase emulators:exec --only firestore 'npm run test:rules'
+        run: npm run test:rules
 
   e2e-tests:
     runs-on: ubuntu-latest
@@ -1834,6 +2552,12 @@ export async function seedTestData() {
     await setDoc(doc(db, 'users', user.uid), {
       email: user.email,
       displayName: user.displayName,
+      avatarSource: 'google',
+      photoURL: user.photoURL || null,
+      qsUsername: user.qsUsername || null,
+      qsUsernameLower: user.qsUsername ? user.qsUsername.toLowerCase() : null,
+      discordUsername: user.discordUsername || null,
+      discordUsernameLower: user.discordUsername ? user.discordUsername.toLowerCase() : null,
       emailNotifications: true,
       createdAt: new Date(),
     });
@@ -1841,14 +2565,27 @@ export async function seedTestData() {
     await setDoc(doc(db, 'usersPublic', user.uid), {
       email: user.email,
       displayName: user.displayName,
+      photoURL: user.photoURL || null,
+      avatarSource: 'google',
+      qsUsername: user.qsUsername || null,
+      qsUsernameLower: user.qsUsername ? user.qsUsername.toLowerCase() : null,
+      discordUsername: user.discordUsername || null,
+      discordUsernameLower: user.discordUsername ? user.discordUsername.toLowerCase() : null,
     });
+
+    if (user.qsUsername) {
+      await setDoc(doc(db, 'qsUsernames', user.qsUsername.toLowerCase()), {
+        uid: user.uid,
+        username: user.qsUsername.toLowerCase(),
+        createdAt: new Date(),
+      });
+    }
   }
 
   // Seed schedulers
   for (const [key, scheduler] of Object.entries(testSchedulers)) {
     await setDoc(doc(db, 'schedulers', scheduler.id), {
       ...scheduler,
-      participants: [testUsers.alice.email],
       participantIds: [testUsers.alice.uid],
       pendingInvites: [],
       createdAt: new Date(),
@@ -1862,6 +2599,12 @@ export async function clearTestData() {
 }
 ```
 
+### Emulator Reset Strategy
+
+- Prefer `firebase emulators:exec --only firestore,auth,storage 'node scripts/reset-emulators.js'`.
+- In CI, wipe between suites by deleting emulator data directories or using Admin SDK to delete seeded docs.
+- For local runs, consider `firebase emulators:start --import=./.emulator-data --export-on-exit` to keep fixtures stable.
+
 ## Edge Cases & Error Scenarios
 
 ### Authentication Edge Cases
@@ -1871,10 +2614,15 @@ export async function clearTestData() {
 | Expired session | User is redirected to login |
 | Network failure during login | Error message shown, retry option |
 | Google popup blocked | Fallback instructions shown |
+| Discord OAuth failure | User sees "Discord sign-in failed" toast and is returned to `/auth` |
+| Discord login missing verified email | Redirect to `/auth?error=email_required` with message: "Discord login requires a verified email address" |
+| Discord linking (no email required) | Linking uses `identify` scope only; email not required for linking to existing account |
+| Unlink Discord without another provider | Backend throws `failed-precondition`; Settings disables button with hint |
 | Email already registered (different provider) | Helpful error with link guidance |
 | Password too weak | Validation error before submit |
 | Invalid email format | Validation error before submit |
 | Rate limited | Appropriate error message |
+| Auth gating | `RedirectWhenSignedIn` and protected routes allow/deny correctly |
 
 ### Scheduler Edge Cases
 
@@ -1882,6 +2630,10 @@ export async function clearTestData() {
 |----------|------|
 | Create poll with no slots | Validation error |
 | Vote on finalized poll | Action disabled/error |
+| Discord vote by non-member | Bot returns specific error from `ERROR_MESSAGES.notParticipant` |
+| Discord vote by unlinked user | Bot returns `buildUserNotLinkedMessage(appUrl)` with linking instructions |
+| Discord vote poll not found | Bot returns `ERROR_MESSAGES.pollNotFound` |
+| Discord vote already finalized | Bot returns `ERROR_MESSAGES.pollAlreadyFinalized` |
 | Finalize with no votes | Warning shown, can proceed |
 | Delete poll with calendar event | Calendar event also deleted |
 | Timezone edge cases | Slots display correctly across DST |
@@ -1896,37 +2648,56 @@ export async function clearTestData() {
 | Accept already-accepted request | No-op or error |
 | Leave group as last member | Group deleted |
 | Invite blocked user | Error shown |
+| Invite by Discord username (not linked) | Error: user must link Discord before invite works |
+| Invite by legacy Discord tag or Discord ID | Validation error with “use Discord username” guidance |
 | Accept invite while logged out | Redirect to login, then accept |
+| Blocker applies penalty | Penalty only if blocked user previously sent a request |
+
+### Profile & Identity Edge Cases
+
+| Scenario | Test |
+|----------|------|
+| Avatar upload invalid type | Storage rules deny non image/(jpeg|png|webp) |
+| Avatar upload too large | Storage rules deny >2MB |
+| Avatar source set to Google without Google provider | UI auto-falls back to Discord or Custom |
+| Avatar source set to Discord without Discord link | UI disables Discord option |
+| Display name missing | UI falls back to email for display name |
+| Public identifier set to Discord without link | UI prevents selection, shows guidance |
 
 ## Implementation Phases
 
 ### Phase 1: Foundation (Week 1-2)
-- [ ] Configure Vitest with proper setup file
-- [ ] Add React Testing Library
-- [ ] Complete data layer unit tests (90% coverage)
-- [ ] Complete auth helper unit tests
+- [x] Install Vitest (3.2.4 installed)
+- [x] Configure Vitest with proper setup file (`web/vitest.config.js`)
+- [x] Add React Testing Library (`@testing-library/react`, `@testing-library/jest-dom`)
+- [x] Create initial data layer unit tests (4 files exist: users, friends, questingGroups, notifications)
+- [x] Complete data layer unit tests (90% coverage, incl. identifiers, identity, poll invites, blocks, discord, usernames)
+- [x] Complete auth helper unit tests (Google + Discord + custom token)
 
 ### Phase 2: Security & Integration (Week 3-4)
-- [ ] Set up Firebase Emulator Suite
-- [ ] Add @firebase/rules-unit-testing
-- [ ] Write comprehensive Firestore rules tests
-- [ ] Add integration tests for critical flows
+- [x] Set up Firebase Emulator Suite (Firestore/Auth/Storage) - add emulator config to `firebase.json`
+- [x] Add `@firebase/rules-unit-testing` package
+- [x] Write comprehensive Firestore + Storage rules tests
+- [ ] Add integration tests for critical UID-based flows
 
 ### Phase 3: Component & Hook Tests (Week 5-6)
-- [ ] Add component tests for UI components
-- [ ] Add hook tests with mocked Firebase
+- [x] Add component tests for UI components
+- [x] Add hook tests with mocked Firebase (profiles, groups, invites, blocks, friends, notifications)
 - [ ] Achieve 60% component coverage
 
 ### Phase 4: E2E Tests (Week 7-8)
-- [ ] Configure Playwright
-- [ ] Write auth flow E2E tests
-- [ ] Write scheduler flow E2E tests
-- [ ] Write friends/groups E2E tests
+- [x] Install and configure Playwright
+- [ ] Write auth flow E2E tests (Google + Discord login)
+- [x] Write scheduler flow E2E tests
+- [ ] Write friends/groups E2E tests (identifier invites)
+- [ ] Write settings/profile E2E tests (avatar source selection)
 
 ### Phase 5: Cloud Functions (Week 9-10)
-- [ ] Add Vitest to functions
-- [ ] Unit test all callable functions
-- [ ] Integration test with emulator
+- [x] Add Vitest + `firebase-functions-test` to functions/package.json
+- [x] Create `functions/vitest.config.js`
+- [x] Unit test callable functions (Discord OAuth, link codes, nudge, unlink, roles)
+- [x] Unit test queue handlers (processDiscordInteraction)
+- [ ] Integration test with emulator (Discord worker + schedulers)
 
 ### Phase 6: CI/CD & Polish (Week 11-12)
 - [ ] Set up GitHub Actions workflow

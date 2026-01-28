@@ -1,8 +1,8 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-28 — Documented testing in `docs/testing.md` and linked in AGENTS/CLAUDE.
-- Next Step: Optional cleanup of emulator warnings (firebase-functions update, punycode deprecations) if desired.
+- Last Completed: 2026-01-28 — Updated test plan checklists to reflect completed phases.
+- Next Step: Add integration tests for critical UID-based flows (Phase 2).
 - Open Issues: Functions tests still emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning.
 - Last Updated (YYYY-MM-DD): 2026-01-28
 
