@@ -26,7 +26,7 @@ const tabs = [
 ];
 
 const GOOGLE_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
-const PROVIDER_BUTTON_WIDTH = 256;
+const PROVIDER_BUTTON_MIN_WIDTH = 240;
 let googleScriptPromise = null;
 
 function loadGoogleScript() {
@@ -110,6 +110,30 @@ export default function AuthPage() {
   const [resetEmail, setResetEmail] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
   const googleButtonRef = useRef(null);
+  const discordButtonRef = useRef(null);
+  const fallbackGoogleRef = useRef(null);
+  const providerWidthRef = useRef(null);
+  const [providerWidth, setProviderWidth] = useState(null);
+
+  const isRegister = activeTab === "register";
+  const normalizedEmail = normalizeEmail(email);
+  const showGoogleFallback = !GOOGLE_OAUTH_CLIENT_ID || googleError;
+
+  const updateProviderWidth = useCallback(() => {
+    const googleWidth = googleButtonRef.current?.getBoundingClientRect().width || 0;
+    const discordWidth = discordButtonRef.current?.getBoundingClientRect().width || 0;
+    const fallbackWidth = fallbackGoogleRef.current?.getBoundingClientRect().width || 0;
+    const nextWidth = Math.max(
+      googleWidth,
+      discordWidth,
+      fallbackWidth,
+      PROVIDER_BUTTON_MIN_WIDTH
+    );
+    if (nextWidth && nextWidth !== providerWidthRef.current) {
+      providerWidthRef.current = nextWidth;
+      setProviderWidth(nextWidth);
+    }
+  }, []);
 
   const handleGoogle = async () => {
     setGoogleLoading(true);
@@ -197,12 +221,32 @@ export default function AuthPage() {
       type: "standard",
       theme: "filled_black",
       size: "large",
-      width: PROVIDER_BUTTON_WIDTH,
       text: "continue_with",
       shape: "pill",
       logo_alignment: "left",
     });
+    requestAnimationFrame(() => updateProviderWidth());
   }, [googleReady, handleGoogleCredential, activeTab]);
+
+  useEffect(() => {
+    updateProviderWidth();
+  }, [showGoogleFallback, updateProviderWidth]);
+
+  useEffect(() => {
+    const observers = [];
+    const observe = (node) => {
+      if (!node || typeof ResizeObserver === "undefined") return;
+      const observer = new ResizeObserver(() => updateProviderWidth());
+      observer.observe(node);
+      observers.push(observer);
+    };
+    observe(googleButtonRef.current);
+    observe(discordButtonRef.current);
+    observe(fallbackGoogleRef.current);
+    return () => {
+      observers.forEach((observer) => observer.disconnect());
+    };
+  }, [googleReady, showGoogleFallback, updateProviderWidth]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -275,9 +319,6 @@ export default function AuthPage() {
     }
   };
 
-  const isRegister = activeTab === "register";
-  const normalizedEmail = normalizeEmail(email);
-  const showGoogleFallback = !GOOGLE_OAUTH_CLIENT_ID || googleError;
 
   return (
     <div className="dark min-h-screen" style={{ colorScheme: "dark" }}>
@@ -340,11 +381,15 @@ export default function AuthPage() {
 
             <div className="mt-6 grid gap-4">
               {showGoogleFallback ? (
-                <div className="mx-auto w-full" style={{ maxWidth: PROVIDER_BUTTON_WIDTH }}>
+                <div
+                  className="mx-auto flex justify-center"
+                  style={{ width: providerWidth ? `${providerWidth}px` : "fit-content" }}
+                >
                   <button
                     type="button"
                     onClick={handleGoogle}
                     disabled={googleLoading}
+                    ref={fallbackGoogleRef}
                     className="flex w-full items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                   >
                     {googleLoading ? "Connecting..." : "Continue with Google"}
@@ -353,24 +398,37 @@ export default function AuthPage() {
               ) : (
                 <div className="flex flex-col items-center gap-2">
                   <div
-                    ref={googleButtonRef}
-                    className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-transparent"
-                    style={{ colorScheme: "light", width: PROVIDER_BUTTON_WIDTH }}
-                  />
+                    className="mx-auto flex justify-center"
+                    style={{ width: providerWidth ? `${providerWidth}px` : "fit-content" }}
+                  >
+                    <div
+                      ref={googleButtonRef}
+                      className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-transparent"
+                      style={{ colorScheme: "light" }}
+                    />
+                  </div>
                   {googleLoading && (
                     <span className="text-xs text-slate-400">Connecting...</span>
                   )}
                 </div>
               )}
-              <div className="mx-auto w-full" style={{ maxWidth: PROVIDER_BUTTON_WIDTH }}>
+              <div
+                className="mx-auto"
+                style={{ width: providerWidth ? `${providerWidth}px` : "fit-content" }}
+              >
                 <button
                   type="button"
                   onClick={handleDiscordLogin}
                   disabled={discordLoading}
-                  className="flex w-full items-center justify-center gap-2 rounded-full bg-[#5865F2] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4752C4] disabled:opacity-60"
+                  ref={discordButtonRef}
+                  className="relative flex w-full items-center justify-center rounded-full bg-[#5865F2] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4752C4] disabled:opacity-60"
                 >
-                  <img src="/assets/Discord-Symbol-Blurple.svg" alt="" className="h-5 w-5" />
-                  {discordLoading ? "Connecting..." : "Continue with Discord"}
+                  <span className="absolute left-4 flex h-5 w-5 items-center justify-center">
+                    <img src="/assets/Discord-Symbol-Blurple.svg" alt="" className="h-5 w-5" />
+                  </span>
+                  <span className="w-full text-center">
+                    {discordLoading ? "Connecting..." : "Continue with Discord"}
+                  </span>
                 </button>
               </div>
               {googleError && (
