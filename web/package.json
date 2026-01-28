@@ -15,6 +15,7 @@
     "test:e2e": "playwright test -c e2e/playwright.config.js",
     "test:e2e:ui": "playwright test -c e2e/playwright.config.js --ui",
     "test:e2e:debug": "playwright test -c e2e/playwright.config.js --debug",
+    "test:e2e:emulators": "../scripts/run-e2e.sh",
     "test:rules": "firebase emulators:exec --only firestore,storage 'vitest run --config vitest.rules.config.js'",
     "test:integration": "firebase emulators:exec 'vitest run --config vitest.integration.config.js'",
     "test:all": "npm run test && npm run test:rules && npm run test:e2e",
