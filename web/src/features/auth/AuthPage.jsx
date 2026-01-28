@@ -368,9 +368,7 @@ export default function AuthPage() {
                 {discordLoading ? "Connecting..." : "Continue with Discord"}
               </button>
               {googleError && (
-                <p className="text-center text-xs text-amber-500">
-                  Google sign-in is unavailable. Try email or disable blockers.
-                </p>
+                <p className="text-center text-xs text-amber-500">{googleError}</p>
               )}
               <p className="text-center text-xs text-slate-400">
                 By continuing, you agree to our{" "}
