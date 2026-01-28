@@ -37,6 +37,21 @@ function buildAuthorizeUrl({ scope, state }) {
   return `https://discord.com/api/oauth2/authorize?${params.toString()}`;
 }
 
+function buildDiscordAvatarUrl(userId, avatarHash, size = 256) {
+  if (!userId) return null;
+  if (!avatarHash) {
+    try {
+      const index = Number((BigInt(userId) >> 22n) % 6n);
+      return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+    } catch (err) {
+      return null;
+    }
+  }
+  const isAnimated = String(avatarHash).startsWith("a_");
+  const ext = isAnimated ? "gif" : "png";
+  return `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.${ext}?size=${size}`;
+}
+
 exports.discordOAuthStart = onCall(
   {
     region: DISCORD_REGION,
@@ -189,6 +204,8 @@ exports.discordOAuthCallback = onRequest(
       const discordUserId = String(userJson.id);
       const discordUsername = userJson.username || null;
       const discordGlobalName = userJson.global_name || null;
+      const discordAvatarHash = userJson.avatar || null;
+      const discordAvatarUrl = buildDiscordAvatarUrl(discordUserId, discordAvatarHash, 256);
       const discordEmail = userJson.verified === true ? userJson.email || null : null;
 
       const db = admin.firestore();
@@ -267,6 +284,7 @@ exports.discordOAuthCallback = onRequest(
             userId: discordUserId,
             username: discordUsername,
             globalName: discordGlobalName,
+            avatarHash: discordAvatarHash,
             linkedAt: admin.firestore.FieldValue.serverTimestamp(),
             linkSource: "oauth",
           },
@@ -280,6 +298,9 @@ exports.discordOAuthCallback = onRequest(
         }
         if (!existingUserData.publicIdentifierType && discordUsername) {
           userUpdates.publicIdentifierType = "discordUsername";
+        }
+        if ((existingUserData.avatarSource === "discord" || !existingUserData.photoURL) && discordAvatarUrl) {
+          userUpdates.photoURL = discordAvatarUrl;
         }
 
         const publicUpdates = {
@@ -296,6 +317,9 @@ exports.discordOAuthCallback = onRequest(
         if (!existingUserData.publicIdentifierType && discordUsername) {
           publicUpdates.publicIdentifierType = "discordUsername";
           publicUpdates.publicIdentifier = discordUsername;
+        }
+        if ((existingUserData.avatarSource === "discord" || !existingUserData.photoURL) && discordAvatarUrl) {
+          publicUpdates.photoURL = discordAvatarUrl;
         }
 
         await Promise.all([
@@ -331,16 +355,24 @@ exports.discordOAuthCallback = onRequest(
         linkedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
+      const userRef = db.collection("users").doc(stateData.uid);
+      const userSnap = await userRef.get();
+      const userData = userSnap.exists ? userSnap.data() : {};
+      const shouldSetPhoto =
+        userData.avatarSource === "discord" || (!userData.photoURL && discordAvatarUrl);
+
       await Promise.all([
-        db.collection("users").doc(stateData.uid).set(
+        userRef.set(
           {
             discord: {
               userId: discordUserId,
               username: discordUsername,
               globalName: discordGlobalName,
+              avatarHash: discordAvatarHash,
               linkedAt: admin.firestore.FieldValue.serverTimestamp(),
               linkSource: "oauth",
             },
+            ...(shouldSetPhoto ? { photoURL: discordAvatarUrl } : {}),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
@@ -349,6 +381,7 @@ exports.discordOAuthCallback = onRequest(
           {
             discordUsername,
             discordUsernameLower: discordUsername ? String(discordUsername).toLowerCase() : null,
+            ...(shouldSetPhoto ? { photoURL: discordAvatarUrl } : {}),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }

@@ -6,16 +6,20 @@ This document describes how Quest Scheduler handles user profile pictures (avata
 
 ## Current State
 
-- **Google users**: Firebase Auth stores `photoURL` from Google at 96x96px resolution
-- **Email/password users**: No avatar, UI shows placeholder letter icon
-- **Discord-linked users**: No avatar stored from Discord (Discord linking is for bot voting, not login)
+- **Google users**: Firebase Auth stores `photoURL` from Google at 96x96px resolution and we sync it into `users`/`usersPublic`.
+- **Email/password users**: No avatar, UI shows placeholder letter icon.
+- **Discord users**: Discord login/linking is supported, but we do **not** currently persist Discord avatars. The UI still reads from `usersPublic.photoURL`.
 
 ## Avatar Sources (Priority Order)
 
+**When `avatarSource` is set**, use the requested source. **Otherwise** fall back to this priority order:
+
 1. **Custom upload** (user-provided)
-2. **Discord avatar** (if user signs in with Discord OAuth)
-3. **Google avatar** (if user signs in with Google)
+2. **Discord avatar** (if linked)
+3. **Google avatar** (if linked)
 4. **Default letter avatar** (fallback)
+
+**Important (current app behavior)**: The UI reads `usersPublic.photoURL` today. To add custom/Discord avatars without a UI refactor, update `photoURL` whenever a higher-priority source is chosen or refreshed. If you add per-source fields (`customAvatarUrl`, `discordAvatarHash`, etc.), the avatar resolver must consult those fields or write the resolved URL back to `photoURL`.
 
 ---
 
@@ -38,8 +42,9 @@ When a user authenticates via Discord OAuth2 with the `identify` scope, the API 
 
 **Custom avatar:**
 ```
-https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.png?size=256
+https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.{ext}?size=256
 ```
+Where `ext` is `gif` if the hash starts with `a_` (animated), otherwise `png` (or `webp`).
 
 **Default avatar (when `avatar` is null):**
 ```
@@ -70,15 +75,15 @@ When a user changes their Discord avatar, the old URL returns **404**. Solutions
 {
   "discordUserId": "123456789012345678",
   "discordAvatarHash": "a1b2c3d4e5f6...",
-  "discordAvatarUrl": "https://cdn.discordapp.com/avatars/123.../a1b2c3....png?size=256"
+  "avatarSource": "discord"
 }
 ```
 
 **On Discord login/link:**
 1. Fetch user object from Discord API
 2. Compare `avatar` hash with stored `discordAvatarHash`
-3. If different (or new), update both hash and constructed URL
-4. Use this URL for avatar display if no custom upload exists
+3. If different (or new), update hash and recompute the avatar URL
+4. If `avatarSource` is `discord` (or not set), update `photoURL` to the Discord avatar URL
 
 ---
 
@@ -107,6 +112,7 @@ Higher:    https://lh3.googleusercontent.com/.../s256-c/photo.jpg
 Firebase Auth only sets `photoURL` on initial sign-up. If user changes their Google profile picture, it doesn't auto-update in Firebase.
 
 **Recommendation**: On each Google login, check `user.providerData[0].photoURL` and update `user.photoURL` if different.
+Use the provider entry where `providerId === "google.com"` rather than relying on index 0.
 
 ---
 
@@ -134,7 +140,7 @@ Firebase Storage:
 |------------|-------|-----------|
 | Max file size | 2 MB | Balance quality vs storage cost |
 | Min dimensions | 64x64 | Avoid pixelation |
-| Max dimensions | 1024x1024 | Reasonable for profile pics |
+| Max dimensions | 512x512 | Consistent with client resizing |
 | Allowed formats | JPEG, PNG, WebP | Standard web formats |
 
 ### Security Rules
@@ -143,6 +149,14 @@ Firebase Storage:
 // Firebase Storage rules
 match /profiles/{userId}/avatar.{ext} {
   allow read: if true;  // Avatars are public
+  allow write: if request.auth != null
+               && request.auth.uid == userId
+               && request.resource.size < 2 * 1024 * 1024
+               && request.resource.contentType.matches('image/(jpeg|png|webp)');
+}
+
+match /profiles/{userId}/avatar_thumb.{ext} {
+  allow read: if true;
   allow write: if request.auth != null
                && request.auth.uid == userId
                && request.resource.size < 2 * 1024 * 1024
@@ -166,6 +180,7 @@ Before upload, client should:
 4. Upload to `profiles/{userId}/avatar.{ext}`
 5. Get download URL
 6. Update user document: `{ customAvatarUrl: "..." }`
+7. If `avatarSource` is `custom` (or not set), update `photoURL` to the custom URL
 
 ---
 
@@ -173,23 +188,21 @@ Before upload, client should:
 
 ```javascript
 function getAvatarUrl(user) {
-  // 1. Custom upload takes priority
-  if (user.customAvatarUrl) {
-    return user.customAvatarUrl;
-  }
+  const source = user.avatarSource || "auto";
 
-  // 2. Discord avatar (if signed in with Discord)
-  if (user.discordAvatarUrl) {
-    return user.discordAvatarUrl;
+  if (source === "custom" && user.customAvatarUrl) return user.customAvatarUrl;
+  if (source === "discord" && user.discordAvatarHash && user.discordUserId) {
+    return buildDiscordAvatarUrl(user.discordUserId, user.discordAvatarHash, 256);
   }
+  if (source === "google" && user.photoURL) return upgradeGooglePhotoUrl(user.photoURL, 256);
 
-  // 3. Google avatar (upgrade resolution)
-  if (user.photoURL) {
-    return upgradeGooglePhotoUrl(user.photoURL, 256);
+  // Auto priority
+  if (user.customAvatarUrl) return user.customAvatarUrl;
+  if (user.discordAvatarHash && user.discordUserId) {
+    return buildDiscordAvatarUrl(user.discordUserId, user.discordAvatarHash, 256);
   }
-
-  // 4. Default letter avatar
-  return null; // UI renders letter fallback
+  if (user.photoURL) return upgradeGooglePhotoUrl(user.photoURL, 256);
+  return null; // UI renders letter fallback using displayName/username/email
 }
 
 function upgradeGooglePhotoUrl(url, size) {
@@ -200,6 +213,13 @@ function upgradeGooglePhotoUrl(url, size) {
   }
   // Handle /sN-c/ format
   return url.replace(/\/s\d+-c\//, `/s${size}-c/`);
+}
+
+function buildDiscordAvatarUrl(userId, avatarHash, size) {
+  if (!userId || !avatarHash) return null;
+  const isAnimated = String(avatarHash).startsWith("a_");
+  const ext = isAnimated ? "gif" : "png";
+  return `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.${ext}?size=${size}`;
 }
 ```
 
@@ -219,7 +239,7 @@ function upgradeGooglePhotoUrl(url, size) {
   // Discord avatar (populated on Discord OAuth login)
   "discordUserId": "123456789012345678",
   "discordAvatarHash": "a1b2c3d4e5f6...",
-  "discordAvatarUrl": "https://cdn.discordapp.com/avatars/123.../a1b2c3....png?size=256"
+  "avatarSource": "custom"
 }
 ```
 
@@ -234,7 +254,7 @@ function upgradeGooglePhotoUrl(url, size) {
 │  Profile Picture                                │
 │                                                 │
 │  ┌──────┐  Current: Google                      │
-│  │ [AV] │  alex.chen@example.com                │
+│  │ [AV] │  Alex Chen                            │
 │  └──────┘                                       │
 │                                                 │
 │  [ Upload custom image ]                        │
@@ -258,12 +278,12 @@ function upgradeGooglePhotoUrl(url, size) {
 ## Implementation Phases
 
 ### Phase 1: Discord Avatar on Login
-- Store `discordUserId`, `discordAvatarHash`, `discordAvatarUrl` on Discord OAuth
-- Update hash/URL if user's Discord avatar changed
-- Display Discord avatar for Discord-authenticated users
+- Store `discordUserId` and `discordAvatarHash` on Discord OAuth
+- Update hash if user's Discord avatar changed
+- If `avatarSource` is `discord` (or not set), update `photoURL` to the Discord avatar URL
 
 ### Phase 2: Google Avatar Sync
-- On Google login, sync `photoURL` from provider data
+- On Google login, sync `photoURL` from provider data (`providerId === "google.com"`)
 - Upgrade resolution to 256px when displaying
 
 ### Phase 3: Custom Upload
@@ -271,10 +291,11 @@ function upgradeGooglePhotoUrl(url, size) {
 - Implement Firebase Storage rules
 - Client-side resize before upload
 - Store `customAvatarUrl` in user document
+- If `avatarSource` is `custom` (or not set), update `photoURL` to the custom URL
 
 ### Phase 4: Avatar Source Selection
 - Add radio buttons in Settings to choose active source
-- Respect priority: custom > discord > google > letter
+- When `avatarSource` is not set, respect priority: custom > discord > google > letter
 
 ---
 
@@ -282,5 +303,4 @@ function upgradeGooglePhotoUrl(url, size) {
 
 - [Discord CDN Image Formatting](https://discord.com/developers/docs/reference#image-formatting)
 - [Firebase Storage Security Rules](https://firebase.google.com/docs/storage/security)
-- [Google People API Image Sizing](https://developers.google.com/people/image-sizing)
 - [Discord OAuth2 User Object](https://discord.com/developers/docs/resources/user#user-object)

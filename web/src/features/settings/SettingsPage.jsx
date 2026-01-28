@@ -1,12 +1,13 @@
 import { EmailAuthProvider, linkWithCredential, updateProfile } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { useAuth } from "../../app/AuthProvider";
-import { useTheme } from "../../app/ThemeProvider";
-import { db } from "../../lib/firebase";
+import { useAuth } from "../../app/useAuth";
+import { useTheme } from "../../app/useTheme";
+import { db, storage } from "../../lib/firebase";
 import { linkGoogleAccount, resendVerificationEmail, signOutUser } from "../../lib/auth";
 import { startDiscordOAuth, unlinkDiscordAccount } from "../../lib/data/discord";
 import { registerQsUsername } from "../../lib/data/usernames";
@@ -14,6 +15,7 @@ import { buildPublicIdentifier } from "../../lib/identity";
 import { LoadingState } from "../../components/ui/spinner";
 import { Switch } from "../../components/ui/switch";
 import { UserIdentity } from "../../components/UserIdentity";
+import { UserAvatar } from "../../components/ui/avatar";
 import {
   Select,
   SelectContent,
@@ -40,6 +42,56 @@ const defaultPerDayDefaults = {
   6: { time: "12:00", durationMinutes: 240 },
   0: { time: "12:00", durationMinutes: 240 },
 };
+
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+const AVATAR_MAX_DIMENSION = 512;
+
+function upgradeGooglePhotoUrl(url, size = 256) {
+  if (!url) return null;
+  if (url.includes("?sz=")) {
+    return url.replace(/\?sz=\d+/, `?sz=${size}`);
+  }
+  return url.replace(/\/s\d+-c\//, `/s${size}-c/`);
+}
+
+function buildDiscordAvatarUrl(userId, avatarHash, size = 256) {
+  if (!userId) return null;
+  if (!avatarHash) {
+    try {
+      const index = Number((BigInt(userId) >> 22n) % 6n);
+      return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+    } catch {
+      return null;
+    }
+  }
+  const isAnimated = String(avatarHash).startsWith("a_");
+  const ext = isAnimated ? "gif" : "png";
+  return `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.${ext}?size=${size}`;
+}
+
+async function resizeAvatarFile(file) {
+  if (!file) return null;
+  const bitmap = await createImageBitmap(file);
+  const maxDimension = Math.max(bitmap.width, bitmap.height);
+  const scale = Math.min(1, AVATAR_MAX_DIMENSION / maxDimension);
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  const type =
+    file.type === "image/png"
+      ? "image/png"
+      : file.type === "image/webp"
+        ? "image/webp"
+        : "image/jpeg";
+  const blob = await new Promise((resolve) =>
+    canvas.toBlob((result) => resolve(result), type, 0.92)
+  );
+  return { blob, type };
+}
 
 export default function SettingsPage() {
   const { user, refreshUser } = useAuth();
@@ -71,6 +123,10 @@ export default function SettingsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [discordInfo, setDiscordInfo] = useState(null);
+  const [avatarSource, setAvatarSource] = useState("google");
+  const [customAvatarUrl, setCustomAvatarUrl] = useState("");
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarUploadError, setAvatarUploadError] = useState("");
   const [discordLinking, setDiscordLinking] = useState(false);
   const [discordUnlinking, setDiscordUnlinking] = useState(false);
   const [googleLinking, setGoogleLinking] = useState(false);
@@ -82,12 +138,19 @@ export default function SettingsPage() {
   const [sessionDefaultsMode, setSessionDefaultsMode] = useState("simple");
   const [simpleStartTime, setSimpleStartTime] = useState("18:00");
   const [perDayDefaults, setPerDayDefaults] = useState(defaultPerDayDefaults);
+  const [usernameConfirmOpen, setUsernameConfirmOpen] = useState(false);
+  const [pendingSaveData, setPendingSaveData] = useState(null);
 
   const userRef = useMemo(() => (user ? doc(db, "users", user.uid) : null), [user]);
   const providerData = user?.providerData || [];
   const hasPasswordProvider = providerData.some((provider) => provider.providerId === "password");
   const googleProviderEmail =
     providerData.find((provider) => provider.providerId === "google.com")?.email || null;
+  const googleProviderPhotoUrl =
+    providerData.find((provider) => provider.providerId === "google.com")?.photoURL || null;
+  const googleAvatarUrl = googleProviderPhotoUrl
+    ? upgradeGooglePhotoUrl(googleProviderPhotoUrl, 256)
+    : null;
   const googleEmailMismatch =
     googleProviderEmail &&
     user?.email &&
@@ -97,6 +160,16 @@ export default function SettingsPage() {
     user?.email &&
     linkedCalendarEmail.toLowerCase() !== user.email.toLowerCase();
   const canUnlinkDiscord = hasPasswordProvider || Boolean(googleProviderEmail);
+  const discordAvatarUrl = useMemo(() => {
+    if (!discordInfo?.userId) return null;
+    return buildDiscordAvatarUrl(discordInfo.userId, discordInfo.avatarHash, 256);
+  }, [discordInfo]);
+  const resolvedAvatarUrl = useMemo(() => {
+    if (avatarSource === "custom") return customAvatarUrl || null;
+    if (avatarSource === "discord") return discordAvatarUrl || null;
+    if (avatarSource === "google") return googleAvatarUrl || null;
+    return customAvatarUrl || discordAvatarUrl || googleAvatarUrl || user?.photoURL || null;
+  }, [avatarSource, customAvatarUrl, discordAvatarUrl, googleAvatarUrl, user?.photoURL]);
 
   useEffect(() => {
     if (!userRef) return;
@@ -148,9 +221,22 @@ export default function SettingsPage() {
             setCalendarNames({ [data.settings.googleCalendarId]: data.settings.googleCalendarName });
           }
           setDiscordInfo(data.discord || null);
+          setCustomAvatarUrl(data.customAvatarUrl || "");
           setQsUsernameInput(data.qsUsername || "");
           setQsUsernameCurrent(data.qsUsername || "");
           setPublicIdentifierType(data.publicIdentifierType || "email");
+          const nextAvatarSource = data.avatarSource || null;
+          if (nextAvatarSource) {
+            setAvatarSource(nextAvatarSource);
+          } else if (data.customAvatarUrl) {
+            setAvatarSource("custom");
+          } else if (googleAvatarUrl) {
+            setAvatarSource("google");
+          } else if (data.discord?.userId) {
+            setAvatarSource("discord");
+          } else {
+            setAvatarSource("custom");
+          }
         }
       })
       .catch((err) => {
@@ -158,12 +244,21 @@ export default function SettingsPage() {
         toast.error("Failed to load settings: " + err.message);
       })
       .finally(() => setLoading(false));
-  }, [userRef, user]);
+  }, [userRef, user, googleAvatarUrl]);
 
   useEffect(() => {
     if (!user) return;
     setDisplayName((prev) => prev || user.displayName || "");
   }, [user]);
+
+  useEffect(() => {
+    if (avatarSource === "google" && !googleAvatarUrl) {
+      setAvatarSource(discordAvatarUrl ? "discord" : "custom");
+    }
+    if (avatarSource === "discord" && !discordAvatarUrl) {
+      setAvatarSource(googleAvatarUrl ? "google" : "custom");
+    }
+  }, [avatarSource, googleAvatarUrl, discordAvatarUrl]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -279,6 +374,72 @@ export default function SettingsPage() {
     }
   };
 
+  const handleAvatarUpload = async (event) => {
+    if (!user) return;
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setAvatarUploadError("");
+    if (!file.type.startsWith("image/")) {
+      setAvatarUploadError("Please upload a JPG, PNG, or WebP image.");
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      setAvatarUploadError("Image must be under 2 MB.");
+      return;
+    }
+    setAvatarUploading(true);
+    try {
+      const resized = await resizeAvatarFile(file);
+      if (!resized?.blob) {
+        throw new Error("Unable to process that image.");
+      }
+      const ext =
+        resized.type === "image/png" ? "png" : resized.type === "image/webp" ? "webp" : "jpg";
+      const avatarRef = ref(storage, `profiles/${user.uid}/avatar.${ext}`);
+      await uploadBytes(avatarRef, resized.blob, { contentType: resized.type });
+      const url = await getDownloadURL(avatarRef);
+      setCustomAvatarUrl(url);
+      setAvatarSource("custom");
+      toast.success("Custom avatar uploaded. Save settings to apply.");
+    } catch (err) {
+      console.error("Avatar upload failed:", err);
+      setAvatarUploadError("Failed to upload avatar. Try another file.");
+    } finally {
+      setAvatarUploading(false);
+      event.target.value = "";
+    }
+  };
+
+  const handleRemoveCustomAvatar = async () => {
+    if (!user) return;
+    if (!customAvatarUrl) {
+      setAvatarSource(googleAvatarUrl ? "google" : discordInfo?.userId ? "discord" : "custom");
+      return;
+    }
+    setAvatarUploading(true);
+    try {
+      const possibleExt = ["jpg", "png", "webp"];
+      await Promise.all(
+        possibleExt.map((ext) =>
+          deleteObject(ref(storage, `profiles/${user.uid}/avatar.${ext}`)).catch(() => null)
+        )
+      );
+      setCustomAvatarUrl("");
+      const nextSource = googleAvatarUrl
+        ? "google"
+        : discordInfo?.userId
+          ? "discord"
+          : "custom";
+      setAvatarSource(nextSource);
+      toast.success("Custom avatar removed. Save settings to apply.");
+    } catch (err) {
+      console.error("Failed to remove custom avatar:", err);
+      toast.error("Failed to remove custom avatar.");
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
   const handleAddPassword = async () => {
     if (!user?.email) {
       toast.error("Email is required to add a password.");
@@ -350,16 +511,25 @@ export default function SettingsPage() {
         toast("Still not verified. Check your inbox.");
       }
     } catch (err) {
-      toast.error("Failed to refresh verification status.");
+      toast.error(err?.message || "Failed to refresh verification status.");
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (skipUsernameConfirmation = false) => {
     if (!userRef) return;
+    const normalizedDisplayName = displayName.trim() || user?.displayName || null;
+    const nextQsUsername = qsUsernameInput.trim().replace(/^@/, "").toLowerCase();
+
+    // Show confirmation dialog if setting username for the first time
+    const isSettingNewUsername = nextQsUsername && !qsUsernameCurrent && !skipUsernameConfirmation;
+    if (isSettingNewUsername) {
+      setPendingSaveData({ normalizedDisplayName, nextQsUsername });
+      setUsernameConfirmOpen(true);
+      return;
+    }
+
     setSaving(true);
     try {
-      const normalizedDisplayName = displayName.trim() || user?.displayName || null;
-      const nextQsUsername = qsUsernameInput.trim().replace(/^@/, "").toLowerCase();
       if (nextQsUsername && nextQsUsername !== qsUsernameCurrent) {
         setQsUsernameSaving(true);
         await registerQsUsername(nextQsUsername);
@@ -399,7 +569,9 @@ export default function SettingsPage() {
         {
           email: user.email?.toLowerCase(),
           ...(normalizedDisplayName ? { displayName: normalizedDisplayName } : {}),
-          photoURL: user.photoURL,
+          photoURL: resolvedAvatarUrl || null,
+          avatarSource,
+          customAvatarUrl: customAvatarUrl || null,
           calendarSyncPreference,
           publicIdentifierType,
           settings: {
@@ -426,7 +598,7 @@ export default function SettingsPage() {
         {
           email: user.email?.toLowerCase(),
           ...(normalizedDisplayName ? { displayName: normalizedDisplayName } : {}),
-          photoURL: user.photoURL,
+          photoURL: resolvedAvatarUrl || null,
           emailNotifications,
           publicIdentifierType,
           publicIdentifier,
@@ -436,6 +608,10 @@ export default function SettingsPage() {
       );
       if (normalizedDisplayName && user.displayName !== normalizedDisplayName) {
         await updateProfile(user, { displayName: normalizedDisplayName });
+        await refreshUser();
+      }
+      if ((resolvedAvatarUrl || null) !== (user.photoURL || null)) {
+        await updateProfile(user, { photoURL: resolvedAvatarUrl || null });
         await refreshUser();
       }
       if (normalizedDisplayName) {
@@ -451,6 +627,17 @@ export default function SettingsPage() {
       setQsUsernameSaving(false);
       setSaving(false);
     }
+  };
+
+  const handleUsernameConfirm = () => {
+    setUsernameConfirmOpen(false);
+    setPendingSaveData(null);
+    handleSave(true);
+  };
+
+  const handleUsernameCancel = () => {
+    setUsernameConfirmOpen(false);
+    setPendingSaveData(null);
   };
 
   const handleDeleteAccount = async () => {
@@ -631,6 +818,94 @@ export default function SettingsPage() {
             </section>
             <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Profile Picture
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Choose which avatar other players see, or upload your own.
+              </p>
+              <div className="mt-4 flex flex-wrap items-center gap-4">
+                <UserAvatar
+                  email={user?.email}
+                  src={resolvedAvatarUrl || user?.photoURL || null}
+                  size={56}
+                />
+                <div className="flex flex-col gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    Current source
+                  </span>
+                  <div className="flex flex-wrap gap-3">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="avatarSource"
+                        value="google"
+                        disabled={!googleAvatarUrl}
+                        checked={avatarSource === "google"}
+                        onChange={() => setAvatarSource("google")}
+                      />
+                      Google
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="avatarSource"
+                        value="discord"
+                        disabled={!discordAvatarUrl}
+                        checked={avatarSource === "discord"}
+                        onChange={() => setAvatarSource("discord")}
+                      />
+                      Discord
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="avatarSource"
+                        value="custom"
+                        checked={avatarSource === "custom"}
+                        onChange={() => setAvatarSource("custom")}
+                      />
+                      Custom upload
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={handleAvatarUpload}
+                      className="hidden"
+                      id="avatar-upload"
+                      disabled={avatarUploading}
+                    />
+                    <label
+                      htmlFor="avatar-upload"
+                      className="cursor-pointer rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      {avatarUploading ? "Uploading..." : "Upload image"}
+                    </label>
+                    {customAvatarUrl && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveCustomAvatar}
+                        disabled={avatarUploading}
+                        className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >
+                        Remove custom
+                      </button>
+                    )}
+                  </div>
+                  {avatarUploadError && (
+                    <span className="text-[11px] text-amber-600 dark:text-amber-200">
+                      {avatarUploadError}
+                    </span>
+                  )}
+                  <span className="text-[11px] text-slate-400">
+                    Changes apply after saving settings.
+                  </span>
+                </div>
+              </div>
+            </section>
+            <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                 Your Identity
               </h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -644,10 +919,13 @@ export default function SettingsPage() {
                     value={qsUsernameInput}
                     onChange={(event) => setQsUsernameInput(event.target.value)}
                     placeholder="questmaster"
-                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                    disabled={Boolean(qsUsernameCurrent)}
+                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800 dark:disabled:text-slate-400"
                   />
                   <span className="mt-2 block text-[11px] text-slate-400 dark:text-slate-500">
-                    3-20 characters, start with a letter, lowercase letters/numbers/underscores only.
+                    {qsUsernameCurrent
+                      ? "Username cannot be changed once set."
+                      : "3-20 characters, start with a letter, lowercase letters/numbers/underscores only. Cannot be changed later."}
                   </span>
                 </label>
                 <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -1142,6 +1420,37 @@ export default function SettingsPage() {
                   </button>
                 </DialogFooter>
               </form>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={usernameConfirmOpen} onOpenChange={setUsernameConfirmOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Confirm your username</DialogTitle>
+                <DialogDescription>
+                  Your Quest Scheduler username will be set to{" "}
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    @{pendingSaveData?.nextQsUsername}
+                  </span>
+                  . This cannot be changed later.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <button
+                  type="button"
+                  onClick={handleUsernameCancel}
+                  className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUsernameConfirm}
+                  className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
+                >
+                  Confirm
+                </button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
 
