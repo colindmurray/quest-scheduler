@@ -1,4 +1,4 @@
-const { describe, expect, test, beforeEach, vi } = require('vitest');
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 class HttpsError extends Error {
   constructor(code, message) {
@@ -27,16 +27,6 @@ const functionsMock = {
 
 vi.mock('firebase-functions/v1', () => functionsMock);
 
-vi.mock('./config', () => ({
-  DISCORD_REGION: 'us-central1',
-  DISCORD_BOT_TOKEN: { value: () => 'token' },
-  APP_URL: 'https://app.example.com',
-}));
-
-vi.mock('./discord-client', () => ({
-  createChannelMessage: vi.fn(),
-}));
-
 const collectionMock = vi.fn(() => ({
   doc: () => ({
     get: vi.fn(async () => ({ exists: false })),
@@ -58,13 +48,27 @@ const adminMock = {
   firestore: firestoreNamespace,
 };
 
-vi.mock('firebase-admin', () => adminMock);
-
-const nudge = require('./nudge');
+let nudge;
 
 describe('discord nudge', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    vi.resetModules();
+    vi.doMock('./config', () => ({
+      DISCORD_REGION: 'us-central1',
+      DISCORD_BOT_TOKEN: { value: () => 'token' },
+      APP_URL: 'https://app.example.com',
+      default: {
+        DISCORD_REGION: 'us-central1',
+        DISCORD_BOT_TOKEN: { value: () => 'token' },
+        APP_URL: 'https://app.example.com',
+      },
+    }));
+    vi.doMock('./discord-client', () => ({
+      createChannelMessage: vi.fn(),
+    }));
+    vi.doMock('firebase-admin', () => ({ default: adminMock, ...adminMock }));
+    nudge = await import('./nudge');
   });
 
   test('returns not-found when poll is missing', async () => {

@@ -1,9 +1,9 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-28 — Added vitest + firebase-functions-test to functions package with `functions/vitest.config.js`.
-- Next Step: Add Cloud Functions unit tests for Discord modules (oauth, worker, link-codes, nudge, roles).
-- Open Issues: `npm run test:rules` failed — firebase-tools requires JDK 21+. Playwright install warned about missing system deps (`npx playwright install-deps` or apt libs). `npm install` reported 4 vulnerabilities (3 moderate, 1 high) — run audit once test plan allows. `functions/npm install` reports 2 moderate vulnerabilities. `functions/npm test` exits 1 until tests exist (no test files yet).
+- Last Completed: 2026-01-28 — Added Cloud Functions unit tests for Discord modules (oauth, worker, link-codes, nudge, roles); vitest run passed (1 skipped).
+- Next Step: Add tests for legacy callables in `functions/src/legacy.js`.
+- Open Issues: `npm run test:rules` failed — firebase-tools requires JDK 21+. Playwright install warned about missing system deps (`npx playwright install-deps` or apt libs). `npm install` reported 4 vulnerabilities (3 moderate, 1 high) — run audit once test plan allows. `functions/npm install` reports 2 moderate vulnerabilities. Functions tests emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Worker tests log expected warnings on missing secrets.
 - Last Updated (YYYY-MM-DD): 2026-01-28
 
 ## Automated Testing Overhaul (Unit / Integration / E2E)
@@ -20,7 +20,7 @@
 
 ### P1 — Functions + Hooks
 - [x] 2026-01-28: Add `vitest` + `firebase-functions-test` to `functions/package.json` with `functions/vitest.config.js`.
-- [ ] Add Cloud Functions unit tests for Discord modules (oauth, worker, link-codes, nudge, roles).
+- [x] 2026-01-28: Add Cloud Functions unit tests for Discord modules (oauth, worker, link-codes, nudge, roles) (1 skipped: roles mapping needs bot token/REST stub).
 - [ ] Add tests for legacy callables in `functions/src/legacy.js`.
 - [ ] Add hook tests in `web/src/hooks/` (useUserSettings, useQuestingGroups, usePollInvites, useBlockedUsers, etc.).
 

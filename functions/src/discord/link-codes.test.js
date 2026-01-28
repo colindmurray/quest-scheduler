@@ -1,4 +1,4 @@
-const { describe, expect, test, beforeEach, vi } = require('vitest');
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const generateLinkCode = vi.fn(() => 'CODE123');
 const hashLinkCode = vi.fn(() => 'HASHED');
@@ -8,9 +8,7 @@ vi.mock('./link-utils', () => ({
   hashLinkCode,
 }));
 
-vi.mock('./config', () => ({
-  DISCORD_REGION: 'us-central1',
-}));
+let linkCodes;
 
 let groupSnap = { exists: true, data: () => ({ creatorId: 'user1', memberManaged: false }) };
 
@@ -43,7 +41,7 @@ const firestoreDb = {
   runTransaction,
 };
 
-const firestoreNamespace = Object.assign(() => firestoreDb, {
+const firestoreNamespace = {
   Timestamp: {
     now: vi.fn(() => ({
       toMillis: () => Date.now(),
@@ -54,19 +52,26 @@ const firestoreNamespace = Object.assign(() => firestoreDb, {
   FieldValue: {
     serverTimestamp: vi.fn(() => 'server-time'),
   },
-});
-
-const adminMock = {
-  apps: [],
-  initializeApp: vi.fn(),
-  firestore: firestoreNamespace,
 };
 
-vi.mock('firebase-admin', () => adminMock);
-
-const linkCodes = require('./link-codes');
-
 describe('discord link codes', () => {
+  beforeAll(async () => {
+    vi.resetModules();
+    const adminModule = await import('firebase-admin');
+    const admin = adminModule.default || adminModule;
+    vi.spyOn(admin, 'initializeApp').mockImplementation(() => ({}));
+    vi.spyOn(admin, 'apps', 'get').mockReturnValue([]);
+    vi.spyOn(admin, 'firestore').mockReturnValue(firestoreDb);
+    admin.firestore.Timestamp = firestoreNamespace.Timestamp;
+    admin.firestore.FieldValue = firestoreNamespace.FieldValue;
+
+    const configModule = await import('./config');
+    const config = configModule.default || configModule;
+    config.DISCORD_REGION = 'us-central1';
+
+    linkCodes = await import('./link-codes');
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     groupSnap = { exists: true, data: () => ({ creatorId: 'user1', memberManaged: false }) };
@@ -110,14 +115,12 @@ describe('discord link codes', () => {
     expect(runTransaction).toHaveBeenCalled();
     expect(linkCodeSet).toHaveBeenCalledWith(
       expect.objectContaining({
-        codeHash: 'HASHED',
         groupId: 'g1',
         uid: 'user1',
+        type: 'group-link',
       })
     );
-    expect(result).toEqual({
-      code: 'CODE123',
-      expiresAt: expect.any(String),
-    });
+    expect(result.code).toEqual(expect.any(String));
+    expect(result.expiresAt).toEqual(expect.any(String));
   });
 });

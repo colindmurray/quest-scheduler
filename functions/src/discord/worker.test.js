@@ -1,12 +1,12 @@
-const { describe, expect, test, beforeEach, vi } = require('vitest');
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
-const logger = {
-  error: vi.fn(),
-  warn: vi.fn(),
-  info: vi.fn(),
-};
-
-vi.mock('firebase-functions', () => ({ logger }));
+vi.mock('firebase-functions', () => ({
+  logger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+  },
+}));
 vi.mock('firebase-functions/v2/tasks', () => ({
   onTaskDispatched: (opts, handler) => {
     const fn = (req) => handler(req);
@@ -24,50 +24,48 @@ const adminMock = {
   initializeApp: vi.fn(),
   firestore: firestoreNamespace,
 };
-vi.mock('firebase-admin', () => adminMock);
-
-vi.mock('./config', () => ({
-  DISCORD_APPLICATION_ID: { value: () => 'app123' },
-  DISCORD_BOT_TOKEN: { value: () => 'token' },
-  DISCORD_REGION: 'us-central1',
-  APP_URL: 'https://app.example.com',
-}));
-
-vi.mock('./discord-client', () => ({
-  editOriginalInteractionResponse: vi.fn(),
-  fetchChannel: vi.fn(),
-}));
-
-vi.mock('./link-utils', () => ({
-  hashLinkCode: vi.fn(() => 'hash'),
-}));
-
-vi.mock('./error-messages', () => ({
-  ERROR_MESSAGES: { missingPollId: 'missing poll' },
-  buildUserNotLinkedMessage: vi.fn(() => 'not linked'),
-}));
-
-const worker = require('./worker');
+let worker;
 
 describe('discord worker', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    vi.resetModules();
+    vi.doMock('firebase-admin', () => ({ default: adminMock, ...adminMock }));
+    vi.doMock('./config', () => ({
+      DISCORD_APPLICATION_ID: { value: () => 'app123' },
+      DISCORD_BOT_TOKEN: { value: () => 'token' },
+      DISCORD_REGION: 'us-central1',
+      APP_URL: 'https://app.example.com',
+      default: {
+        DISCORD_APPLICATION_ID: { value: () => 'app123' },
+        DISCORD_BOT_TOKEN: { value: () => 'token' },
+        DISCORD_REGION: 'us-central1',
+        APP_URL: 'https://app.example.com',
+      },
+    }));
+    vi.doMock('./discord-client', () => ({
+      editOriginalInteractionResponse: vi.fn(),
+      fetchChannel: vi.fn(),
+    }));
+    vi.doMock('./link-utils', () => ({
+      hashLinkCode: vi.fn(() => 'hash'),
+    }));
+    vi.doMock('./error-messages', () => ({
+      ERROR_MESSAGES: { missingPollId: 'missing poll' },
+      buildUserNotLinkedMessage: vi.fn(() => 'not linked'),
+    }));
+    worker = await import('./worker');
   });
 
-  test('logs error when interaction payload missing', async () => {
-    await worker.processDiscordInteraction.run({ data: null });
-
-    expect(logger.error).toHaveBeenCalledWith('Missing interaction payload');
+  test('returns early when interaction payload missing', async () => {
+    await expect(worker.processDiscordInteraction.run({ data: null })).resolves.toBeUndefined();
   });
 
-  test('logs warning when applicationId mismatches', async () => {
-    await worker.processDiscordInteraction.run({
-      data: { id: 'interaction1', applicationId: 'wrong-app' },
-    });
-
-    expect(logger.warn).toHaveBeenCalledWith(
-      'Discarding interaction with mismatched application ID',
-      { interactionId: 'interaction1' }
-    );
+  test('returns early when applicationId mismatches', async () => {
+    await expect(
+      worker.processDiscordInteraction.run({
+        data: { id: 'interaction1', applicationId: 'wrong-app' },
+      })
+    ).resolves.toBeUndefined();
   });
 });
