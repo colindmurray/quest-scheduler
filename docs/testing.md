@@ -24,6 +24,7 @@ E2E_USER_EMAIL=your-test-email@example.com
 E2E_USER_PASSWORD=your-test-password
 E2E_SCHEDULER_ID=e2e-scheduler
 VITE_EMULATOR_HOST=127.0.0.1
+VITE_GOOGLE_OAUTH_CLIENT_ID=your-google-oauth-client-id
 ```
 
 `functions/.env`
@@ -32,7 +33,11 @@ QS_APP_URL=http://localhost:5173
 DISCORD_OAUTH_REDIRECT_URI=http://127.0.0.1:5001/<project-id>/us-central1/discordOAuthCallback
 DISCORD_CLIENT_ID=your-discord-client-id
 DISCORD_CLIENT_SECRET=your-discord-client-secret
+QS_GOOGLE_OAUTH_CLIENT_SECRET_FILE=functions/credentials/quest_scheduler_test_oauth_client.json
 ```
+
+Place the Google OAuth client JSON at `functions/credentials/quest_scheduler_test_oauth_client.json`
+(the path is gitignored).
 
 ## Unit Tests
 ```bash

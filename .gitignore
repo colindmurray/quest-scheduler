@@ -21,6 +21,7 @@ extensions/*.secret.local
 
 # OAuth client secrets (local only)
 client_secret*.json
+functions/credentials/
 
 # OS files
 .DS_Store

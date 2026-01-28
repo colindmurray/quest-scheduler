@@ -1,9 +1,9 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-28 — Added CI workflow for tests/coverage/artifacts and ran E2E via emulators (18/18).
-- Next Step: Add Google login E2E coverage (OAuth creds) and emulator integration test for Discord worker + schedulers.
-- Open Issues: Functions tests still emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning. Google auth E2E still pending (requires test OAuth creds).
+- Last Completed: 2026-01-28 — Added Google auth E2E coverage with stubbed GSI script; E2E via emulators now 21/21.
+- Next Step: Add emulator integration test for Discord worker + schedulers.
+- Open Issues: Functions tests still emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning.
 - Last Updated (YYYY-MM-DD): 2026-01-28
 
 ## Automated Testing Overhaul (Unit / Integration / E2E)

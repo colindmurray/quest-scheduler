@@ -2687,7 +2687,7 @@ export async function clearTestData() {
 
 ### Phase 4: E2E Tests (Week 7-8)
 - [x] Install and configure Playwright
-- [ ] Write auth flow E2E tests (Google + Discord login)
+- [x] Write auth flow E2E tests (Google + Discord login)
 - [x] Write scheduler flow E2E tests
 - [x] Write friends/groups E2E tests (identifier invites)
 - [x] Write settings/profile E2E tests (avatar source selection)
