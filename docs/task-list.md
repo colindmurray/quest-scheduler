@@ -1,8 +1,8 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-28 — Added UI component tests (calendar/date-picker/dropdown/menu/notification bell) plus hook coverage for `useFriends` and `useNotifications`; coverage run now shows `web/src/components/ui` at 60%+ and hooks at ~52%.
-- Next Step: Add unit tests for remaining untested hooks/utilities (`useUserProfiles`, `useFirestoreCollection`, `useFirestoreDoc`, `firebase.js`) and high-value feature components (notification dropdown).
+- Last Completed: 2026-01-28 — Added hook tests for `useFirestoreCollection` + `useFirestoreDoc` and verified `npm --prefix web run test` (110 tests).
+- Next Step: Add unit tests for remaining untested hooks/utilities (`useUserProfiles`, `firebase.js`, `useNotificationSync`) and high-value feature components (notification dropdown).
 - Open Issues: Functions tests still emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning. Overall coverage remains low outside UI components.
 - Last Updated (YYYY-MM-DD): 2026-01-28
 
