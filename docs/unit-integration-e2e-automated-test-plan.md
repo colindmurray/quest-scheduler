@@ -7,35 +7,22 @@ This document outlines a comprehensive automated testing strategy for Quest Sche
 ## Current State
 
 ### Existing Infrastructure
-- **Test Framework:** Vitest 3.2.4 (installed)
+- **Test Framework:** Vitest 3.2.4 with jsdom config (`web/vitest.config.js`) and setup file (`web/src/__tests__/setup.js`)
 - **Language:** JavaScript/JSX only (no TypeScript)
-- **Existing Tests:** 4 data layer test files in `web/src/lib/data/`:
-  - `users.test.js` - tests for `findUserIdByEmail`
-  - `friends.test.js` - tests for `createFriendRequest`, `acceptFriendRequest`, `acceptFriendInviteLink`
-  - `questingGroups.test.js` - tests for `inviteMemberToGroup` with success, blocked, and missing invitee cases
-  - `notifications.test.js` - tests for `ensureGroupInviteNotification` and session notifications
-- **No Vitest config file** - uses defaults (works but lacks jsdom environment, setup file, coverage config)
-- **No coverage reporting** configured
-- **No React Testing Library** installed (required for component tests)
-- **Firebase Storage rules** exist (`storage.rules`) for profile avatar uploads
+- **React Testing Library:** Installed with jest-dom + MSW
+- **Coverage Reporting:** `npm --prefix web run test:coverage` (v8)
+- **Existing Unit Tests:** Data layer (`users`, `friends`, `questingGroups`, `notifications`, `pollInvites`, `blocks`, `discord`, `usernames`), helpers (`auth`, `identifiers`, `identity`), and hooks
+- **Component Tests:** Auth + Settings UI and shared UI primitives
+- **Rules Tests:** Firestore + Storage rules via emulator (`@firebase/rules-unit-testing`)
+- **E2E Tests:** Playwright suite + seed script + emulator harness
+- **Functions Tests:** Vitest + `firebase-functions-test` for Discord + legacy callables
+- **Firebase Emulator config** present in `firebase.json`
 - **Discord OAuth + bot flows** implemented in Cloud Functions (`functions/src/discord/`)
 - **UID-only membership** now drives schedulers + questing groups (participants/members email arrays deprecated)
-- **New data modules** exist for Discord, usernames, blocks, poll invites, and identifier parsing
 
 ### Gaps
-- ❌ No component tests
-- ❌ No hook tests (10 hooks exist, 0 tested)
-- ❌ No Cloud Functions tests (Discord OAuth, bot vote handlers, nudge, link codes, unlink, roles)
-- ❌ No Firestore security rules tests (Firestore + Storage)
-- ❌ No E2E tests
-- ❌ No integration tests with Firebase Emulator (Auth/Firestore/Storage)
-- ❌ No Firebase Emulator config in firebase.json
-- ❌ No tests for `identifiers.js` (detectIdentifierType, resolveIdentifier)
-- ❌ No tests for `identity.js` (buildPublicIdentifier)
-- ❌ No tests for `auth.js` (signInWithGoogle, signInWithDiscordToken, etc.)
-- ❌ No tests for avatar source selection + storage upload constraints
-- ❌ No tests for migration script dry-run vs cleanup modes
-- ❌ Functions package missing vitest + firebase-functions-test dependencies
+- ⚠️ Large feature pages (Dashboard, Friends, Scheduler) remain mostly untested; coverage is low due to UI-heavy code.
+- ⚠️ Discord roles mapping test skipped (needs bot token/REST stub).
 
 ## Recommended Testing Stack
 
