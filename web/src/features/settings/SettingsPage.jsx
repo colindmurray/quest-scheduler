@@ -148,6 +148,12 @@ export default function SettingsPage() {
       const query = params.toString();
       navigate(`/settings${query ? `?${query}` : ""}`, { replace: true });
     }
+    if (params.get("discord") === "failed") {
+      toast.error("Discord linking failed. Please try again.");
+      params.delete("discord");
+      const query = params.toString();
+      navigate(`/settings${query ? `?${query}` : ""}`, { replace: true });
+    }
   }, [navigate]);
 
   const toggleCalendarSelection = (calendar) => {

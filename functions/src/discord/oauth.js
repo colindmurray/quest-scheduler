@@ -93,22 +93,25 @@ exports.discordOAuthCallback = onRequest(
     secrets: [DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET],
   },
   async (req, res) => {
+    let intent = "link";
+    let stateData = null;
+    const stateId = String(req.query.state || "");
     try {
       const code = String(req.query.code || "");
-      const state = String(req.query.state || "");
-      if (!code || !state) {
+      if (!code || !stateId) {
         res.status(400).send("Missing code or state");
         return;
       }
 
-      const stateRef = admin.firestore().collection("oauthStates").doc(state);
+      const stateRef = admin.firestore().collection("oauthStates").doc(stateId);
       const stateSnap = await stateRef.get();
       if (!stateSnap.exists) {
         res.status(400).send("Invalid state");
         return;
       }
 
-      const stateData = stateSnap.data() || {};
+      stateData = stateSnap.data() || {};
+      intent = stateData.intent || "link";
       const expiresAt = stateData.expiresAt?.toDate?.();
       if (stateData.provider !== "discord") {
         await stateRef.delete();
@@ -138,10 +141,21 @@ exports.discordOAuthCallback = onRequest(
         body: tokenParams.toString(),
       });
 
-      const tokenJson = await tokenResponse.json();
+      const tokenJson = await tokenResponse.json().catch(() => ({}));
       if (!tokenResponse.ok) {
+        const safeToken = { ...tokenJson };
+        if (safeToken.access_token) safeToken.access_token = "[redacted]";
+        if (safeToken.refresh_token) safeToken.refresh_token = "[redacted]";
+        console.error("Discord token exchange failed", {
+          status: tokenResponse.status,
+          body: safeToken,
+        });
         await stateRef.delete();
-        res.status(400).send("Discord token exchange failed");
+        if (intent === "login") {
+          res.redirect(`${APP_URL}/auth?error=discord_failed`);
+        } else {
+          res.redirect(`${APP_URL}/settings?discord=failed`);
+        }
         return;
       }
 
@@ -157,14 +171,21 @@ exports.discordOAuthCallback = onRequest(
           Authorization: `Bearer ${accessToken}`,
         },
       });
-      const userJson = await userResponse.json();
+      const userJson = await userResponse.json().catch(() => ({}));
       if (!userResponse.ok || !userJson?.id) {
+        console.error("Discord user fetch failed", {
+          status: userResponse.status,
+          body: userJson,
+        });
         await stateRef.delete();
-        res.status(400).send("Failed to fetch Discord user");
+        if (intent === "login") {
+          res.redirect(`${APP_URL}/auth?error=discord_failed`);
+        } else {
+          res.redirect(`${APP_URL}/settings?discord=failed`);
+        }
         return;
       }
 
-      const intent = stateData.intent || "link";
       const discordUserId = String(userJson.id);
       const discordUsername = userJson.username || null;
       const discordGlobalName = userJson.global_name || null;
@@ -337,7 +358,19 @@ exports.discordOAuthCallback = onRequest(
       await stateRef.delete();
       res.redirect(`${APP_URL}/settings?discord=linked`);
     } catch (err) {
-      res.status(500).send("Discord OAuth failed");
+      console.error("Discord OAuth callback failed", err);
+      if (stateId) {
+        try {
+          await admin.firestore().collection("oauthStates").doc(stateId).delete();
+        } catch (cleanupErr) {
+          console.warn("Failed to cleanup oauth state after error", cleanupErr);
+        }
+      }
+      if (intent === "login") {
+        res.redirect(`${APP_URL}/auth?error=discord_failed`);
+      } else {
+        res.redirect(`${APP_URL}/settings?discord=failed`);
+      }
     }
   }
 );
