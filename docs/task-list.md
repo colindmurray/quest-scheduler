@@ -1,9 +1,9 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-28 — Added unit tests for `web/src/lib/auth.js` + data modules (`pollInvites`, `blocks`, `discord`, `usernames`) (vitest run passed).
-- Next Step: Add Playwright E2E scaffold + critical flows (Discord + UID-only polling).
-- Open Issues: `npm run test:rules` failed — firebase-tools requires JDK 21+. `npm install` reported 4 vulnerabilities (3 moderate, 1 high) — run audit once test plan allows.
+- Last Completed: 2026-01-28 — Added Playwright E2E scaffold + initial Discord/poll access checks (playwright run passed; 6 skipped pending emulator + test creds).
+- Next Step: Add `vitest` + `firebase-functions-test` to `functions/package.json` with `functions/vitest.config.js`.
+- Open Issues: `npm run test:rules` failed — firebase-tools requires JDK 21+. Playwright install warned about missing system deps (`npx playwright install-deps` or apt libs). `npm install` reported 4 vulnerabilities (3 moderate, 1 high) — run audit once test plan allows.
 - Last Updated (YYYY-MM-DD): 2026-01-28
 
 ## Automated Testing Overhaul (Unit / Integration / E2E)
@@ -16,7 +16,7 @@
 - [x] 2026-01-28: Add unit tests for `web/src/lib/identifiers.js` and `web/src/lib/identity.js`.
 - [x] 2026-01-28: Add unit tests for `web/src/lib/auth.js` (Google + Discord token flows).
 - [x] 2026-01-28: Add unit tests for new data modules (`pollInvites`, `blocks`, `discord`, `usernames`).
-- [ ] Add Playwright E2E scaffold + critical flows (Discord + UID-only polling).
+- [x] 2026-01-28: Add Playwright E2E scaffold + critical flows (Discord + UID-only polling) (6 skipped: OAuth + UID poll need emulator/test creds).
 
 ### P1 — Functions + Hooks
 - [ ] Add `vitest` + `firebase-functions-test` to `functions/package.json` with `functions/vitest.config.js`.

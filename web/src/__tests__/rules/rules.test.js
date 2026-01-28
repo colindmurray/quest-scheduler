@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   assertFails,
   assertSucceeds,
@@ -9,6 +10,8 @@ import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes } from 'firebase/storage';
 
 const projectId = 'quest-scheduler-test';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '../../../..');
 const firestoreRules = readFileSync(path.join(repoRoot, 'firestore.rules'), 'utf8');
 const storageRules = readFileSync(path.join(repoRoot, 'storage.rules'), 'utf8');
