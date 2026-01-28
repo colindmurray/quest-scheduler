@@ -40,6 +40,7 @@ vi.mock("firebase/auth", () => ({
       return null;
     }
   },
+  connectAuthEmulator: vi.fn(),
   getAuth: vi.fn(() => ({ currentUser: null })),
   onAuthStateChanged: vi.fn(() => () => {}),
   signInWithPopup: vi.fn(),
@@ -67,6 +68,7 @@ vi.mock("firebase/firestore", () => ({
   getDocs: vi.fn(),
   getFirestore: vi.fn(() => ({})),
   documentId: vi.fn(() => "documentId"),
+  connectFirestoreEmulator: vi.fn(),
   setDoc: vi.fn(),
   addDoc: vi.fn(),
   updateDoc: vi.fn(),
@@ -87,6 +89,7 @@ vi.mock("firebase/firestore", () => ({
 
 vi.mock("firebase/storage", () => ({
   getStorage: vi.fn(() => ({})),
+  connectStorageEmulator: vi.fn(),
   ref: vi.fn(),
   uploadBytes: vi.fn(),
   getDownloadURL: vi.fn(),
@@ -95,5 +98,6 @@ vi.mock("firebase/storage", () => ({
 
 vi.mock("firebase/functions", () => ({
   getFunctions: vi.fn(() => ({})),
+  connectFunctionsEmulator: vi.fn(),
   httpsCallable: vi.fn(() => vi.fn(() => Promise.resolve({ data: null }))),
 }));
