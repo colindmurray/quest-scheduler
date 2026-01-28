@@ -1,5 +1,5 @@
 import { useMemo, useCallback, useEffect } from "react";
-import { useAuth } from "../app/AuthProvider";
+import { useAuth } from "../app/useAuth";
 import { useFirestoreCollection } from "./useFirestoreCollection";
 import {
   incomingFriendRequestsQuery,
@@ -17,26 +17,31 @@ import {
 
 export function useFriends() {
   const { user } = useAuth();
+  const userId = user?.uid || null;
+  const userEmail = user?.email || null;
+  const userEmailLower = userEmail ? userEmail.toLowerCase() : null;
+  const userDisplayName = user?.displayName || null;
+  const userPhotoURL = user?.photoURL || null;
 
   const incomingRef = useMemo(() => {
-    if (!user?.email) return null;
-    return incomingFriendRequestsQuery(user.email.toLowerCase());
-  }, [user?.email]);
+    if (!userEmailLower) return null;
+    return incomingFriendRequestsQuery(userEmailLower);
+  }, [userEmailLower]);
 
   const outgoingRef = useMemo(() => {
-    if (!user?.uid) return null;
-    return outgoingFriendRequestsQuery(user.uid);
-  }, [user?.uid]);
+    if (!userId) return null;
+    return outgoingFriendRequestsQuery(userId);
+  }, [userId]);
 
   const acceptedFromRef = useMemo(() => {
-    if (!user?.email) return null;
-    return acceptedFriendRequestsFromQuery(user.email.toLowerCase());
-  }, [user?.email]);
+    if (!userEmailLower) return null;
+    return acceptedFriendRequestsFromQuery(userEmailLower);
+  }, [userEmailLower]);
 
   const acceptedToRef = useMemo(() => {
-    if (!user?.email) return null;
-    return acceptedFriendRequestsToQuery(user.email.toLowerCase());
-  }, [user?.email]);
+    if (!userEmailLower) return null;
+    return acceptedFriendRequestsToQuery(userEmailLower);
+  }, [userEmailLower]);
 
   const incoming = useFirestoreCollection(incomingRef);
   const outgoing = useFirestoreCollection(outgoingRef);
@@ -65,71 +70,71 @@ export function useFriends() {
   }, [acceptedFrom.data, acceptedTo.data]);
 
   useEffect(() => {
-    if (!user?.uid || incoming.data.length === 0) return;
-    syncFriendRequestNotifications(user.uid, incoming.data).catch((err) => {
+    if (!userId || incoming.data.length === 0) return;
+    syncFriendRequestNotifications(userId, incoming.data).catch((err) => {
       console.error("Failed to sync friend request notifications:", err);
     });
-  }, [user?.uid, incoming.data]);
+  }, [userId, incoming.data]);
 
   const sendFriendRequest = useCallback(
     async (identifier) => {
-      if (!user?.uid || !user?.email) return;
+      if (!userId || !userEmail) return;
       return createFriendRequest({
-        fromUserId: user.uid,
-        fromEmail: user.email,
+        fromUserId: userId,
+        fromEmail: userEmail,
         toIdentifier: identifier,
-        fromDisplayName: user.displayName,
+        fromDisplayName: userDisplayName,
       });
     },
-    [user?.uid, user?.email, user?.displayName]
+    [userId, userEmail, userDisplayName]
   );
 
   const acceptFriendRequestById = useCallback(
     async (requestId) => {
-      if (!user?.uid || !user?.email) return;
+      if (!userId || !userEmail) return;
       return acceptFriendRequest(requestId, {
-        userId: user.uid,
-        userEmail: user.email,
+        userId,
+        userEmail,
       });
     },
-    [user?.uid, user?.email]
+    [userId, userEmail]
   );
 
   const declineFriendRequestById = useCallback(
     async (requestId) => {
-      if (!user?.email) return;
-      return declineFriendRequest(requestId, { userId: user.uid, userEmail: user.email });
+      if (!userEmail) return;
+      return declineFriendRequest(requestId, { userId, userEmail });
     },
-    [user?.email, user?.uid]
+    [userEmail, userId]
   );
 
   const removeFriendById = useCallback(
     async (requestId) => {
-      if (!user?.email) return;
-      return removeFriend(requestId, { userEmail: user.email });
+      if (!userEmail) return;
+      return removeFriend(requestId, { userEmail });
     },
-    [user?.email]
+    [userEmail]
   );
 
   const getInviteCode = useCallback(async () => {
-    if (!user?.uid) return null;
+    if (!userId) return null;
     return ensureFriendInviteCode({
-      userId: user.uid,
-      email: user.email,
-      displayName: user.displayName,
-      photoURL: user.photoURL,
+      userId,
+      email: userEmail,
+      displayName: userDisplayName,
+      photoURL: userPhotoURL,
     });
-  }, [user?.uid, user?.email, user?.displayName, user?.photoURL]);
+  }, [userId, userEmail, userDisplayName, userPhotoURL]);
 
   const acceptInviteLink = useCallback(
     async (inviteCode) => {
-      if (!user?.uid || !user?.email) return null;
+      if (!userId || !userEmail) return null;
       return acceptFriendInviteLink(inviteCode, {
-        userId: user.uid,
-        userEmail: user.email,
+        userId,
+        userEmail,
       });
     },
-    [user?.uid, user?.email]
+    [userId, userEmail]
   );
 
   return {

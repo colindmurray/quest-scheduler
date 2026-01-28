@@ -1,5 +1,5 @@
 import { useMemo, useCallback } from "react";
-import { useAuth } from "../app/AuthProvider";
+import { useAuth } from "../app/useAuth";
 import { useFirestoreCollection } from "./useFirestoreCollection";
 import {
   blockedUsersQuery,
@@ -9,11 +9,12 @@ import {
 
 export function useBlockedUsers() {
   const { user } = useAuth();
+  const userId = user?.uid || null;
 
   const blockedRef = useMemo(() => {
-    if (!user?.uid) return null;
-    return blockedUsersQuery(user.uid);
-  }, [user?.uid]);
+    if (!userId) return null;
+    return blockedUsersQuery(userId);
+  }, [userId]);
 
   const blockedUsers = useFirestoreCollection(blockedRef);
 

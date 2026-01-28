@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../../app/AuthProvider";
+import { useAuth } from "../../app/useAuth";
 import { signInWithGoogle } from "../../lib/auth";
 
 const DISCORD_CLIENT_ID = "1465083293262151936";

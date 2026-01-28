@@ -1368,7 +1368,10 @@ exports.registerQsUsername = functions.https.onCall(async (data, context) => {
 
     const existingUsername = userSnap.exists ? userSnap.data()?.qsUsername : null;
     if (existingUsername && existingUsername !== raw) {
-      tx.delete(db.collection("qsUsernames").doc(existingUsername));
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Username cannot be changed once set."
+      );
     }
 
     const now = admin.firestore.FieldValue.serverTimestamp();

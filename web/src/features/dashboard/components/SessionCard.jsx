@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { format, formatDistanceToNow } from "date-fns";
 import { Calendar, AlertCircle, AlertTriangle, ExternalLink, Users } from "lucide-react";
-import { AvatarStack, buildColorMap } from "../../../components/ui/voter-avatars";
+import { AvatarStack } from "../../../components/ui/voter-avatars";
+import { buildColorMap } from "../../../components/ui/voter-avatar-utils";
 import { useUserProfiles } from "../../../hooks/useUserProfiles";
 
 export function SessionCard({
@@ -13,7 +14,6 @@ export function SessionCard({
   winningSlot = null,
   participants = [],
   voters = [],
-  votedCount = 0,
   attendanceSummary = null,
   conflictsWith = [],
   questingGroup = null,
@@ -41,9 +41,6 @@ export function SessionCard({
   const pendingVoters = participantUsers.filter(
     (p) => !voterEmailSet.has(p.email?.toLowerCase())
   );
-  const respondedVoters = participantUsers.filter(
-    (p) => voterEmailSet.has(p.email?.toLowerCase())
-  );
 
   // Determine guests (participants not in questing group)
   const groupMemberSet = new Set(
@@ -54,7 +51,6 @@ export function SessionCard({
   ).length;
 
   const totalParticipants = participantUsers.length;
-  const actualVotedCount = respondedVoters.length || votedCount;
 
   // Determine the time display
   let timeDisplay = null;

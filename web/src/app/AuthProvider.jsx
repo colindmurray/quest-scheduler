@@ -1,10 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
 import { ensureUserProfile } from "../lib/data/users";
+import { AuthContext } from "./useAuth";
 
-const AuthContext = createContext(null);
 const bannedEmailKey = "qs_banned_email";
 const bannedReasonKey = "qs_banned_reason";
 
@@ -17,13 +17,11 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [profileReady, setProfileReady] = useState(false);
   const [banned, setBanned] = useState(null);
-  const [refreshTick, setRefreshTick] = useState(0);
 
   const refreshUser = useCallback(async () => {
     if (!auth.currentUser) return null;
     await auth.currentUser.reload();
     setUser(auth.currentUser);
-    setRefreshTick((prev) => prev + 1);
     return auth.currentUser;
   }, []);
 
@@ -94,16 +92,8 @@ export function AuthProvider({ children }) {
 
   const value = useMemo(
     () => ({ user, loading, banned, profileReady, refreshUser }),
-    [user, loading, banned, profileReady, refreshUser, refreshTick]
+    [user, loading, banned, profileReady, refreshUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within AuthProvider");
-  }
-  return context;
 }

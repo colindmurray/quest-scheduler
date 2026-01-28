@@ -1,7 +1,7 @@
 import * as React from "react";
 import * as AvatarPrimitive from "@radix-ui/react-avatar";
 import { cn } from "../../lib/utils";
-import { getColorForEmail, getInitial } from "./voter-avatars";
+import { getColorForEmail, getInitial } from "./voter-avatar-utils";
 
 const Avatar = React.forwardRef(({ className, ...props }, ref) => (
   <AvatarPrimitive.Root

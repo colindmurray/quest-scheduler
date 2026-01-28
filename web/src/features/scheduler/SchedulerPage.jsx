@@ -19,7 +19,7 @@ import { formatInTimeZone } from "date-fns-tz";
 import { enUS } from "date-fns/locale";
 import { toast } from "sonner";
 import { MoreVertical, Pencil, Copy, Archive, ArchiveRestore, Trash2 } from "lucide-react";
-import { useAuth } from "../../app/AuthProvider";
+import { useAuth } from "../../app/useAuth";
 import { useUserSettings } from "../../hooks/useUserSettings";
 import { useFriends } from "../../hooks/useFriends";
 import { useQuestingGroups } from "../../hooks/useQuestingGroups";
@@ -52,12 +52,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
-import {
-  AvatarBubble,
-  AvatarStack,
-  buildColorMap,
-  uniqueUsers,
-} from "../../components/ui/voter-avatars";
+import { AvatarBubble, AvatarStack } from "../../components/ui/voter-avatars";
+import { buildColorMap, uniqueUsers } from "../../components/ui/voter-avatar-utils";
 import { UserAvatar } from "../../components/ui/avatar";
 import { UserIdentity } from "../../components/UserIdentity";
 import { LoadingState } from "../../components/ui/spinner";
@@ -1570,17 +1566,25 @@ export default function SchedulerPage() {
                       type="button"
                       onClick={handleNudge}
                       disabled={nudgeSending || nudgeCooldownRemaining > 0}
-                      className="rounded-full border border-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+                      className={`rounded-full px-2 py-0.5 text-xs font-semibold transition-colors ${
+                        nudgeCooldownRemaining > 0
+                          ? "border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-500"
+                          : "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
+                      } ${nudgeSending ? "opacity-50" : ""}`}
                       title={
                         nudgeCooldownRemaining > 0
-                          ? `Nudge available in ${Math.ceil(nudgeCooldownRemaining / (60 * 60 * 1000))} hour${Math.ceil(nudgeCooldownRemaining / (60 * 60 * 1000)) === 1 ? "" : "s"}`
+                          ? "Nudge is on cooldown"
                           : "Send a reminder to participants who haven't voted"
                       }
                     >
                       {nudgeSending
                         ? "Sending..."
                         : nudgeCooldownRemaining > 0
-                          ? `Nudge (${Math.ceil(nudgeCooldownRemaining / (60 * 60 * 1000))}h)`
+                          ? (() => {
+                              const hours = Math.floor(nudgeCooldownRemaining / (60 * 60 * 1000));
+                              const mins = Math.ceil((nudgeCooldownRemaining % (60 * 60 * 1000)) / (60 * 1000));
+                              return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+                            })()
                           : "Nudge participants"}
                     </button>
                   )}

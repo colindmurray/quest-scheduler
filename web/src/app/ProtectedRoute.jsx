@@ -1,5 +1,5 @@
 import { Navigate, useLocation } from "react-router-dom";
-import { useAuth } from "./AuthProvider";
+import { useAuth } from "./useAuth";
 import { LoadingState } from "../components/ui/spinner";
 
 export default function ProtectedRoute({ children }) {

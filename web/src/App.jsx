@@ -13,9 +13,9 @@ import PrivacyPage from "./features/legal/PrivacyPage";
 import TermsPage from "./features/legal/TermsPage";
 import DiscordBotPage from "./features/discord/DiscordBotPage";
 import ProtectedRoute from "./app/ProtectedRoute";
-import { useAuth } from "./app/AuthProvider";
+import { useAuth } from "./app/useAuth";
 import AppLayout from "./app/AppLayout";
-import { useTheme } from "./app/ThemeProvider";
+import { useTheme } from "./app/useTheme";
 
 function RedirectWhenSignedIn({ children }) {
   const { user, loading } = useAuth();

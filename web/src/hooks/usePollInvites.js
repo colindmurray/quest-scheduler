@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { useAuth } from "../app/AuthProvider";
+import { useAuth } from "../app/useAuth";
 import { useFirestoreCollection } from "./useFirestoreCollection";
 import {
   acceptPollInvite,
@@ -9,28 +9,31 @@ import {
 
 export function usePollInvites() {
   const { user } = useAuth();
+  const userId = user?.uid || null;
+  const userEmail = user?.email || null;
+  const userEmailLower = userEmail ? userEmail.toLowerCase() : null;
 
   const pendingRef = useMemo(() => {
-    if (!user?.email) return null;
-    return pollPendingInvitesQuery(user.email.toLowerCase());
-  }, [user?.email]);
+    if (!userEmailLower) return null;
+    return pollPendingInvitesQuery(userEmailLower);
+  }, [userEmailLower]);
 
   const pendingInvites = useFirestoreCollection(pendingRef);
 
   const acceptInvite = useCallback(
     async (schedulerId) => {
-      if (!user?.email) return;
-      return acceptPollInvite(schedulerId, user.email, user.uid);
+      if (!userEmail) return;
+      return acceptPollInvite(schedulerId, userEmail, userId);
     },
-    [user?.email, user?.uid]
+    [userEmail, userId]
   );
 
   const declineInvite = useCallback(
     async (schedulerId) => {
-      if (!user?.email) return;
-      return declinePollInvite(schedulerId, user.email, user.uid);
+      if (!userEmail) return;
+      return declinePollInvite(schedulerId, userEmail, userId);
     },
-    [user?.email, user?.uid]
+    [userEmail, userId]
   );
 
   return {

@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Users, Settings, UserPlus, LogOut, Trash2, Crown } from "lucide-react";
 import { GroupColorPicker } from "./GroupColorPicker";
 import { InviteMemberModal } from "./InviteMemberModal";
-import { AvatarBubble, AvatarStack, buildColorMap } from "../../../components/ui/voter-avatars";
+import { AvatarBubble, AvatarStack } from "../../../components/ui/voter-avatars";
+import { buildColorMap } from "../../../components/ui/voter-avatar-utils";
 import { useUserProfiles } from "../../../hooks/useUserProfiles";
 import { generateDiscordLinkCode, fetchDiscordGuildRoles } from "../../../lib/data/discord";
 import { UserIdentity } from "../../../components/UserIdentity";
@@ -47,8 +48,8 @@ export function GroupCard({
   const [discordRolesLoading, setDiscordRolesLoading] = useState(false);
   const [discordNotifyRoleId, setDiscordNotifyRoleId] = useState(null);
 
-  const members = group.members || [];
-  const pendingInvites = group.pendingInvites || [];
+  const members = useMemo(() => group.members || [], [group.members]);
+  const pendingInvites = useMemo(() => group.pendingInvites || [], [group.pendingInvites]);
   const profileEmails = useMemo(
     () => Array.from(new Set([...members, ...pendingInvites].filter(Boolean))),
     [members, pendingInvites]
@@ -147,12 +148,6 @@ export function GroupCard({
     }
   };
 
-  useEffect(() => {
-    if (!settingsOpen) return;
-    if (!canManage || !group.discord?.guildId) return;
-    loadDiscordRoles();
-  }, [settingsOpen, canManage, group.discord?.guildId]);
-
   const notifyRoleName = discordRoles?.find(
     (role) => role.id === (discordNotifyRoleId || group.discord?.notifyRoleId || "everyone")
   )?.name;
@@ -170,7 +165,7 @@ export function GroupCard({
     }
   };
 
-  const loadDiscordRoles = async () => {
+  const loadDiscordRoles = useCallback(async () => {
     if (!group.discord?.guildId) return;
     setDiscordRolesLoading(true);
     try {
@@ -184,7 +179,13 @@ export function GroupCard({
     } finally {
       setDiscordRolesLoading(false);
     }
-  };
+  }, [group.discord?.guildId, group.discord?.notifyRoleId, group.id]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    if (!canManage || !group.discord?.guildId) return;
+    loadDiscordRoles();
+  }, [settingsOpen, canManage, group.discord?.guildId, loadDiscordRoles]);
 
   return (
     <>

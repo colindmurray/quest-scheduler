@@ -1,11 +1,17 @@
 import { useNavigate } from "react-router-dom";
 import { format, formatDistanceToNow } from "date-fns";
 import { Calendar, ExternalLink, Users } from "lucide-react";
-import { AvatarStack, buildColorMap } from "../../../components/ui/voter-avatars";
+import { AvatarStack } from "../../../components/ui/voter-avatars";
+import { buildColorMap } from "../../../components/ui/voter-avatar-utils";
 import { useUserProfiles } from "../../../hooks/useUserProfiles";
 
 export function NextSessionCard({ scheduler, winningSlot, groupColor, participants = [] }) {
   const navigate = useNavigate();
+  const participantEmails = participants.map((p) => (typeof p === "string" ? p : p.email));
+  const colorMap = buildColorMap(participantEmails);
+  const { enrichUsers } = useUserProfiles(participantEmails);
+  const participantUsers = enrichUsers(participantEmails);
+
   if (!scheduler || !winningSlot) {
     return null;
   }
@@ -13,11 +19,6 @@ export function NextSessionCard({ scheduler, winningSlot, groupColor, participan
   const slotDate = new Date(winningSlot.start);
   const slotEnd = winningSlot.end ? new Date(winningSlot.end) : null;
   const relativeTime = formatDistanceToNow(slotDate, { addSuffix: true });
-
-  const participantEmails = participants.map((p) => (typeof p === "string" ? p : p.email));
-  const colorMap = buildColorMap(participantEmails);
-  const { enrichUsers } = useUserProfiles(participantEmails);
-  const participantUsers = enrichUsers(participantEmails);
 
   const googleCalendarUrl = scheduler.googleEventId
     ? `https://calendar.google.com/calendar/event?eid=${btoa(scheduler.googleEventId)}`

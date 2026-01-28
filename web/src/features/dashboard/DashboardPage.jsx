@@ -2,7 +2,7 @@ import { collection, query, where, getDocs, onSnapshot } from "firebase/firestor
 import { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Archive } from "lucide-react";
-import { useAuth } from "../../app/AuthProvider";
+import { useAuth } from "../../app/useAuth";
 import { db } from "../../lib/firebase";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { useUserSettings } from "../../hooks/useUserSettings";

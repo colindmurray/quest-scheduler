@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Settings, LogOut, Users, Bot } from "lucide-react";
-import { useAuth } from "./AuthProvider";
+import { useAuth } from "./useAuth";
 import { signOutUser } from "../lib/auth";
 import { UserAvatar } from "../components/ui/avatar";
 import { NotificationBell } from "../components/ui/notification-bell";

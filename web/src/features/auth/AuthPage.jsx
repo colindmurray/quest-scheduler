@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { useAuth } from "../../app/AuthProvider";
+import { useAuth } from "../../app/useAuth";
 import {
   registerWithEmailPassword,
   resetPassword,
@@ -226,7 +226,7 @@ export default function AuthPage() {
       logo_alignment: "left",
     });
     requestAnimationFrame(() => updateProviderWidth());
-  }, [googleReady, handleGoogleCredential, activeTab]);
+  }, [googleReady, handleGoogleCredential, activeTab, updateProviderWidth]);
 
   useEffect(() => {
     updateProviderWidth();
@@ -312,7 +312,7 @@ export default function AuthPage() {
       toast.success("If an account exists with this email, you'll receive an email shortly.");
       setResetOpen(false);
       setResetEmail("");
-    } catch (error) {
+    } catch {
       toast.success("If an account exists with this email, you'll receive an email shortly.");
     } finally {
       setResetLoading(false);

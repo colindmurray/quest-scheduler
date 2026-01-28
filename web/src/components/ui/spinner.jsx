@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { cn } from "../../lib/utils";
 
 export function Spinner({ className, size = "md" }) {
@@ -9,18 +8,12 @@ export function Spinner({ className, size = "md" }) {
   };
 
   return (
-    <motion.div
+    <div
       className={cn(
-        "rounded-full border-slate-200 border-t-brand-primary dark:border-slate-700",
+        "animate-spin rounded-full border-slate-200 border-t-brand-primary dark:border-slate-700",
         sizeClasses[size] || sizeClasses.md,
         className
       )}
-      animate={{ rotate: 360 }}
-      transition={{
-        duration: 0.8,
-        repeat: Infinity,
-        ease: "linear",
-      }}
     />
   );
 }

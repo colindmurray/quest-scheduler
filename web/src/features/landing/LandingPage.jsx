@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../../app/AuthProvider";
+import { useAuth } from "../../app/useAuth";
 import { AvatarStack } from "../../components/ui/voter-avatars";
 
 const features = [

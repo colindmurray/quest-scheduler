@@ -1,5 +1,5 @@
 import { useMemo, useCallback, useEffect, useState } from "react";
-import { useAuth } from "../app/AuthProvider";
+import { useAuth } from "../app/useAuth";
 import { useFirestoreCollection } from "./useFirestoreCollection";
 import {
   allNotificationsQuery,

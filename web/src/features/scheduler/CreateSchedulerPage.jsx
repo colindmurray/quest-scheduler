@@ -7,7 +7,7 @@ import { format, parse, startOfWeek, getDay, startOfDay, isBefore } from "date-f
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { enUS } from "date-fns/locale";
 import { toast } from "sonner";
-import { useAuth } from "../../app/AuthProvider";
+import { useAuth } from "../../app/useAuth";
 import { useUserSettings } from "../../hooks/useUserSettings";
 import { useFriends } from "../../hooks/useFriends";
 import { useQuestingGroups } from "../../hooks/useQuestingGroups";
@@ -37,7 +37,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../components/ui/dialog";
-import { AvatarStack, buildColorMap, uniqueUsers } from "../../components/ui/voter-avatars";
+import { AvatarStack } from "../../components/ui/voter-avatars";
+import { buildColorMap, uniqueUsers } from "../../components/ui/voter-avatar-utils";
 import { UserAvatar } from "../../components/ui/avatar";
 import { UserIdentity } from "../../components/UserIdentity";
 import { DatePicker } from "../../components/ui/date-picker";

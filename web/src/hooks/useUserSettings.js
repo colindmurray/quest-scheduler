@@ -1,6 +1,6 @@
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { useMemo, useCallback } from "react";
-import { useAuth } from "../app/AuthProvider";
+import { useAuth } from "../app/useAuth";
 import { useFirestoreDoc } from "./useFirestoreDoc";
 import { db } from "../lib/firebase";
 

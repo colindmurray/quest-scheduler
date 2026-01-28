@@ -12,7 +12,7 @@ import { QuestingGroupsTab } from "../settings/components/QuestingGroupsTab";
 import { UserAvatar } from "../../components/ui/avatar";
 import { LoadingState } from "../../components/ui/spinner";
 import { UserIdentity } from "../../components/UserIdentity";
-import { useAuth } from "../../app/AuthProvider";
+import { useAuth } from "../../app/useAuth";
 import { useNotifications } from "../../hooks/useNotifications";
 import { friendRequestNotificationId } from "../../lib/data/notifications";
 import {
@@ -205,7 +205,7 @@ export default function FriendsPage() {
       }
     };
     run();
-  }, [inviteCode, acceptInviteLink, searchParams, setSearchParams]);
+  }, [inviteCode, user?.uid, acceptInviteLink, searchParams, setSearchParams]);
 
   const handleSendRequest = async () => {
     const raw = email.trim();

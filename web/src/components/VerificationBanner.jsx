@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { useAuth } from "../app/AuthProvider";
+import { useAuth } from "../app/useAuth";
 import { resendVerificationEmail } from "../lib/auth";
 
 function hasPasswordProvider(user) {
@@ -37,8 +37,8 @@ export default function VerificationBanner() {
       } else {
         toast("Still not verified yet. Check your inbox.");
       }
-    } catch (error) {
-      toast.error("Failed to refresh verification status.");
+    } catch (err) {
+      toast.error(err?.message || "Failed to refresh verification status.");
     } finally {
       setRefreshing(false);
     }

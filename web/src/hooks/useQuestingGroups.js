@@ -1,6 +1,6 @@
 import { useMemo, useCallback, useEffect } from "react";
 import { doc, setDoc, serverTimestamp, collection } from "firebase/firestore";
-import { useAuth } from "../app/AuthProvider";
+import { useAuth } from "../app/useAuth";
 import { useFirestoreCollection } from "./useFirestoreCollection";
 import { useFirestoreDoc } from "./useFirestoreDoc";
 import { useUserProfilesByIds } from "./useUserProfiles";
@@ -32,21 +32,25 @@ import {
 export function useQuestingGroups() {
   const { user } = useAuth();
   const { friends } = useFriends();
+  const userId = user?.uid || null;
+  const userEmail = user?.email || null;
+  const userEmailLower = userEmail ? userEmail.toLowerCase() : null;
+  const userDisplayName = user?.displayName || null;
 
   // Query for groups user is a member of
   const groupsByIdQueryRef = useMemo(() => {
-    if (!user?.uid) return null;
-    return userGroupsByIdQuery(user.uid);
-  }, [user?.uid]);
+    if (!userId) return null;
+    return userGroupsByIdQuery(userId);
+  }, [userId]);
 
   // Query for pending invitations
   const invitesQueryRef = useMemo(() => {
-    if (!user?.email) return null;
-    return userPendingInvitesQuery(user.email.toLowerCase());
-  }, [user?.email]);
+    if (!userEmailLower) return null;
+    return userPendingInvitesQuery(userEmailLower);
+  }, [userEmailLower]);
 
   // Get user settings for group colors
-  const userRef = useMemo(() => (user ? doc(db, "users", user.uid) : null), [user]);
+  const userRef = useMemo(() => (userId ? doc(db, "users", userId) : null), [userId]);
   const { data: userData } = useFirestoreDoc(userRef);
 
   const groupsById = useFirestoreCollection(groupsByIdQueryRef);
@@ -83,11 +87,11 @@ export function useQuestingGroups() {
   );
 
   useEffect(() => {
-    if (!user?.uid || pendingInvites.length === 0) return;
+    if (!userId || !userEmailLower || pendingInvites.length === 0) return;
     pendingInvites.forEach((group) => {
       if (!group?.id) return;
-      const inviteMeta = group.pendingInviteMeta?.[user.email?.toLowerCase?.() || ""] || {};
-      ensureGroupInviteNotification(user.uid, {
+      const inviteMeta = group.pendingInviteMeta?.[userEmailLower || ""] || {};
+      ensureGroupInviteNotification(userId, {
         groupId: group.id,
         groupName: group.name || "Questing Group",
         inviterEmail: inviteMeta.invitedByEmail || group.creatorEmail || "Unknown",
@@ -95,10 +99,10 @@ export function useQuestingGroups() {
         console.error("Failed to sync group invite notification:", err);
       });
     });
-  }, [user?.uid, user?.email, pendingInvites]);
+  }, [userId, userEmailLower, pendingInvites]);
 
   // Get group colors from user settings
-  const groupColors = userData?.groupColors || {};
+  const groupColors = useMemo(() => userData?.groupColors || {}, [userData?.groupColors]);
 
   // Get color for a specific group
   const getGroupColor = useCallback(
@@ -135,15 +139,15 @@ export function useQuestingGroups() {
   // Create a new group
   const createGroup = useCallback(
     async (name, memberManaged = false) => {
-      if (!user?.uid || !user?.email) return null;
+      if (!userId || !userEmail) return null;
       return createQuestingGroup({
         name,
-        creatorId: user.uid,
-        creatorEmail: user.email,
+        creatorId: userId,
+        creatorEmail: userEmail,
         memberManaged,
       });
     },
-    [user?.uid, user?.email]
+    [userId, userEmail]
   );
 
   // Update group settings
@@ -154,7 +158,7 @@ export function useQuestingGroups() {
   // Invite a member (also sends email notification)
   const inviteMember = useCallback(
     async (groupId, groupName, inviteeIdentifier, { sendFriendInvite = false } = {}) => {
-      if (!user?.email) return;
+      if (!userEmail) return;
       const resolved = await resolveIdentifier(inviteeIdentifier);
       const normalizedInvitee = resolved.email.toLowerCase();
       const shouldSendFriendInvite = sendFriendInvite && !friendSet.has(normalizedInvitee);
@@ -162,10 +166,10 @@ export function useQuestingGroups() {
       await inviteMemberToGroup(
         groupId,
         groupName,
-        user.email,
+        userEmail,
         normalizedInvitee,
         resolved.userId || null,
-        user.uid
+        userId
       );
 
       // Send email notification
@@ -173,7 +177,7 @@ export function useQuestingGroups() {
       const message = createEmailMessage({
         subject: `You've been invited to join "${groupName}"`,
         title: "Questing Group Invitation",
-        intro: `${user.email} invited you to join the questing group "${groupName}".`,
+        intro: `${userEmail} invited you to join the questing group "${groupName}".`,
         ctaLabel: "View invite",
         ctaUrl: inviteUrl,
         extraLines: ["Log in to accept or decline this invitation."],
@@ -191,10 +195,10 @@ export function useQuestingGroups() {
         try {
           await createFriendRequest(
             {
-              fromUserId: user.uid,
-              fromEmail: user.email,
+              fromUserId: userId,
+              fromEmail: userEmail,
               toEmail: normalizedInvitee,
-              fromDisplayName: user.displayName || null,
+              fromDisplayName: userDisplayName,
             },
             { sendEmail: false }
           );
@@ -203,25 +207,25 @@ export function useQuestingGroups() {
         }
       }
     },
-    [user?.email, user?.uid, user?.displayName, friendSet]
+    [userEmail, userId, userDisplayName, friendSet]
   );
 
   // Accept invitation
   const acceptInvite = useCallback(
     async (groupId) => {
-      if (!user?.email) return;
-      await acceptGroupInvitation(groupId, user.email, user.uid);
+      if (!userEmail) return;
+      await acceptGroupInvitation(groupId, userEmail, userId);
     },
-    [user?.email, user?.uid]
+    [userEmail, userId]
   );
 
   // Decline invitation
   const declineInvite = useCallback(
     async (groupId) => {
-      if (!user?.email) return;
-      await declineGroupInvitation(groupId, user.email, user.uid);
+      if (!userEmail) return;
+      await declineGroupInvitation(groupId, userEmail, userId);
     },
-    [user?.email, user?.uid]
+    [userEmail, userId]
   );
 
   // Remove a member (also removes from polls)
@@ -240,11 +244,11 @@ export function useQuestingGroups() {
   // Leave a group
   const leave = useCallback(
     async (groupId) => {
-      if (!user?.email) return;
-      await leaveGroup(groupId, user.email, user.uid);
-      await removeMemberFromGroupPolls(groupId, user.email);
+      if (!userEmail) return;
+      await leaveGroup(groupId, userEmail, userId);
+      await removeMemberFromGroupPolls(groupId, userEmail);
     },
-    [user?.email, user?.uid]
+    [userEmail, userId]
   );
 
   // Delete a group
@@ -254,28 +258,28 @@ export function useQuestingGroups() {
 
   const revokeInvite = useCallback(
     async (groupId, inviteeEmail) => {
-      if (!user?.uid) return;
+      if (!userId) return;
       await revokeGroupInvite(groupId, inviteeEmail);
     },
-    [user?.uid]
+    [userId]
   );
 
   // Check if user is owner of a group
   const isOwner = useCallback(
     (group) => {
-      return group?.creatorId === user?.uid;
+      return group?.creatorId === userId;
     },
-    [user?.uid]
+    [userId]
   );
 
   // Check if user can manage a group (owner or member-managed)
   const canManage = useCallback(
     (group) => {
-      if (!group || !user?.uid) return false;
-      return group.creatorId === user.uid ||
-        (group.memberManaged && group.memberIds?.includes(user.uid));
+      if (!group || !userId) return false;
+      return group.creatorId === userId ||
+        (group.memberManaged && group.memberIds?.includes(userId));
     },
-    [user?.uid, user?.email]
+    [userId]
   );
 
   return {

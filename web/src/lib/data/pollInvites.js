@@ -101,7 +101,7 @@ export async function declinePollInvite(schedulerId, userEmail, userId = null) {
   }
 }
 
-export async function revokePollInvite(schedulerId, inviteeEmail, inviteeUserId = null) {
+export async function revokePollInvite(schedulerId, inviteeEmail) {
   const functions = getFunctions();
   const revokeInvite = httpsCallable(functions, "revokePollInvite");
   await revokeInvite({

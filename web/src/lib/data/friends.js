@@ -8,7 +8,6 @@ import {
   updateDoc,
   deleteDoc,
   getDoc,
-  getDocs,
 } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "../firebase";
@@ -70,14 +69,8 @@ export const acceptedFriendRequestsToQuery = (email) =>
   );
 
 export async function createFriendRequest(
-  {
-    fromUserId,
-    fromEmail,
-    toEmail,
-    toIdentifier,
-    fromDisplayName,
-  },
-  { sendEmail = true, notifyRecipient = true } = {}
+  { fromEmail, toEmail, toIdentifier, fromDisplayName },
+  { sendEmail = true } = {}
 ) {
   const normalizedFrom = (fromEmail || "").trim().toLowerCase();
   const resolved = await resolveIdentifier(toIdentifier || toEmail);
@@ -263,6 +256,6 @@ export async function acceptFriendInviteLink(inviteCode, { userId, userEmail }) 
   }
   const functions = getFunctions();
   const acceptInvite = httpsCallable(functions, "acceptFriendInviteLink");
-  const response = await acceptInvite({ inviteCode: normalizedCode });
+  const response = await acceptInvite({ inviteCode: normalizedCode, userId, userEmail });
   return response.data;
 }

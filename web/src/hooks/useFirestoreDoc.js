@@ -5,13 +5,12 @@ export function useFirestoreDoc(docRef) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(Boolean(docRef));
   const [error, setError] = useState(null);
+  const hasDoc = Boolean(docRef);
 
   useEffect(() => {
-    if (!docRef) {
-      setLoading(false);
-      return undefined;
-    }
+    if (!docRef) return undefined;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     const unsubscribe = onSnapshot(
       docRef,
@@ -28,5 +27,9 @@ export function useFirestoreDoc(docRef) {
     return () => unsubscribe();
   }, [docRef]);
 
-  return { data, loading, error };
+  return {
+    data: hasDoc ? data : null,
+    loading: hasDoc ? loading : false,
+    error: hasDoc ? error : null,
+  };
 }

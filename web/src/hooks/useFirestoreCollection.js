@@ -5,13 +5,12 @@ export function useFirestoreCollection(queryRef) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(Boolean(queryRef));
   const [error, setError] = useState(null);
+  const hasQuery = Boolean(queryRef);
 
   useEffect(() => {
-    if (!queryRef) {
-      setLoading(false);
-      return undefined;
-    }
+    if (!queryRef) return undefined;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     const unsubscribe = onSnapshot(
       queryRef,
@@ -28,5 +27,9 @@ export function useFirestoreCollection(queryRef) {
     return () => unsubscribe();
   }, [queryRef]);
 
-  return { data, loading, error };
+  return {
+    data: hasQuery ? data : [],
+    loading: hasQuery ? loading : false,
+    error: hasQuery ? error : null,
+  };
 }
