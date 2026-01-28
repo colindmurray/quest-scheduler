@@ -1,9 +1,9 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-28 — Ran `npm run test:rules` successfully after JDK 21 install; addressed npm audit advisories (web + functions).
-- Next Step: Awaiting user action for system-level Playwright deps or any further tasks.
-- Open Issues: Playwright system deps still require sudo (`npx playwright install-deps`). Functions tests emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Worker tests log expected warnings on missing secrets. `firebase-tools` emits `punycode` deprecation warnings during emulator runs.
+- Last Completed: 2026-01-28 — Ran `npm run test:e2e` after Playwright deps install (6 passed, 6 skipped).
+- Next Step: Provide emulator/test credentials and seeded data to un-skip Discord OAuth + UID-only poll E2E flows (optional).
+- Open Issues: E2E has 6 skipped tests (Discord OAuth + UID-only poll need emulator/test creds + seeded scheduler). Functions tests emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Worker tests log expected warnings on missing secrets. `firebase-tools` emits `punycode` deprecation warnings during emulator runs.
 - Last Updated (YYYY-MM-DD): 2026-01-28
 
 ## Automated Testing Overhaul (Unit / Integration / E2E)
@@ -12,7 +12,7 @@
 - [x] 2026-01-28: Create `web/src/__tests__/setup.js` for RTL cleanup + Firebase module mocks.
 - [x] 2026-01-28: Install web test deps: `@testing-library/react`, `@testing-library/jest-dom`, `msw`, `@playwright/test`.
 - [x] 2026-01-28: Add Firebase Emulator config in `firebase.json` (auth, firestore, storage, functions) + npm scripts.
-- [x] 2026-01-28: Add Firestore + Storage rules tests with `@firebase/rules-unit-testing` (test run blocked: firebase-tools requires JDK 21+).
+- [x] 2026-01-28: Add Firestore + Storage rules tests with `@firebase/rules-unit-testing` (tests run with JDK 21).
 - [x] 2026-01-28: Add unit tests for `web/src/lib/identifiers.js` and `web/src/lib/identity.js`.
 - [x] 2026-01-28: Add unit tests for `web/src/lib/auth.js` (Google + Discord token flows).
 - [x] 2026-01-28: Add unit tests for new data modules (`pollInvites`, `blocks`, `discord`, `usernames`).
