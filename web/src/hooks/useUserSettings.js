@@ -85,6 +85,39 @@ export function useUserSettings() {
     [userRef, groupColors]
   );
 
+  /**
+   * Get the default start time and duration for a given weekday (0-6, Sunday=0).
+   * Handles both simple mode (same for all days) and per-day mode.
+   * Also handles migration from old string format.
+   */
+  const getSessionDefaults = useCallback(
+    (weekday) => {
+      const settings = data?.settings;
+      const globalDuration = settings?.defaultDurationMinutes ?? 240;
+
+      // Check if we have the new defaultStartTimes format
+      const startTimes = settings?.defaultStartTimes;
+      if (startTimes && startTimes[weekday]) {
+        const val = startTimes[weekday];
+        if (typeof val === "string") {
+          // Old format: just a time string - use global duration
+          return { time: val, durationMinutes: globalDuration };
+        } else if (val && typeof val === "object") {
+          // New format: object with time and durationMinutes
+          return {
+            time: val.time || "18:00",
+            durationMinutes: val.durationMinutes ?? globalDuration,
+          };
+        }
+      }
+
+      // Fallback: use simple mode settings or defaults
+      const simpleTime = settings?.defaultStartTime ?? "18:00";
+      return { time: simpleTime, durationMinutes: globalDuration };
+    },
+    [data?.settings]
+  );
+
   return {
     loading,
     settings: data?.settings,
@@ -101,5 +134,6 @@ export function useUserSettings() {
     setGroupColor,
     calendarSyncPreference,
     setCalendarSyncPreference,
+    getSessionDefaults,
   };
 }

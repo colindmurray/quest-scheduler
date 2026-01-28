@@ -314,10 +314,10 @@ async function getLinkedUser(discordUserId) {
   }
 }
 
-async function ensureParticipant(scheduler, userEmail) {
-  const normalizedEmail = String(userEmail || "").toLowerCase();
-  const participants = scheduler.participants || [];
-  if (participants.includes(normalizedEmail)) {
+async function ensureParticipant(scheduler, userId) {
+  if (!userId) return false;
+  const participantIds = scheduler.participantIds || [];
+  if (participantIds.includes(userId)) {
     return true;
   }
   if (!scheduler.questingGroupId) {
@@ -327,8 +327,8 @@ async function ensureParticipant(scheduler, userEmail) {
   if (!groupSnap.exists) {
     return false;
   }
-  const members = groupSnap.data()?.members || [];
-  return members.map((email) => String(email).toLowerCase()).includes(normalizedEmail);
+  const memberIds = groupSnap.data()?.memberIds || [];
+  return memberIds.includes(userId);
 }
 
 async function handleLinkGroup(interaction) {
@@ -479,8 +479,7 @@ async function handleVoteButton(interaction, schedulerId) {
     );
   }
 
-  const userEmail = String(linkedUser.email || "").toLowerCase();
-  const isParticipant = await ensureParticipant(scheduler, userEmail);
+  const isParticipant = await ensureParticipant(scheduler, linkedUser.uid);
   if (!isParticipant) {
     return respondWithError(interaction, ERROR_MESSAGES.notParticipant);
   }
@@ -738,8 +737,7 @@ async function handleClearVotes(interaction, schedulerId, noTimesWork) {
     );
   }
 
-  const userEmail = String(linkedUser.email || "").toLowerCase();
-  const isParticipant = await ensureParticipant(scheduler, userEmail);
+  const isParticipant = await ensureParticipant(scheduler, linkedUser.uid);
   if (!isParticipant) {
     return respondWithError(interaction, ERROR_MESSAGES.notParticipant);
   }
@@ -860,8 +858,7 @@ async function handleSubmitVote(interaction, schedulerId) {
     );
   }
 
-  const userEmail = String(linkedUser.email || "").toLowerCase();
-  const isParticipant = await ensureParticipant(scheduler, userEmail);
+  const isParticipant = await ensureParticipant(scheduler, linkedUser.uid);
   if (!isParticipant) {
     return respondWithError(interaction, ERROR_MESSAGES.notParticipant);
   }

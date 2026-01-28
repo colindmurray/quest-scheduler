@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc, deleteDoc, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc, deleteDoc, getDocs, query, where, deleteField } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -11,7 +11,7 @@ import { useAuth } from "../../app/AuthProvider";
 import { useUserSettings } from "../../hooks/useUserSettings";
 import { useFriends } from "../../hooks/useFriends";
 import { useQuestingGroups } from "../../hooks/useQuestingGroups";
-import { useUserProfiles } from "../../hooks/useUserProfiles";
+import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfiles";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { useFirestoreDoc } from "../../hooks/useFirestoreDoc";
 import { db } from "../../lib/firebase";
@@ -64,7 +64,7 @@ export default function CreateSchedulerPage() {
   const { id: editId } = useParams();
   const isEditing = Boolean(editId);
   const { user } = useAuth();
-  const { settings, timezoneMode, timezone } = useUserSettings();
+  const { settings, timezoneMode, timezone, getSessionDefaults } = useUserSettings();
   const { friends } = useFriends();
   const { groups, getGroupColor } = useQuestingGroups();
   const navigate = useNavigate();
@@ -110,16 +110,34 @@ export default function CreateSchedulerPage() {
   const votesSnapshot = useFirestoreCollection(votesRef);
 
   const inviteEmails = useMemo(() => invites, [invites]);
+  const explicitParticipantIds = useMemo(
+    () => scheduler.data?.participantIds || [],
+    [scheduler.data?.participantIds]
+  );
+  const { profiles: participantProfilesById } = useUserProfilesByIds(explicitParticipantIds);
+  const explicitParticipantEmails = useMemo(() => {
+    if (!explicitParticipantIds.length) return [];
+    return explicitParticipantIds
+      .map((id) => participantProfilesById[id]?.email)
+      .filter(Boolean)
+      .map((email) => normalizeEmail(email));
+  }, [explicitParticipantIds, participantProfilesById]);
   const selectedGroup = useMemo(() => {
     if (!selectedGroupId) return null;
     return groups.find((g) => g.id === selectedGroupId) || null;
   }, [selectedGroupId, groups]);
+  const groupMemberIds = useMemo(
+    () => selectedGroup?.memberIds || [],
+    [selectedGroup?.memberIds]
+  );
+  const { profiles: groupMemberProfiles } = useUserProfilesByIds(groupMemberIds);
   const groupMemberEmails = useMemo(() => {
-    if (!selectedGroup?.members) return [];
-    return selectedGroup.members
+    if (!groupMemberIds.length) return [];
+    return groupMemberIds
+      .map((id) => groupMemberProfiles[id]?.email)
       .filter(Boolean)
       .map((email) => normalizeEmail(email));
-  }, [selectedGroup]);
+  }, [groupMemberIds, groupMemberProfiles]);
   const groupMemberSet = useMemo(() => new Set(groupMemberEmails), [groupMemberEmails]);
   const profileEmails = useMemo(() => {
     const combined = new Set(
@@ -128,7 +146,12 @@ export default function CreateSchedulerPage() {
     return Array.from(combined);
   }, [invites, pendingInvites, groupMemberEmails]);
   const { enrichUsers } = useUserProfiles(profileEmails);
-  const groupUsers = useMemo(() => enrichUsers(groupMemberEmails), [enrichUsers, groupMemberEmails]);
+  const groupUsers = useMemo(() => {
+    if (!groupMemberIds.length) return [];
+    const profiles = groupMemberIds.map((id) => groupMemberProfiles[id]).filter(Boolean);
+    if (profiles.length > 0) return profiles;
+    return enrichUsers(groupMemberEmails);
+  }, [groupMemberIds, groupMemberProfiles, enrichUsers, groupMemberEmails]);
   const inviteUsers = useMemo(() => enrichUsers(invites), [enrichUsers, invites]);
   const pendingInviteUsers = useMemo(
     () => enrichUsers(pendingInvites),
@@ -175,11 +198,11 @@ export default function CreateSchedulerPage() {
     if (!isEditing || loadedFromPoll) return;
     if (!scheduler.data || slotsSnapshot.loading) return;
     if (scheduler.data.creatorId && scheduler.data.creatorId !== user?.uid) return;
+    if (explicitParticipantIds.length > 0 && explicitParticipantEmails.length === 0) return;
     setTitle(scheduler.data.title || "");
     setAllowLinkSharing(Boolean(scheduler.data.allowLinkSharing));
     const creatorEmail = scheduler.data.creatorEmail || user?.email;
-    const participantList = scheduler.data.participants || [];
-    setInvites(participantList.filter((email) => email && email !== creatorEmail));
+    setInvites(explicitParticipantEmails.filter((email) => email && email !== creatorEmail));
     const pendingList = (scheduler.data.pendingInvites || [])
       .filter((email) => email && email !== creatorEmail)
       .map((email) => normalizeEmail(email));
@@ -201,7 +224,18 @@ export default function CreateSchedulerPage() {
       setTimezoneInitialized(true);
     }
     setLoadedFromPoll(true);
-  }, [isEditing, loadedFromPoll, scheduler.data, slotsSnapshot.loading, slotsSnapshot.data, user?.uid, user?.email]);
+  }, [
+    isEditing,
+    loadedFromPoll,
+    scheduler.data,
+    slotsSnapshot.loading,
+    slotsSnapshot.data,
+    user?.uid,
+    user?.email,
+    explicitParticipantIds.length,
+    explicitParticipantEmails,
+    selectedGroupId,
+  ]);
 
   useEffect(() => {
     if (!selectedGroup) return;
@@ -268,11 +302,10 @@ export default function CreateSchedulerPage() {
 
   const colorMap = useMemo(() => {
     if (!isEditing) return {};
-    const participantEmails = scheduler.data?.participants || [];
     const voterEmails = votesSnapshot.data.map((voteDoc) => voteDoc.userEmail).filter(Boolean);
-    const set = new Set([...participantEmails, ...voterEmails]);
+    const set = new Set([...(explicitParticipantEmails || []), ...voterEmails]);
     return buildColorMap(Array.from(set).sort((a, b) => a.localeCompare(b)));
-  }, [isEditing, scheduler.data?.participants, votesSnapshot.data]);
+  }, [isEditing, explicitParticipantEmails, votesSnapshot.data]);
 
 
   const removeSlot = (slotId) => {
@@ -283,9 +316,9 @@ export default function CreateSchedulerPage() {
     const safeDate = date instanceof Date ? date : new Date(date);
     setDraftDate(safeDate);
     const weekday = getDay(safeDate);
-    const defaultStart = settings?.defaultStartTimes?.[weekday] || "18:00";
-    setDraftTime(defaultStart);
-    setDraftDuration(defaultDuration);
+    const sessionDefaults = getSessionDefaults(weekday);
+    setDraftTime(sessionDefaults.time);
+    setDraftDuration(sessionDefaults.durationMinutes);
     setModalOpen(true);
   };
 
@@ -435,7 +468,7 @@ export default function CreateSchedulerPage() {
     return response;
   };
 
-  const resolveParticipantIds = async (emails) => {
+  const resolveParticipantIdsByEmail = async (emails) => {
     const normalized = Array.from(
       new Set((emails || []).filter(Boolean).map(normalizeEmail))
     );
@@ -443,19 +476,12 @@ export default function CreateSchedulerPage() {
     if (user?.uid && user?.email) {
       resolved[normalizeEmail(user.email)] = user.uid;
     }
-    return Array.from(new Set(Object.values(resolved).filter(Boolean)));
+    return resolved;
   };
 
   const getPollInputs = () => {
     const explicitParticipants = Array.from(
       new Set([user.email, ...inviteEmails].filter(Boolean).map(normalizeEmail))
-    );
-    const effectiveParticipants = Array.from(
-      new Set(
-        [...explicitParticipants, ...groupMemberEmails]
-          .filter(Boolean)
-          .map(normalizeEmail)
-      )
     );
     const pendingList = Array.from(
       new Set(pendingInvites.filter(Boolean).map(normalizeEmail))
@@ -469,7 +495,6 @@ export default function CreateSchedulerPage() {
       selectedTimezone === detectedTimezone ? "auto" : "manual";
     return {
       explicitParticipants,
-      effectiveParticipants,
       pendingList,
       creatorEmail,
       pollTitle,
@@ -491,27 +516,30 @@ export default function CreateSchedulerPage() {
     try {
       const {
         explicitParticipants,
-        effectiveParticipants,
         pendingList,
         creatorEmail,
         pollTitle,
         timezoneModeForScheduler,
       } = getPollInputs();
-      const participantIds = await resolveParticipantIds(explicitParticipants);
+      const participantIdMap = await resolveParticipantIdsByEmail(explicitParticipants);
+      const participantIds = Array.from(
+        new Set(Object.values(participantIdMap).filter(Boolean))
+      );
 
       if (updateCalendar && scheduler.data?.googleEventId) {
         await deleteCalendarEntry();
       }
 
-      const previousParticipants = new Set(
-        (scheduler.data?.participants || []).map((email) => normalizeEmail(email))
-      );
+      const previousParticipantIds = new Set(scheduler.data?.participantIds || []);
       const previousPending = new Set(
         (scheduler.data?.pendingInvites || []).map((email) => normalizeEmail(email))
       );
-      const newAcceptedRecipients = explicitParticipants.filter(
-        (email) => !previousParticipants.has(email) && email !== creatorEmail
-      );
+      const newAcceptedRecipients = explicitParticipants.filter((email) => {
+        if (email === creatorEmail) return false;
+        const userId = participantIdMap[normalizeEmail(email)];
+        if (!userId) return false;
+        return !previousParticipantIds.has(userId);
+      });
       const newPendingRecipients = pendingList.filter(
         (email) => !previousPending.has(email) && email !== creatorEmail
       );
@@ -520,13 +548,13 @@ export default function CreateSchedulerPage() {
       );
       await updateDoc(schedulerRef, {
         title: pollTitle,
-        participants: explicitParticipants,
         participantIds,
         allowLinkSharing,
         timezone: effectiveTimezone,
         timezoneMode: timezoneModeForScheduler,
         questingGroupId: selectedGroup?.id || null,
         questingGroupName: selectedGroup?.name || null,
+        participants: deleteField(),
         updatedAt: serverTimestamp(),
       });
 
@@ -549,7 +577,10 @@ export default function CreateSchedulerPage() {
         })
       );
 
-      const participantSet = new Set(effectiveParticipants.map((email) => email.toLowerCase()));
+      const allowedParticipantIds = new Set([
+        ...participantIds,
+        ...groupMemberIds,
+      ]);
 
       if (removedIds.length > 0) {
         await Promise.all(
@@ -561,8 +592,8 @@ export default function CreateSchedulerPage() {
 
       await Promise.all(
         votesSnapshot.data.map((voteDoc) => {
-          const userEmail = voteDoc.userEmail?.toLowerCase();
-          if (userEmail && !participantSet.has(userEmail)) {
+          const voterId = voteDoc.id;
+          if (voterId && !allowedParticipantIds.has(voterId)) {
             return deleteDoc(doc(db, "schedulers", editId, "votes", voteDoc.id));
           }
           const votes = voteDoc.votes || {};
@@ -627,7 +658,10 @@ export default function CreateSchedulerPage() {
         pollTitle,
         timezoneModeForScheduler,
       } = getPollInputs();
-      const participantIds = await resolveParticipantIds(explicitParticipants);
+      const participantIdMap = await resolveParticipantIdsByEmail(explicitParticipants);
+      const participantIds = Array.from(
+        new Set(Object.values(participantIdMap).filter(Boolean))
+      );
 
       const schedulerId = crypto.randomUUID();
       const newSchedulerRef = doc(db, "schedulers", schedulerId);
@@ -637,7 +671,6 @@ export default function CreateSchedulerPage() {
         creatorId: user.uid,
         creatorEmail: user.email,
         status: "OPEN",
-        participants: explicitParticipants,
         participantIds,
         pendingInvites: [],
         allowLinkSharing,

@@ -12,7 +12,7 @@ Add Discord OAuth login as a first-class auth provider without replacing Google 
 - Block Discord unlink if it is the only login method.
 - Use Discord branding assets and colors correctly, without imitating Discord's UI.
 - Use Discord OAuth email scope only for **login flow** (account creation). Email is **not required** when linking Discord to an existing account.
-- Allow friend, questing group, and scheduler invites by Discord username (auto-detected).
+- Allow friend, questing group, and scheduler invites by Discord username (auto-detected) **only for existing users who have linked Discord**. No legacy tags or Discord IDs.
 - Defer final display rules to Phase 3 (`docs/display-names-and-usernames.md`); Phase 2 should prefer displayName but may still show email in some contexts.
 
 ## Non-goals
@@ -78,7 +78,7 @@ Add Discord OAuth login as a first-class auth provider without replacing Google 
 - **Critical email dependencies:**
   - `userEmail()` (line 14) returns `request.auth.token.email` - **users without email will fail many access checks**.
   - `isEmailVerified()` (lines 8-11) requires `email_verified == true` OR `sign_in_provider == 'google.com'` - **custom token users satisfy neither**.
-  - Group membership (line 30, 135), scheduler participants (line 36, 198-199), and friend requests (lines 306-329) all use `userEmail()`.
+  - Pending invites and friend request rules still use `userEmail()`; group membership and scheduler participation now rely on `memberIds` / `participantIds` (UID-based).
 
 ### User Profile (`web/src/lib/data/users.js`)
 - `ensureUserProfile()` syncs Firebase Auth user to Firestore.

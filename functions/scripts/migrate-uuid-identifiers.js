@@ -16,6 +16,7 @@ function parseArgs(argv) {
     serviceAccount: getValue("--service-account"),
     projectId: getValue("--project-id"),
     commit: flags.has("--commit"),
+    cleanup: flags.has("--cleanup"),
   };
 }
 
@@ -27,6 +28,7 @@ Options:
   --service-account <path>  Service account JSON for qs-admin-tools
   --project-id <id>         Override Firebase project id
   --commit                  Apply changes (default is dry-run)
+  --cleanup                 Remove legacy email-based fields (participants/members)
 `);
 }
 
@@ -226,6 +228,76 @@ async function migrateVotes({ db, commit }) {
   console.log(`Votes: ${updated} updated, ${skipped} unchanged.`);
 }
 
+async function cleanupLegacyFields({ db, commit }) {
+  console.log("\nCleaning legacy email fields...");
+  const schedulerSnap = await db.collection("schedulers").get();
+  let schedulersUpdated = 0;
+  let schedulersSkipped = 0;
+  let batch = db.batch();
+  let batchCount = 0;
+
+  for (const docSnap of schedulerSnap.docs) {
+    const data = docSnap.data() || {};
+    if (!Object.prototype.hasOwnProperty.call(data, "participants")) {
+      schedulersSkipped += 1;
+      continue;
+    }
+    schedulersUpdated += 1;
+    if (commit) {
+      batch.update(docSnap.ref, {
+        participants: admin.firestore.FieldValue.delete(),
+      });
+      batchCount += 1;
+      if (batchCount >= 400) {
+        await batch.commit();
+        batch = db.batch();
+        batchCount = 0;
+      }
+    }
+  }
+
+  if (commit) {
+    await commitBatch(batch, batchCount);
+  }
+
+  const groupSnap = await db.collection("questingGroups").get();
+  let groupsUpdated = 0;
+  let groupsSkipped = 0;
+  batch = db.batch();
+  batchCount = 0;
+
+  for (const docSnap of groupSnap.docs) {
+    const data = docSnap.data() || {};
+    if (!Object.prototype.hasOwnProperty.call(data, "members")) {
+      groupsSkipped += 1;
+      continue;
+    }
+    groupsUpdated += 1;
+    if (commit) {
+      batch.update(docSnap.ref, {
+        members: admin.firestore.FieldValue.delete(),
+      });
+      batchCount += 1;
+      if (batchCount >= 400) {
+        await batch.commit();
+        batch = db.batch();
+        batchCount = 0;
+      }
+    }
+  }
+
+  if (commit) {
+    await commitBatch(batch, batchCount);
+  }
+
+  console.log(
+    `Schedulers cleaned: ${schedulersUpdated} updated, ${schedulersSkipped} unchanged.`
+  );
+  console.log(
+    `Questing groups cleaned: ${groupsUpdated} updated, ${groupsSkipped} unchanged.`
+  );
+}
+
 async function run() {
   const args = parseArgs(process.argv);
   if (!args.serviceAccount && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
@@ -242,6 +314,9 @@ async function run() {
   await migrateSchedulers({ db, commit: args.commit });
   await migrateQuestingGroups({ db, commit: args.commit });
   await migrateVotes({ db, commit: args.commit });
+  if (args.cleanup) {
+    await cleanupLegacyFields({ db, commit: args.commit });
+  }
 
   console.log("\nDone.");
 }

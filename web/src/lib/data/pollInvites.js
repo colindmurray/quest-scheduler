@@ -44,6 +44,11 @@ async function removeVotesByEmail(schedulerId, email) {
   await Promise.all(snap.docs.map((voteDoc) => deleteDoc(voteDoc.ref)));
 }
 
+async function removeVotesByUserId(schedulerId, userId) {
+  if (!userId) return;
+  await deleteDoc(doc(db, "schedulers", schedulerId, "votes", userId));
+}
+
 export async function acceptPollInvite(schedulerId, userEmail, userId = null) {
   const ref = doc(db, "schedulers", schedulerId);
   const snap = await getDoc(ref);
@@ -52,19 +57,16 @@ export async function acceptPollInvite(schedulerId, userEmail, userId = null) {
   }
   const data = snap.data() || {};
   const normalizedEmail = userEmail.toLowerCase();
-  const wasParticipant = (data.participants || []).some(
-    (email) => email?.toLowerCase() === normalizedEmail
+  const hasParticipantId = Boolean(
+    userId && (data.participantIds || []).includes(userId)
   );
-  if (!wasParticipant) {
+  if (!hasParticipantId) {
     const updates = {
-      participants: arrayUnion(normalizedEmail),
       pendingInvites: arrayRemove(normalizedEmail),
       [`pendingInviteMeta.${normalizedEmail}`]: deleteField(),
       updatedAt: serverTimestamp(),
+      ...(userId ? { participantIds: arrayUnion(userId) } : {}),
     };
-    if (userId) {
-      updates.participantIds = arrayUnion(userId);
-    }
     await updateDoc(ref, updates);
   }
 
@@ -120,7 +122,6 @@ export async function removeParticipantFromPoll(
   const resolvedUserId =
     participantUserId || (await findUserIdByEmail(participantEmail));
   const updates = {
-    participants: arrayRemove(normalizedEmail),
     updatedAt: serverTimestamp(),
   };
   if (resolvedUserId) {
@@ -133,6 +134,10 @@ export async function removeParticipantFromPoll(
   }
 
   if (removeVotes) {
-    await removeVotesByEmail(schedulerId, normalizedEmail);
+    if (resolvedUserId) {
+      await removeVotesByUserId(schedulerId, resolvedUserId);
+    } else {
+      await removeVotesByEmail(schedulerId, normalizedEmail);
+    }
   }
 }

@@ -7,10 +7,9 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-function isGroupManager(group, uid, email) {
+function isGroupManager(group, uid) {
   if (!group) return false;
-  const normalizedEmail = String(email || "").toLowerCase();
-  const isMember = (group.members || []).includes(normalizedEmail);
+  const isMember = (group.memberIds || []).includes(uid);
   return group.creatorId === uid || (group.memberManaged === true && isMember);
 }
 
@@ -32,7 +31,7 @@ exports.discordListGuildRoles = onCall(
     }
 
     const group = groupSnap.data() || {};
-    if (!isGroupManager(group, request.auth.uid, request.auth.token.email)) {
+    if (!isGroupManager(group, request.auth.uid)) {
       throw new HttpsError("permission-denied", "Not authorized to manage this group");
     }
 

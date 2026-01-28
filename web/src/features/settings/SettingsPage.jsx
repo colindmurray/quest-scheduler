@@ -31,6 +31,16 @@ import {
 } from "../../components/ui/dialog";
 
 const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const defaultPerDayDefaults = {
+  1: { time: "18:00", durationMinutes: 240 },
+  2: { time: "18:00", durationMinutes: 240 },
+  3: { time: "18:00", durationMinutes: 240 },
+  4: { time: "18:00", durationMinutes: 240 },
+  5: { time: "18:00", durationMinutes: 240 },
+  6: { time: "12:00", durationMinutes: 240 },
+  0: { time: "12:00", durationMinutes: 240 },
+};
+
 export default function SettingsPage() {
   const { user, refreshUser } = useAuth();
   const { darkMode, setDarkMode } = useTheme();
@@ -69,15 +79,9 @@ export default function SettingsPage() {
   const [passwordValue, setPasswordValue] = useState("");
   const [passwordConfirmValue, setPasswordConfirmValue] = useState("");
   const [passwordLinking, setPasswordLinking] = useState(false);
-  const [defaultTimes, setDefaultTimes] = useState({
-    1: "18:00",
-    2: "18:00",
-    3: "18:00",
-    4: "18:00",
-    5: "18:00",
-    6: "12:00",
-    0: "12:00",
-  });
+  const [sessionDefaultsMode, setSessionDefaultsMode] = useState("simple");
+  const [simpleStartTime, setSimpleStartTime] = useState("18:00");
+  const [perDayDefaults, setPerDayDefaults] = useState(defaultPerDayDefaults);
 
   const userRef = useMemo(() => (user ? doc(db, "users", user.uid) : null), [user]);
   const providerData = user?.providerData || [];
@@ -106,8 +110,29 @@ export default function SettingsPage() {
           setDefaultTitle(data.settings?.defaultTitle ?? "Quest Session");
           setDefaultDescription(data.settings?.defaultDescription ?? "");
           setEmailNotifications(data.settings?.emailNotifications ?? true);
-          setDefaultTimes(data.settings?.defaultStartTimes ?? defaultTimes);
           setTimezoneMode(data.settings?.timezoneMode ?? "auto");
+
+          // Load session defaults mode and values
+          const savedMode = data.settings?.sessionDefaultsMode ?? "simple";
+          setSessionDefaultsMode(savedMode);
+          setSimpleStartTime(data.settings?.defaultStartTime ?? "18:00");
+
+          // Handle defaultStartTimes - migrate old string format to new object format
+          const savedStartTimes = data.settings?.defaultStartTimes;
+          if (savedStartTimes) {
+            const migrated = {};
+            const globalDuration = data.settings?.defaultDurationMinutes ?? 240;
+            for (const [key, val] of Object.entries(savedStartTimes)) {
+              if (typeof val === "string") {
+                // Old format: just a time string - migrate to object
+                migrated[key] = { time: val, durationMinutes: globalDuration };
+              } else if (val && typeof val === "object") {
+                // New format: object with time and durationMinutes
+                migrated[key] = val;
+              }
+            }
+            setPerDayDefaults({ ...defaultPerDayDefaults, ...migrated });
+          }
           setCalendarIds(data.settings?.googleCalendarIds ?? []);
           setCalendarNames(data.settings?.googleCalendarNames ?? {});
           setCalendarSyncPreference(data.calendarSyncPreference ?? "poll");
@@ -356,6 +381,19 @@ export default function SettingsPage() {
         email: user.email?.toLowerCase() || null,
       });
 
+      // Prepare session defaults for save
+      const sessionDefaultsToSave =
+        sessionDefaultsMode === "simple"
+          ? // Simple mode: all days use the same time and global duration
+            Object.fromEntries(
+              [0, 1, 2, 3, 4, 5, 6].map((day) => [
+                day,
+                { time: simpleStartTime, durationMinutes: Number(defaultDuration || 240) },
+              ])
+            )
+          : // Per-day mode: save each day's individual settings
+            perDayDefaults;
+
       await setDoc(
         userRef,
         {
@@ -369,7 +407,9 @@ export default function SettingsPage() {
             defaultTitle,
             defaultDescription,
             emailNotifications,
-            defaultStartTimes: defaultTimes,
+            sessionDefaultsMode,
+            defaultStartTime: simpleStartTime,
+            defaultStartTimes: sessionDefaultsToSave,
             timezoneMode,
             timezone,
             googleCalendarId: primaryCalendarId || null,
@@ -825,7 +865,7 @@ export default function SettingsPage() {
             </section>
             <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Default calendar entry</h3>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="mt-4 grid gap-4">
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                   Default title
                   <input
@@ -835,17 +875,6 @@ export default function SettingsPage() {
                   />
                 </label>
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  Default duration (min)
-                  <input
-                    type="number"
-                    min="30"
-                    step="30"
-                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                    value={defaultDuration}
-                    onChange={(event) => setDefaultDuration(event.target.value)}
-                  />
-                </label>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 md:col-span-2">
                   Default description
                   <textarea
                     className="mt-2 min-h-[80px] w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
@@ -858,26 +887,153 @@ export default function SettingsPage() {
 
             <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                Default session start times
+                Default session settings
               </h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Set the default start time per weekday (local time).
+                Set default start time and duration for new session slots.
               </p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {[1, 2, 3, 4, 5, 6, 0].map((dayKey, index) => (
-                  <label key={dayKey} className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    {weekdayLabels[index]}
+
+              {/* Tab switcher */}
+              <div className="mt-4 flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setSessionDefaultsMode("simple")}
+                  className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                    sessionDefaultsMode === "simple"
+                      ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100"
+                      : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                  }`}
+                >
+                  Simple
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSessionDefaultsMode("perDay")}
+                  className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                    sessionDefaultsMode === "perDay"
+                      ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100"
+                      : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                  }`}
+                >
+                  Per-day
+                </button>
+              </div>
+
+              {/* Simple mode */}
+              {sessionDefaultsMode === "simple" && (
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    Default start time
                     <input
                       type="time"
-                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                      value={defaultTimes[dayKey]}
-                      onChange={(event) =>
-                        setDefaultTimes((prev) => ({ ...prev, [dayKey]: event.target.value }))
-                      }
+                      className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                      value={simpleStartTime}
+                      onChange={(event) => setSimpleStartTime(event.target.value)}
                     />
                   </label>
-                ))}
-              </div>
+                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    Default duration
+                    <div className="mt-2 flex gap-2">
+                      <div className="flex-1">
+                        <input
+                          type="number"
+                          min="0"
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                          value={Math.floor(defaultDuration / 60)}
+                          onChange={(event) => {
+                            const hours = Number(event.target.value) || 0;
+                            const mins = defaultDuration % 60;
+                            setDefaultDuration(hours * 60 + mins);
+                          }}
+                        />
+                        <span className="mt-1 block text-[10px] text-slate-400">hours</span>
+                      </div>
+                      <div className="flex-1">
+                        <input
+                          type="number"
+                          min="0"
+                          max="59"
+                          step="15"
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                          value={defaultDuration % 60}
+                          onChange={(event) => {
+                            const hours = Math.floor(defaultDuration / 60);
+                            const mins = Number(event.target.value) || 0;
+                            setDefaultDuration(hours * 60 + mins);
+                          }}
+                        />
+                        <span className="mt-1 block text-[10px] text-slate-400">minutes</span>
+                      </div>
+                    </div>
+                  </label>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 sm:col-span-2">
+                    This time and duration will apply to all days of the week.
+                  </p>
+                </div>
+              )}
+
+              {/* Per-day mode */}
+              {sessionDefaultsMode === "perDay" && (
+                <div className="mt-4">
+                  <div className="grid gap-2">
+                    {[1, 2, 3, 4, 5, 6, 0].map((dayKey, index) => (
+                      <div
+                        key={dayKey}
+                        className="grid grid-cols-[80px_1fr_1fr] items-center gap-3 rounded-xl border border-slate-200/70 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/60"
+                      >
+                        <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                          {weekdayLabels[index]}
+                        </span>
+                        <input
+                          type="time"
+                          className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                          value={perDayDefaults[dayKey]?.time || "18:00"}
+                          onChange={(event) =>
+                            setPerDayDefaults((prev) => ({
+                              ...prev,
+                              [dayKey]: { ...prev[dayKey], time: event.target.value },
+                            }))
+                          }
+                        />
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min="0"
+                            className="w-14 rounded-lg border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                            value={Math.floor((perDayDefaults[dayKey]?.durationMinutes || 240) / 60)}
+                            onChange={(event) => {
+                              const hours = Number(event.target.value) || 0;
+                              const mins = (perDayDefaults[dayKey]?.durationMinutes || 240) % 60;
+                              setPerDayDefaults((prev) => ({
+                                ...prev,
+                                [dayKey]: { ...prev[dayKey], durationMinutes: hours * 60 + mins },
+                              }));
+                            }}
+                          />
+                          <span className="text-[10px] text-slate-400">h</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="59"
+                            step="15"
+                            className="w-14 rounded-lg border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                            value={(perDayDefaults[dayKey]?.durationMinutes || 240) % 60}
+                            onChange={(event) => {
+                              const hours = Math.floor((perDayDefaults[dayKey]?.durationMinutes || 240) / 60);
+                              const mins = Number(event.target.value) || 0;
+                              setPerDayDefaults((prev) => ({
+                                ...prev,
+                                [dayKey]: { ...prev[dayKey], durationMinutes: hours * 60 + mins },
+                              }));
+                            }}
+                          />
+                          <span className="text-[10px] text-slate-400">m</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </section>
 
             <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">

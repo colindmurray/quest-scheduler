@@ -1,5 +1,6 @@
 import {
   collection,
+  documentId,
   doc,
   serverTimestamp,
   setDoc,
@@ -25,7 +26,7 @@ import { useQuestingGroups } from "../../hooks/useQuestingGroups";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { useFirestoreDoc } from "../../hooks/useFirestoreDoc";
 import { useNotifications } from "../../hooks/useNotifications";
-import { useUserProfiles } from "../../hooks/useUserProfiles";
+import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfiles";
 import { db } from "../../lib/firebase";
 import { schedulerSlotsRef, schedulerVotesRef } from "../../lib/data/schedulers";
 import { Switch } from "../../components/ui/switch";
@@ -156,6 +157,7 @@ export default function SchedulerPage() {
   const [invitePromptBusy, setInvitePromptBusy] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaveSaving, setLeaveSaving] = useState(false);
+  const [nudgeSending, setNudgeSending] = useState(false);
   const [removeMemberOpen, setRemoveMemberOpen] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState(null);
   const [revokeInviteOpen, setRevokeInviteOpen] = useState(false);
@@ -166,35 +168,33 @@ export default function SchedulerPage() {
   const normalizeEmail = (value) => value.trim().toLowerCase();
   const normalizedUserEmail = user?.email?.toLowerCase() || null;
   const isGroupMember = Boolean(
-    scheduler.data?.questingGroupId && (
-      (user?.uid && questingGroup.data?.memberIds?.includes(user.uid)) ||
-      (normalizedUserEmail &&
-        questingGroup.data?.members?.some(
-          (email) => normalizeEmail(email) === normalizedUserEmail
-        ))
-    )
+    scheduler.data?.questingGroupId &&
+      user?.uid &&
+      questingGroup.data?.memberIds?.includes(user.uid)
   );
   const isExplicitParticipant = useMemo(() => {
-    if (user?.uid && scheduler.data?.participantIds?.includes(user.uid)) {
-      return true;
-    }
-    return (
-      scheduler.data?.participants?.some(
-        (email) => normalizedUserEmail && email?.toLowerCase() === normalizedUserEmail
-      ) || false
-    );
-  }, [scheduler.data?.participants, scheduler.data?.participantIds, normalizedUserEmail, user?.uid]);
+    return Boolean(user?.uid && scheduler.data?.participantIds?.includes(user.uid));
+  }, [scheduler.data?.participantIds, user?.uid]);
   const isEffectiveParticipant = isExplicitParticipant || isGroupMember;
   const [calendarView, setCalendarView] = useState("month");
   const [expandedSlots, setExpandedSlots] = useState({});
-  const questingGroupMembers = useMemo(
-    () =>
-      (questingGroup.data?.members || [])
-        .filter(Boolean)
-        .map((email) => normalizeEmail(email)),
-    [questingGroup.data?.members]
+  const questingGroupMemberIds = useMemo(
+    () => questingGroup.data?.memberIds || [],
+    [questingGroup.data?.memberIds]
   );
+  const { profiles: questingGroupMemberProfiles } = useUserProfilesByIds(questingGroupMemberIds);
+  const questingGroupMembers = useMemo(() => {
+    if (!questingGroupMemberIds.length) return [];
+    return questingGroupMemberIds
+      .map((id) => questingGroupMemberProfiles[id]?.email)
+      .filter(Boolean)
+      .map((email) => normalizeEmail(email));
+  }, [questingGroupMemberIds, questingGroupMemberProfiles]);
   const questingGroupMemberSet = useMemo(
+    () => new Set(questingGroupMemberIds),
+    [questingGroupMemberIds]
+  );
+  const questingGroupMemberEmailSet = useMemo(
     () => new Set(questingGroupMembers),
     [questingGroupMembers]
   );
@@ -208,6 +208,14 @@ export default function SchedulerPage() {
       : scheduler.data?.questingGroupId
         ? "Discord not linked"
         : null;
+  const nudgeCooldownRemaining = useMemo(() => {
+    const lastNudge = scheduler.data?.discord?.nudgeLastSentAt;
+    if (!lastNudge) return 0;
+    const lastNudgeTime = lastNudge.toDate?.() || new Date(lastNudge);
+    const elapsed = Date.now() - lastNudgeTime.getTime();
+    const cooldownMs = 8 * 60 * 60 * 1000; // 8 hours
+    return Math.max(0, cooldownMs - elapsed);
+  }, [scheduler.data?.discord?.nudgeLastSentAt]);
   const questingGroupColor = useMemo(() => {
     const groupId = scheduler.data?.questingGroupId;
     if (!groupId) return null;
@@ -221,7 +229,7 @@ export default function SchedulerPage() {
       return {
         id: cloneGroupId,
         name: questingGroup.data?.name || scheduler.data?.questingGroupName || "Questing group",
-        members: questingGroup.data?.members || [],
+        members: questingGroupMembers || [],
       };
     }
     return {
@@ -229,7 +237,14 @@ export default function SchedulerPage() {
       name: scheduler.data?.questingGroupName || "Questing group",
       members: [],
     };
-  }, [cloneGroupId, groups, questingGroup.data, scheduler.data?.questingGroupId, scheduler.data?.questingGroupName]);
+  }, [
+    cloneGroupId,
+    groups,
+    questingGroup.data,
+    questingGroupMembers,
+    scheduler.data?.questingGroupId,
+    scheduler.data?.questingGroupName,
+  ]);
   const cloneGroupMembers = useMemo(
     () => (cloneSelectedGroup?.members || []).filter(Boolean),
     [cloneSelectedGroup]
@@ -268,10 +283,22 @@ export default function SchedulerPage() {
     return Array.from(combined);
   }, [questingGroupMembers, cloneGroupMemberEmails, cloneInvites, cloneRecommendedEmails]);
   const { enrichUsers } = useUserProfiles(profileEmails);
-  const groupUsers = useMemo(
-    () => enrichUsers(questingGroupMembers),
-    [enrichUsers, questingGroupMembers]
-  );
+  const groupUsers = useMemo(() => {
+    if (questingGroupMemberIds.length) {
+      return questingGroupMemberIds
+        .map((id) => {
+          const profile = questingGroupMemberProfiles[id];
+          if (!profile) return null;
+          return {
+            ...profile,
+            email: profile.email ? normalizeEmail(profile.email) : profile.email,
+            avatar: profile.photoURL || null,
+          };
+        })
+        .filter(Boolean);
+    }
+    return enrichUsers(questingGroupMembers);
+  }, [questingGroupMemberIds, questingGroupMemberProfiles, enrichUsers, questingGroupMembers]);
   const cloneGroupUsers = useMemo(
     () => enrichUsers(cloneGroupMembers),
     [enrichUsers, cloneGroupMembers]
@@ -308,11 +335,7 @@ export default function SchedulerPage() {
     if (!scheduler.data || !user?.email || !id) return;
     if (isCreator) return;
     const normalizedEmail = user.email.toLowerCase();
-    const participantMatch =
-      scheduler.data.participantIds?.includes(user?.uid) ||
-      scheduler.data.participants?.some(
-        (email) => email?.toLowerCase() === normalizedEmail
-      );
+    const participantMatch = scheduler.data.participantIds?.includes(user?.uid);
     const isPendingInvite = scheduler.data.pendingInvites?.some(
       (email) => email?.toLowerCase() === normalizedEmail
     );
@@ -325,7 +348,7 @@ export default function SchedulerPage() {
     } else {
       setInvitePromptOpen(false);
     }
-  }, [id, scheduler.data, user?.email, user?.uid, isCreator]);
+  }, [id, scheduler.data, user?.email, user?.uid, isCreator, isGroupMember]);
 
   useEffect(() => {
     if (!userVote.data) return;
@@ -375,9 +398,26 @@ export default function SchedulerPage() {
     return map;
   }, [allVotes.data]);
 
+  const explicitParticipantIds = useMemo(
+    () => scheduler.data?.participantIds || [],
+    [scheduler.data?.participantIds]
+  );
+  const { profiles: explicitParticipantProfilesById } = useUserProfilesByIds(
+    explicitParticipantIds
+  );
+  const explicitParticipantProfiles = useMemo(() => {
+    if (!explicitParticipantIds.length) return [];
+    return explicitParticipantIds
+      .map((id) => explicitParticipantProfilesById[id])
+      .filter(Boolean);
+  }, [explicitParticipantIds, explicitParticipantProfilesById]);
   const explicitParticipantEmails = useMemo(
-    () => scheduler.data?.participants || [],
-    [scheduler.data?.participants]
+    () =>
+      explicitParticipantProfiles
+        .map((profile) => profile.email)
+        .filter(Boolean)
+        .map((email) => normalizeEmail(email)),
+    [explicitParticipantProfiles]
   );
   const participantEmails = useMemo(() => {
     const merged = new Set([
@@ -395,7 +435,6 @@ export default function SchedulerPage() {
     () => enrichPendingInviteUsers(pendingInviteEmails),
     [enrichPendingInviteUsers, pendingInviteEmails]
   );
-  const { enrichUsers: enrichParticipantUsers } = useUserProfiles(participantEmails);
   const voterEmails = useMemo(
     () => allVotes.data.map((voteDoc) => voteDoc.userEmail).filter(Boolean),
     [allVotes.data]
@@ -405,41 +444,88 @@ export default function SchedulerPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [participantEmails, voterEmails]);
   const colorMap = useMemo(() => buildColorMap(uniqueEmails), [uniqueEmails]);
+  const voteMapById = useMemo(
+    () => new Map(allVotes.data.map((voteDoc) => [voteDoc.id, voteDoc])),
+    [allVotes.data]
+  );
+  const voteMapByEmail = useMemo(
+    () =>
+      new Map(
+        allVotes.data
+          .filter((voteDoc) => voteDoc.userEmail)
+          .map((voteDoc) => [normalizeEmail(voteDoc.userEmail), voteDoc])
+      ),
+    [allVotes.data]
+  );
   const participants = useMemo(() => {
-    const voteMap = new Map(
-      allVotes.data
-        .filter((voteDoc) => voteDoc.userEmail)
-        .map((voteDoc) => [voteDoc.userEmail, voteDoc])
-    );
-    return enrichParticipantUsers(participantEmails).map((userInfo) => {
-      const vote = voteMap.get(userInfo.email);
+    const combined = new Map();
+    explicitParticipantIds.forEach((id) => {
+      const profile = explicitParticipantProfilesById[id];
+      if (profile) combined.set(id, profile);
+    });
+    questingGroupMemberIds.forEach((id) => {
+      const profile = questingGroupMemberProfiles[id];
+      if (profile) combined.set(id, profile);
+    });
+    return Array.from(combined.values()).map((profile) => {
+      const vote =
+        voteMapById.get(profile.id) ||
+        (profile.email ? voteMapByEmail.get(normalizeEmail(profile.email)) : null);
+      const email = profile.email ? normalizeEmail(profile.email) : vote?.userEmail || null;
       return {
-        ...userInfo,
-        avatar: vote?.userAvatar || userInfo.avatar || null,
-        hasVoted: voteMap.has(userInfo.email),
-        isGroupMember: questingGroupMemberSet.has(normalizeEmail(userInfo.email)),
+        ...profile,
+        email,
+        avatar: vote?.userAvatar || profile.photoURL || null,
+        hasVoted: Boolean(vote),
+        isGroupMember: questingGroupMemberSet.has(profile.id),
       };
     });
-  }, [allVotes.data, participantEmails, questingGroupMemberSet, enrichParticipantUsers]);
+  }, [
+    explicitParticipantIds,
+    explicitParticipantProfilesById,
+    questingGroupMemberIds,
+    questingGroupMemberProfiles,
+    voteMapById,
+    voteMapByEmail,
+    questingGroupMemberSet,
+  ]);
   const nonGroupParticipants = useMemo(
     () => participants.filter((participant) => !participant.isGroupMember),
     [participants]
   );
-  const participantMap = useMemo(
-    () => new Map(participants.map((participant) => [normalizeEmail(participant.email), participant])),
+  const participantMapByEmail = useMemo(
+    () =>
+      new Map(
+        participants
+          .filter((participant) => participant.email)
+          .map((participant) => [normalizeEmail(participant.email), participant])
+      ),
     [participants]
   );
   const groupUsersWithStatus = useMemo(
     () =>
       groupUsers.map((member) => {
-        const match = participantMap.get(normalizeEmail(member.email));
+        const vote =
+          (member.id && voteMapById.get(member.id)) ||
+          (member.email ? voteMapByEmail.get(normalizeEmail(member.email)) : null);
         return {
           ...member,
-          hasVoted: match?.hasVoted ?? false,
+          email: member.email ? normalizeEmail(member.email) : member.email,
+          avatar: vote?.userAvatar || member.avatar || member.photoURL || null,
+          hasVoted: Boolean(vote),
         };
       }),
-    [groupUsers, participantMap]
+    [groupUsers, voteMapById, voteMapByEmail]
   );
+  const participantIdSet = useMemo(
+    () =>
+      new Set(
+        [...explicitParticipantIds, ...questingGroupMemberIds].filter(Boolean)
+      ),
+    [explicitParticipantIds, questingGroupMemberIds]
+  );
+  const participantCount = participantIdSet.size;
+  const voteCount = allVotes.data.length;
 
   const sortedSlots = useMemo(() => {
     const rows = slots.data.map((slot) => {
@@ -594,12 +680,17 @@ export default function SchedulerPage() {
 
   const handleRemoveParticipant = async () => {
     if (!id || !memberToRemove) return;
-    if (questingGroupMemberSet.has(normalizeEmail(memberToRemove))) {
+    const memberEmail = memberToRemove.email || "";
+    const memberId = memberToRemove.id || null;
+    const isGroupMemberMatch = memberId
+      ? questingGroupMemberSet.has(memberId)
+      : questingGroupMemberEmailSet.has(normalizeEmail(memberEmail));
+    if (isGroupMemberMatch) {
       toast.error("Questing group members cannot be removed from this poll.");
       return;
     }
     try {
-      await removeParticipantFromPoll(id, memberToRemove, true, true);
+      await removeParticipantFromPoll(id, memberEmail, true, true, memberId);
       toast.success("Participant removed");
       setRemoveMemberOpen(false);
       setMemberToRemove(null);
@@ -853,7 +944,7 @@ export default function SchedulerPage() {
     setEventTitle(settings?.defaultTitle || scheduler.data?.title || "Quest Session");
     setEventDescription(settings?.defaultDescription || "");
     setEventDuration(duration || settings?.defaultDurationMinutes || 240);
-    setEventAttendees((scheduler.data?.participants || []).join(", "));
+    setEventAttendees(participantEmails.join(", "));
     setSelectedCalendarId(linkedCalendarId);
     setCreateCalendarEvent(Boolean(linkedCalendars.length));
     setDeleteOldEvent(true);
@@ -978,30 +1069,37 @@ export default function SchedulerPage() {
         createCalendarEvent: shouldCreateEvent,
       });
 
-      const participantEmails = (scheduler.data?.participants || []).filter(Boolean);
-      if (participantEmails.length > 0) {
+      const participantIds = Array.from(
+        new Set(
+          [
+            ...(scheduler.data?.participantIds || []),
+            ...questingGroupMemberIds,
+          ].filter(Boolean)
+        )
+      );
+      if (participantIds.length > 0) {
         try {
-          const uniqueEmails = Array.from(
-            new Set(participantEmails.map((email) => email.toLowerCase()))
-          );
           const normalizedCreatorEmail = creatorEmail?.toLowerCase() || null;
           const chunks = [];
-          for (let i = 0; i < uniqueEmails.length; i += 10) {
-            chunks.push(uniqueEmails.slice(i, i + 10));
+          for (let i = 0; i < participantIds.length; i += 10) {
+            chunks.push(participantIds.slice(i, i + 10));
           }
           const optOuts = new Set();
+          const emails = new Set();
           const userIdsByEmail = new Map();
           for (const chunk of chunks) {
             const snapshot = await getDocs(
-              query(collection(db, "usersPublic"), where("email", "in", chunk))
+              query(collection(db, "usersPublic"), where(documentId(), "in", chunk))
             );
             snapshot.forEach((docSnap) => {
               const data = docSnap.data();
-              if (data?.email && data?.emailNotifications === false) {
-                optOuts.add(data.email.toLowerCase());
-              }
               if (data?.email) {
-                userIdsByEmail.set(data.email.toLowerCase(), docSnap.id);
+                const normalized = data.email.toLowerCase();
+                emails.add(normalized);
+                userIdsByEmail.set(normalized, docSnap.id);
+                if (data?.emailNotifications === false) {
+                  optOuts.add(normalized);
+                }
               }
             });
           }
@@ -1014,22 +1112,20 @@ export default function SchedulerPage() {
             "MMM d, yyyy · h:mm a"
           )} - ${formatInTimeZone(slotEnd, timezone, "h:mm a")}`;
           const winningLabel = `${rangeLabel} (${timezone})`;
-          const recipients = uniqueEmails.filter(
+          const recipients = Array.from(emails).filter(
             (email) => email !== normalizedCreatorEmail && !optOuts.has(email)
           );
-          const notificationRecipients = uniqueEmails.filter(
-            (email) => email !== normalizedCreatorEmail
+          const notificationRecipients = participantIds.filter(
+            (participantId) => participantId !== scheduler.data?.creatorId
           );
           await Promise.all(
-            notificationRecipients.map((email) => {
-              const userId = userIdsByEmail.get(email);
-              if (!userId) return null;
-              return createSessionFinalizedNotification(userId, {
+            notificationRecipients.map((participantId) =>
+              createSessionFinalizedNotification(participantId, {
                 schedulerId: id,
                 schedulerTitle: scheduler.data?.title || "Session Poll",
                 winningDate: winningLabel,
-              });
-            })
+              })
+            )
           );
           await Promise.all(
             recipients.map((email) =>
@@ -1108,19 +1204,17 @@ export default function SchedulerPage() {
     if (!scheduler.data || !user?.email) return;
     const baseTitle = scheduler.data.title || "Untitled poll";
     const originalCreatorEmail = scheduler.data.creatorEmail;
-    const participants = scheduler.data.participants || [];
 
     // If user is the original creator, exclude themselves from invites
     // If user is NOT the original creator, they become the new owner:
     //   - exclude themselves from invites
     //   - add original creator to invites
     const normalizedUser = normalizeEmail(user.email);
-    const baseInvites = participants
-      .filter(Boolean)
-      .map((email) => normalizeEmail(email))
-      .filter((email) => email !== normalizedUser);
+    const baseInvites = explicitParticipantEmails.filter(
+      (email) => email !== normalizedUser
+    );
     const groupMemberSet = scheduler.data?.questingGroupId
-      ? questingGroupMemberSet
+      ? questingGroupMemberEmailSet
       : new Set();
     const newInvites = baseInvites.filter((email) => !groupMemberSet.has(email));
 
@@ -1149,14 +1243,15 @@ export default function SchedulerPage() {
       const newCreatorEmail = user.email;
 
       // Participants: new creator + all invites
-      const participants = Array.from(
+      const inviteEmails = Array.from(
         new Set([newCreatorEmail, ...cloneInvites].filter(Boolean).map((e) => e.toLowerCase()))
       );
-      const participantIdsByEmail = await findUserIdsByEmails(participants);
+      const participantIdsByEmail = await findUserIdsByEmails(inviteEmails);
       participantIdsByEmail[normalizeEmail(newCreatorEmail)] = newCreatorId;
       const participantIds = Array.from(
         new Set(Object.values(participantIdsByEmail).filter(Boolean))
       );
+      const pendingInvites = inviteEmails.filter((email) => !participantIdsByEmail[email]);
 
       const cloneGroup = cloneGroupId
         ? groups.find((group) => group.id === cloneGroupId) || null
@@ -1204,8 +1299,8 @@ export default function SchedulerPage() {
         creatorId: newCreatorId,
         creatorEmail: newCreatorEmail,
         status: "OPEN",
-        participants,
         participantIds,
+        pendingInvites,
         timezone: scheduler.data.timezone,
         timezoneMode: scheduler.data.timezoneMode,
         winningSlotId: null,
@@ -1227,16 +1322,13 @@ export default function SchedulerPage() {
 
       if (!cloneClearVotes) {
         const validSlotIds = new Set(futureSlots.map((slot) => slot.id));
-        const participantSet = new Set(participants.map((email) => email.toLowerCase()));
+        const participantIdSet = new Set(participantIds);
         await Promise.all(
           allVotes.data.map((voteDoc) => {
             if (voteDoc.id !== user.uid) {
               return Promise.resolve();
             }
-            if (!voteDoc.userEmail) return Promise.resolve();
-            if (!participantSet.has(voteDoc.userEmail.toLowerCase())) {
-              return Promise.resolve();
-            }
+            if (!participantIdSet.has(voteDoc.id)) return Promise.resolve();
             const nextVotes = Object.fromEntries(
               Object.entries(voteDoc.votes || {}).filter(([slotId]) =>
                 validSlotIds.has(slotId)
@@ -1297,6 +1389,31 @@ export default function SchedulerPage() {
       toast.error(err.message || "Failed to unarchive session poll");
     } finally {
       setArchiveSaving(false);
+    }
+  };
+
+  const handleNudge = async () => {
+    if (!id) return;
+    setNudgeSending(true);
+    try {
+      const functions = getFunctions();
+      const nudge = httpsCallable(functions, "nudgeDiscordParticipants");
+      const result = await nudge({ schedulerId: id });
+      const { nudgedCount, totalNonVoters } = result.data || {};
+      if (nudgedCount < totalNonVoters) {
+        toast.success(
+          `Nudged ${nudgedCount} participant${nudgedCount === 1 ? "" : "s"} on Discord. ${totalNonVoters - nudgedCount} non-voter${totalNonVoters - nudgedCount === 1 ? " has" : "s have"} not linked Discord.`
+        );
+      } else {
+        toast.success(
+          `Nudged ${nudgedCount} participant${nudgedCount === 1 ? "" : "s"} on Discord!`
+        );
+      }
+    } catch (err) {
+      console.error("Failed to nudge participants:", err);
+      toast.error(err.message || "Failed to nudge participants");
+    } finally {
+      setNudgeSending(false);
     }
   };
 
@@ -1375,7 +1492,8 @@ export default function SchedulerPage() {
   const pendingInviteMeta =
     (normalizedUserEmail && scheduler.data.pendingInviteMeta?.[normalizedUserEmail]) || {};
   const inviterLabel = pendingInviteMeta.invitedByEmail || scheduler.data.creatorEmail || "someone";
-  const inviterProfile = participantMap.get(normalizeEmail(inviterLabel)) || { email: inviterLabel };
+  const inviterProfile =
+    participantMapByEmail.get(normalizeEmail(inviterLabel)) || { email: inviterLabel };
   const canAccess =
     isCreator ||
     scheduler.data.allowLinkSharing ||
@@ -1414,7 +1532,7 @@ export default function SchedulerPage() {
               <h2 className="text-2xl font-semibold dark:text-slate-100">{scheduler.data.title}</h2>
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {participantEmails.length} participants
+                  {participantCount} participants
                 </p>
                 {scheduler.data.status === "OPEN" && (
                   <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
@@ -1446,6 +1564,25 @@ export default function SchedulerPage() {
                     >
                       View in Discord
                     </a>
+                  )}
+                  {isCreator && scheduler.data?.discord?.messageId && scheduler.data?.status === "OPEN" && (
+                    <button
+                      type="button"
+                      onClick={handleNudge}
+                      disabled={nudgeSending || nudgeCooldownRemaining > 0}
+                      className="rounded-full border border-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+                      title={
+                        nudgeCooldownRemaining > 0
+                          ? `Nudge available in ${Math.ceil(nudgeCooldownRemaining / (60 * 60 * 1000))} hour${Math.ceil(nudgeCooldownRemaining / (60 * 60 * 1000)) === 1 ? "" : "s"}`
+                          : "Send a reminder to participants who haven't voted"
+                      }
+                    >
+                      {nudgeSending
+                        ? "Sending..."
+                        : nudgeCooldownRemaining > 0
+                          ? `Nudge (${Math.ceil(nudgeCooldownRemaining / (60 * 60 * 1000))}h)`
+                          : "Nudge participants"}
+                    </button>
                   )}
                 </div>
               )}
@@ -1558,7 +1695,7 @@ export default function SchedulerPage() {
               <div>
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Participants</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {participants.length} total · {voterEmails.length} voted
+                  {participantCount} total · {voteCount} voted
                 </p>
               </div>
               <AvatarStackWithColors
@@ -1649,7 +1786,7 @@ export default function SchedulerPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        setMemberToRemove(participant.email);
+                        setMemberToRemove(participant);
                         setRemoveMemberOpen(true);
                       }}
                       className="ml-1 text-[10px] font-semibold text-red-500 hover:text-red-600"
@@ -1946,7 +2083,9 @@ export default function SchedulerPage() {
                                 >
                                   <AvatarBubbleWithColors email={voter.email} avatar={voter.avatar} size={20} />
                                   <UserIdentity
-                                    user={participantMap.get(normalizeEmail(voter.email)) || voter}
+                                    user={
+                                      participantMapByEmail.get(normalizeEmail(voter.email)) || voter
+                                    }
                                     className="text-slate-700 dark:text-slate-200"
                                   />
                                   {voter.source === "discord" && (
@@ -1982,7 +2121,9 @@ export default function SchedulerPage() {
                                 >
                                   <AvatarBubbleWithColors email={voter.email} avatar={voter.avatar} size={20} />
                                   <UserIdentity
-                                    user={participantMap.get(normalizeEmail(voter.email)) || voter}
+                                    user={
+                                      participantMapByEmail.get(normalizeEmail(voter.email)) || voter
+                                    }
                                     className="text-slate-700 dark:text-slate-200"
                                   />
                                   {voter.source === "discord" && (
@@ -2306,7 +2447,7 @@ export default function SchedulerPage() {
                   You are included as{" "}
                   <UserIdentity
                     user={
-                      participantMap.get(normalizeEmail(scheduler.data.creatorEmail)) || {
+                      participantMapByEmail.get(normalizeEmail(scheduler.data.creatorEmail)) || {
                         email: scheduler.data.creatorEmail,
                       }
                     }
@@ -2512,7 +2653,7 @@ export default function SchedulerPage() {
               {scheduler.data?.title || "Untitled poll"}
             </p>
             <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-              {participantEmails.length} participants · {slots.data?.length || 0} slots · {allVotes.data?.length || 0} votes
+              {participantCount} participants · {slots.data?.length || 0} slots · {allVotes.data?.length || 0} votes
             </p>
           </div>
           {scheduler.data?.googleEventId && (
@@ -2618,7 +2759,14 @@ export default function SchedulerPage() {
             <DialogDescription>
               Remove{" "}
               {memberToRemove ? (
-                <UserIdentity user={participantMap.get(normalizeEmail(memberToRemove)) || { email: memberToRemove }} />
+                <UserIdentity
+                  user={
+                    memberToRemove.email
+                      ? participantMapByEmail.get(normalizeEmail(memberToRemove.email)) ||
+                        memberToRemove
+                      : memberToRemove
+                  }
+                />
               ) : (
                 "this participant"
               )}{" "}

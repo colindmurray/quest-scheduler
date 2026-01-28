@@ -28,13 +28,13 @@ async function getVoteStats(schedulerRef, scheduler) {
   const votesSnap = await schedulerRef.collection("votes").get();
   const voteCount = votesSnap.size;
 
-  const participants = new Set((scheduler.participants || []).map((e) => String(e).toLowerCase()));
+  const participants = new Set(scheduler.participantIds || []);
 
   if (scheduler.questingGroupId) {
     const groupSnap = await db.collection("questingGroups").doc(scheduler.questingGroupId).get();
     if (groupSnap.exists) {
-      const groupMembers = groupSnap.data()?.members || [];
-      groupMembers.forEach((email) => participants.add(String(email).toLowerCase()));
+      const groupMembers = groupSnap.data()?.memberIds || [];
+      groupMembers.forEach((memberId) => participants.add(String(memberId)));
     }
   }
 
@@ -138,9 +138,9 @@ exports.postDiscordPollCard = onDocumentCreated(
     const slotsSnap = await schedulerRef.collection("slots").get();
     const slots = slotsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
-    const groupMembers = (group.members || []).map((e) => String(e).toLowerCase());
-    const participants = new Set((scheduler.participants || []).map((e) => String(e).toLowerCase()));
-    groupMembers.forEach((email) => participants.add(email));
+    const groupMembers = (group.memberIds || []).map((id) => String(id));
+    const participants = new Set((scheduler.participantIds || []).map((id) => String(id)));
+    groupMembers.forEach((id) => participants.add(id));
     const totalParticipants = participants.size;
 
     const messageBody = buildPollCard({

@@ -11,7 +11,7 @@ import { usePollInvites } from "../../hooks/usePollInvites";
 import { useNotifications } from "../../hooks/useNotifications";
 import { pollInviteNotificationId } from "../../lib/data/notifications";
 import { LoadingState } from "../../components/ui/spinner";
-import { useUserProfiles } from "../../hooks/useUserProfiles";
+import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfiles";
 import { UserIdentity } from "../../components/UserIdentity";
 import {
   Dialog,
@@ -160,16 +160,7 @@ export default function DashboardPage() {
     });
 
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
-  }, [groupIdsKey]);
-
-  // Query for all polls user participates in
-  const allParticipatingQuery = useMemo(() => {
-    if (!user?.email) return null;
-    return query(
-      collection(db, "schedulers"),
-      where("participants", "array-contains", user.email)
-    );
-  }, [user?.email]);
+  }, [groupIdsKey, groupIds]);
 
   const allParticipatingIdsQuery = useMemo(() => {
     if (!user?.uid) return null;
@@ -185,26 +176,39 @@ export default function DashboardPage() {
     return query(collection(db, "schedulers"), where("creatorId", "==", user.uid));
   }, [user?.uid]);
 
-  const allParticipating = useFirestoreCollection(allParticipatingQuery);
   const allParticipatingById = useFirestoreCollection(allParticipatingIdsQuery);
   const mine = useFirestoreCollection(myQuery);
   const groupMembersById = useMemo(() => {
     const map = new Map();
     (groups || []).forEach((group) => {
-      const members = (group.members || [])
-        .filter(Boolean)
-        .map((email) => email.toLowerCase());
+      const members = (group.memberIds || []).filter(Boolean);
       map.set(group.id, members);
     });
     return map;
   }, [groups]);
   const participatingSchedulers = useMemo(() => {
     const deduped = new Map();
-    [...allParticipating.data, ...allParticipatingById.data, ...groupSchedulers].forEach((scheduler) => {
+    [...allParticipatingById.data, ...groupSchedulers].forEach((scheduler) => {
       deduped.set(scheduler.id, scheduler);
     });
     return Array.from(deduped.values());
-  }, [allParticipating.data, allParticipatingById.data, groupSchedulers]);
+  }, [allParticipatingById.data, groupSchedulers]);
+  const allParticipantIds = useMemo(() => {
+    const ids = new Set();
+    participatingSchedulers.forEach((scheduler) => {
+      (scheduler.participantIds || []).forEach((id) => {
+        if (id) ids.add(id);
+      });
+      if (scheduler.questingGroupId) {
+        const groupMembers = groupMembersById.get(scheduler.questingGroupId) || [];
+        groupMembers.forEach((id) => {
+          if (id) ids.add(id);
+        });
+      }
+    });
+    return Array.from(ids);
+  }, [participatingSchedulers, groupMembersById]);
+  const { profiles: participantProfilesById } = useUserProfilesByIds(allParticipantIds);
 
   // Fetch slots and votes for all schedulers to get winning slots and vote counts
   useEffect(() => {
@@ -236,10 +240,11 @@ export default function DashboardPage() {
             votesMap[scheduler.id] = voteDocs;
             votersMap[scheduler.id] = voteDocs
               .map((voteDoc) => ({
+                id: voteDoc.id,
                 email: voteDoc.userEmail,
                 avatar: voteDoc.userAvatar,
               }))
-              .filter((v) => v.email);
+              .filter((v) => v.id || v.email);
           } catch (err) {
             console.error(`Failed to fetch data for scheduler ${scheduler.id}:`, err);
           }
@@ -269,29 +274,41 @@ export default function DashboardPage() {
         .filter((s) => s.start && new Date(s.start) > now)
         .sort((a, b) => new Date(a.start) - new Date(b.start));
 
-      const voters = votersByScheduler[scheduler.id] || [];
-      const groupMemberEmails = scheduler.questingGroupId
+      const voters = (votersByScheduler[scheduler.id] || []).map((voter) => ({
+        ...voter,
+        email: voter.email ? voter.email.toLowerCase() : voter.email,
+      }));
+      const groupMemberIds = scheduler.questingGroupId
         ? groupMembersById.get(scheduler.questingGroupId) || []
         : [];
+      const participantIds = Array.from(
+        new Set(
+          [...(scheduler.participantIds || []), ...groupMemberIds].filter(Boolean)
+        )
+      );
+      const participantProfiles = participantIds
+        .map((id) => participantProfilesById[id])
+        .filter(Boolean);
       const participantEmails = Array.from(
         new Set(
-          [
-            ...(scheduler.participants || []),
-            ...groupMemberEmails,
-          ]
-            .map((email) => email?.toLowerCase())
+          participantProfiles
+            .map((profile) => profile.email?.toLowerCase())
             .filter(Boolean)
         )
       );
-      const respondedEmails = voteDocs
-        .map((voteDoc) => voteDoc.userEmail?.toLowerCase())
-        .filter(Boolean);
-      const respondedSet = new Set(respondedEmails);
+      const participantEmailById = new Map(
+        participantProfiles
+          .filter((profile) => profile?.email)
+          .map((profile) => [profile.id, profile.email.toLowerCase()])
+      );
+      const respondedIds = voteDocs.map((voteDoc) => voteDoc.id).filter(Boolean);
+      const respondedSet = new Set(respondedIds);
       const confirmed = [];
       const unavailable = [];
       if (scheduler.status === "FINALIZED" && scheduler.winningSlotId) {
         voteDocs.forEach((voteDoc) => {
-          const email = voteDoc.userEmail?.toLowerCase();
+          const email =
+            voteDoc.userEmail?.toLowerCase() || participantEmailById.get(voteDoc.id);
           if (!email) return;
           if (voteDoc.noTimesWork) {
             unavailable.push(email);
@@ -305,7 +322,10 @@ export default function DashboardPage() {
           }
         });
       }
-      const unresponded = participantEmails.filter((email) => !respondedSet.has(email));
+      const unresponded = participantIds
+        .filter((id) => !respondedSet.has(id))
+        .map((id) => participantEmailById.get(id))
+        .filter(Boolean);
 
       return {
         ...scheduler,
@@ -321,7 +341,14 @@ export default function DashboardPage() {
         },
       };
     });
-  }, [participatingSchedulers, slotsByScheduler, votesByScheduler, votersByScheduler, groupMembersById]);
+  }, [
+    participatingSchedulers,
+    slotsByScheduler,
+    votesByScheduler,
+    votersByScheduler,
+    groupMembersById,
+    participantProfilesById,
+  ]);
 
   // Filter into categories
   const upcomingOpen = useMemo(() => {
@@ -368,20 +395,17 @@ export default function DashboardPage() {
 
   // Sessions that need user's vote - check if user has actually voted
   const needsVote = useMemo(() => {
-    if (!user?.email) return new Set();
-    const userEmailLower = user.email.toLowerCase();
+    if (!user?.uid) return new Set();
     return new Set(
       upcomingOpen
         .filter((s) => {
           const voters = s.voters || [];
-          const hasVoted = voters.some(
-            (v) => v.email?.toLowerCase() === userEmailLower
-          );
+          const hasVoted = voters.some((v) => v.id === user.uid);
           return !hasVoted;
         })
         .map((s) => s.id)
     );
-  }, [upcomingOpen, user?.email]);
+  }, [upcomingOpen, user?.uid]);
 
   // All sessions for calendar view
   const calendarSessions = useMemo(() => {
@@ -428,7 +452,12 @@ export default function DashboardPage() {
     return map;
   }, [groups]);
 
-  const isLoading = allParticipating.loading || groupPollsLoading || mine.loading || settingsLoading || pendingInvitesLoading;
+  const isLoading =
+    allParticipatingById.loading ||
+    groupPollsLoading ||
+    mine.loading ||
+    settingsLoading ||
+    pendingInvitesLoading;
   const normalizedEmail = user?.email?.toLowerCase() || "";
 
   const handleOpenInvite = (invite) => {
@@ -482,7 +511,7 @@ export default function DashboardPage() {
               ? getGroupColor(nextSession.questingGroupId)
               : null
           }
-          participants={nextSession.effectiveParticipants || nextSession.participants || []}
+          participants={nextSession.effectiveParticipants || []}
         />
       )}
 
@@ -537,7 +566,7 @@ export default function DashboardPage() {
                             ? getGroupColor(scheduler.questingGroupId)
                             : null
                         }
-                        participants={scheduler.effectiveParticipants || scheduler.participants || []}
+                        participants={scheduler.effectiveParticipants || []}
                         voters={scheduler.voters || []}
                         questingGroup={
                           scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null
@@ -565,7 +594,7 @@ export default function DashboardPage() {
                           ? getGroupColor(scheduler.questingGroupId)
                           : null
                       }
-                      participants={scheduler.effectiveParticipants || scheduler.participants || []}
+                      participants={scheduler.effectiveParticipants || []}
                       voters={scheduler.voters || []}
                       votedCount={scheduler.votedCount}
                       questingGroup={
@@ -662,7 +691,7 @@ export default function DashboardPage() {
                         : null
                     }
                     attendanceSummary={enriched?.attendanceSummary}
-                    participants={enriched?.effectiveParticipants || scheduler.participants || []}
+                    participants={enriched?.effectiveParticipants || []}
                     voters={enriched?.voters || []}
                     questingGroup={scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null}
                   />
@@ -718,7 +747,7 @@ export default function DashboardPage() {
                           : null
                       }
                       attendanceSummary={scheduler.attendanceSummary}
-                      participants={scheduler.effectiveParticipants || scheduler.participants || []}
+                      participants={scheduler.effectiveParticipants || []}
                       voters={scheduler.voters || []}
                       questingGroup={scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null}
                     />
@@ -745,7 +774,7 @@ export default function DashboardPage() {
                           : null
                       }
                       attendanceSummary={scheduler.attendanceSummary}
-                      participants={scheduler.effectiveParticipants || scheduler.participants || []}
+                      participants={scheduler.effectiveParticipants || []}
                       voters={scheduler.voters || []}
                       questingGroup={scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null}
                     />

@@ -828,23 +828,26 @@ exports.cloneSchedulerPoll = functions.https.onCall(async (data, context) => {
     ? inviteEmails.map(normalizeEmail).filter(Boolean)
     : [];
   const creatorEmail = normalizeEmail(context.auth.token.email);
-  const participants = Array.from(new Set([creatorEmail, ...normalizedInvites].filter(Boolean)));
-  const participantIdsByEmail = await findUserIdsByEmails(participants);
+  const inviteEmailsNormalized = Array.from(
+    new Set([creatorEmail, ...normalizedInvites].filter(Boolean))
+  );
+  const participantIdsByEmail = await findUserIdsByEmails(inviteEmailsNormalized);
   if (creatorEmail) {
     participantIdsByEmail[creatorEmail] = context.auth.uid;
   }
   const participantIds = Array.from(
     new Set(Object.values(participantIdsByEmail).filter(Boolean))
   );
+  const pendingInvites = inviteEmailsNormalized.filter((email) => !participantIdsByEmail[email]);
 
   let groupNameToSave = null;
-  let groupMembers = [];
+  let groupMemberIds = [];
   if (questingGroupId) {
     const groupSnap = await admin.firestore().collection("questingGroups").doc(questingGroupId).get();
     if (groupSnap.exists) {
       const groupData = groupSnap.data() || {};
       groupNameToSave = groupData.name || questingGroupName || null;
-      groupMembers = Array.isArray(groupData.members) ? groupData.members : [];
+      groupMemberIds = Array.isArray(groupData.memberIds) ? groupData.memberIds : [];
     } else {
       groupNameToSave = questingGroupName || null;
     }
@@ -858,8 +861,8 @@ exports.cloneSchedulerPoll = functions.https.onCall(async (data, context) => {
     creatorId: context.auth.uid,
     creatorEmail,
     status: "OPEN",
-    participants,
     participantIds,
+    pendingInvites,
     timezone: scheduler.timezone || null,
     timezoneMode: scheduler.timezoneMode || null,
     winningSlotId: null,
@@ -888,17 +891,14 @@ exports.cloneSchedulerPoll = functions.https.onCall(async (data, context) => {
   );
 
   if (!clearVotes) {
-    const participantSet = new Set(
-      [...participants, ...groupMembers.map((email) => normalizeEmail(email))]
-        .filter(Boolean)
-        .map((email) => email.toLowerCase())
+    const participantIdSet = new Set(
+      [...participantIds, ...groupMemberIds].filter(Boolean)
     );
     const votesSnap = await schedulerRef.collection("votes").get();
     await Promise.all(
       votesSnap.docs.map((voteDoc) => {
         const voteData = voteDoc.data() || {};
-        const userEmail = normalizeEmail(voteData.userEmail);
-        if (!userEmail || !participantSet.has(userEmail)) {
+        if (!participantIdSet.has(voteDoc.id)) {
           return Promise.resolve();
         }
         const nextVotes = Object.fromEntries(
@@ -915,7 +915,7 @@ exports.cloneSchedulerPoll = functions.https.onCall(async (data, context) => {
           .set(
             {
               voterId: voteDoc.id,
-              userEmail,
+              userEmail: normalizeEmail(voteData.userEmail),
               userAvatar: voteData.userAvatar || null,
               votes: nextVotes,
               noTimesWork: Boolean(voteData.noTimesWork),
@@ -1224,11 +1224,11 @@ exports.sendPollInvites = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("permission-denied", "Only the poll creator can invite.");
   }
 
-  let groupMembers = [];
+  let groupMemberIds = [];
   if (scheduler.questingGroupId) {
     const groupSnap = await db.collection("questingGroups").doc(scheduler.questingGroupId).get();
     if (groupSnap.exists) {
-      groupMembers = (groupSnap.data()?.members || []).map(normalizeEmail);
+      groupMemberIds = groupSnap.data()?.memberIds || [];
     }
   }
 
@@ -1240,7 +1240,7 @@ exports.sendPollInvites = functions.https.onCall(async (data, context) => {
     );
   }
 
-  const participants = (scheduler.participants || []).map(normalizeEmail);
+  const participantIds = Array.isArray(scheduler.participantIds) ? scheduler.participantIds : [];
   const pending = (scheduler.pendingInvites || []).map(normalizeEmail);
   const inviterIdentifiers = await getUserIdentifierHints(inviterId);
   const normalizedInvitees = Array.from(
@@ -1248,10 +1248,7 @@ exports.sendPollInvites = functions.https.onCall(async (data, context) => {
   ).filter((email) => email && email !== inviterEmail);
 
   const candidates = normalizedInvitees.filter(
-    (email) =>
-      !participants.includes(email) &&
-      !pending.includes(email) &&
-      !groupMembers.includes(email)
+    (email) => !pending.includes(email)
   );
   if (candidates.length === 0) {
     return { added: [], rejected: [] };
@@ -1263,6 +1260,9 @@ exports.sendPollInvites = functions.https.onCall(async (data, context) => {
 
   for (const email of candidates) {
     const userId = userIdMap.get(email) || null;
+    if (userId && (participantIds.includes(userId) || groupMemberIds.includes(userId))) {
+      continue;
+    }
     if (
       userId &&
       (await isBlockedByUser(
@@ -1477,27 +1477,26 @@ exports.sendGroupInvite = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("not-found", "Questing group not found.");
   }
   const group = groupSnap.data() || {};
-  const members = Array.isArray(group.members) ? group.members.map(normalizeEmail) : [];
   const memberIds = Array.isArray(group.memberIds) ? group.memberIds : [];
   const pending = Array.isArray(group.pendingInvites)
     ? group.pendingInvites.map(normalizeEmail)
     : [];
 
   const isCreator = group.creatorId === inviterId;
-  const isMember = memberIds.includes(inviterId) || members.includes(inviterEmail);
+  const isMember = memberIds.includes(inviterId);
   const canInvite = isCreator || (group.memberManaged === true && isMember);
   if (!canInvite) {
     throw new functions.https.HttpsError("permission-denied", "Only group managers can invite.");
   }
 
-  if (members.includes(inviteeEmail)) {
-    return { added: false, reason: "member" };
-  }
   if (pending.includes(inviteeEmail)) {
     return { added: false, reason: "pending" };
   }
 
   const inviteeUserId = await findUserIdByEmail(inviteeEmail);
+  if (inviteeUserId && memberIds.includes(inviteeUserId)) {
+    return { added: false, reason: "member" };
+  }
   const inviterIdentifiers = await getUserIdentifierHints(inviterId);
   if (
     await isBlockedByUser(
@@ -1548,11 +1547,10 @@ exports.revokeGroupInvite = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("not-found", "Questing group not found.");
   }
   const group = groupSnap.data() || {};
-  const members = Array.isArray(group.members) ? group.members.map(normalizeEmail) : [];
   const memberIds = Array.isArray(group.memberIds) ? group.memberIds : [];
 
   const isCreator = group.creatorId === inviterId;
-  const isMember = memberIds.includes(inviterId) || members.includes(inviterEmail);
+  const isMember = memberIds.includes(inviterId);
   const canInvite = isCreator || (group.memberManaged === true && isMember);
   if (!canInvite) {
     throw new functions.https.HttpsError("permission-denied", "Only group managers can revoke invites.");
@@ -1597,10 +1595,11 @@ exports.removeGroupMemberFromPolls = functions.https.onCall(async (data, context
   }
 
   const group = groupSnap.data() || {};
+  const memberIds = Array.isArray(group.memberIds) ? group.memberIds : [];
   const requesterUid = context.auth.uid;
   const requesterEmail = normalizeEmail(context.auth.token.email);
   const isCreator = group.creatorId === requesterUid;
-  const isMember = Array.isArray(group.members) && group.members.includes(requesterEmail);
+  const isMember = memberIds.includes(requesterUid);
   const isManager = isCreator || (group.memberManaged === true && isMember);
   const isSelf = requesterEmail && requesterEmail === memberEmail;
 
@@ -1652,10 +1651,7 @@ exports.removeGroupMemberFromPolls = functions.https.onCall(async (data, context
 
   for (const pollDoc of pollDocs) {
     await pollDoc.ref.update({
-      participants: admin.firestore.FieldValue.arrayRemove(memberEmail),
-      ...(memberUid
-        ? { participantIds: admin.firestore.FieldValue.arrayRemove(memberUid) }
-        : {}),
+      ...(memberUid ? { participantIds: admin.firestore.FieldValue.arrayRemove(memberUid) } : {}),
       pendingInvites: admin.firestore.FieldValue.arrayRemove(memberEmail),
       [`pendingInviteMeta.${memberEmail}`]: admin.firestore.FieldValue.delete(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -2121,7 +2117,7 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
 
     step = "questing-groups";
     const [memberSnap, inviteSnap, creatorSnap] = await Promise.all([
-      db.collection("questingGroups").where("members", "array-contains", email).get(),
+      db.collection("questingGroups").where("memberIds", "array-contains", uid).get(),
       db.collection("questingGroups").where("pendingInvites", "array-contains", email).get(),
       db.collection("questingGroups").where("creatorId", "==", uid).get(),
     ]);
@@ -2134,9 +2130,9 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
     for (const groupId of groupIds) {
       const groupSnap = groupsById.get(groupId);
       const data = groupSnap?.data() || {};
-      const members = data.members || [];
+      const memberIds = data.memberIds || [];
       const pendingInvites = data.pendingInvites || [];
-      const nextMembers = members.filter((member) => member !== email);
+      const nextMemberIds = memberIds.filter((memberId) => memberId !== uid);
       const nextInvites = pendingInvites.filter((invite) => invite !== email);
 
       if (data.creatorId === uid && data.memberManaged !== true) {
@@ -2144,13 +2140,12 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
         continue;
       }
 
-      if (nextMembers.length === 0 && nextInvites.length === 0) {
+      if (nextMemberIds.length === 0 && nextInvites.length === 0) {
         await db.collection("questingGroups").doc(groupId).delete();
         continue;
       }
 
       await db.collection("questingGroups").doc(groupId).update({
-        members: arrayRemove(email),
         memberIds: arrayRemove(uid),
         pendingInvites: arrayRemove(email),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -2187,13 +2182,12 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
     step = "participant-polls";
     const participantPollsSnap = await db
       .collection("schedulers")
-      .where("participants", "array-contains", email)
+      .where("participantIds", "array-contains", uid)
       .get();
     for (const pollDoc of participantPollsSnap.docs) {
       const pollData = pollDoc.data() || {};
       if (pollData.creatorId === uid) continue;
       await pollDoc.ref.update({
-        participants: arrayRemove(email),
         participantIds: arrayRemove(uid),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });

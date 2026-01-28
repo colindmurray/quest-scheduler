@@ -3,6 +3,7 @@ import { doc, setDoc, serverTimestamp, collection } from "firebase/firestore";
 import { useAuth } from "../app/AuthProvider";
 import { useFirestoreCollection } from "./useFirestoreCollection";
 import { useFirestoreDoc } from "./useFirestoreDoc";
+import { useUserProfilesByIds } from "./useUserProfiles";
 import { db } from "../lib/firebase";
 import { findUserIdByEmail } from "../lib/data/users";
 import { ensureGroupInviteNotification } from "../lib/data/notifications";
@@ -12,7 +13,6 @@ import { createEmailMessage } from "../lib/emailTemplates";
 import { createFriendRequest } from "../lib/data/friends";
 import { resolveIdentifier } from "../lib/identifiers";
 import {
-  userGroupsQuery,
   userGroupsByIdQuery,
   userPendingInvitesQuery,
   createQuestingGroup,
@@ -34,11 +34,6 @@ export function useQuestingGroups() {
   const { friends } = useFriends();
 
   // Query for groups user is a member of
-  const groupsByEmailQueryRef = useMemo(() => {
-    if (!user?.email) return null;
-    return userGroupsQuery(user.email.toLowerCase());
-  }, [user?.email]);
-
   const groupsByIdQueryRef = useMemo(() => {
     if (!user?.uid) return null;
     return userGroupsByIdQuery(user.uid);
@@ -54,19 +49,34 @@ export function useQuestingGroups() {
   const userRef = useMemo(() => (user ? doc(db, "users", user.uid) : null), [user]);
   const { data: userData } = useFirestoreDoc(userRef);
 
-  const groupsByEmail = useFirestoreCollection(groupsByEmailQueryRef);
   const groupsById = useFirestoreCollection(groupsByIdQueryRef);
-  const groups = useMemo(() => {
-    const map = new Map();
-    [...groupsByEmail.data, ...groupsById.data].forEach((group) => {
-      if (!group?.id) return;
-      map.set(group.id, group);
-    });
-    return Array.from(map.values());
-  }, [groupsByEmail.data, groupsById.data]);
+  const rawGroups = useMemo(() => groupsById.data, [groupsById.data]);
   const { data: pendingInvites, loading: invitesLoading } = useFirestoreCollection(invitesQueryRef);
 
-  const loading = groupsByEmail.loading || groupsById.loading || invitesLoading;
+  const loading = groupsById.loading || invitesLoading;
+  const groupMemberIds = useMemo(() => {
+    const set = new Set();
+    rawGroups.forEach((group) => {
+      (group.memberIds || []).forEach((id) => {
+        if (id) set.add(id);
+      });
+    });
+    return Array.from(set);
+  }, [rawGroups]);
+  const { profiles: memberProfiles } = useUserProfilesByIds(groupMemberIds);
+  const groups = useMemo(() => {
+    return rawGroups.map((group) => {
+      const ids = Array.isArray(group.memberIds) ? group.memberIds : [];
+      const profiles = ids.map((id) => memberProfiles[id]).filter(Boolean);
+      const derivedEmails = profiles.map((profile) => profile.email).filter(Boolean);
+      const members = derivedEmails.length ? derivedEmails : (group.members || []);
+      return {
+        ...group,
+        memberProfiles: profiles,
+        members,
+      };
+    });
+  }, [rawGroups, memberProfiles]);
   const friendSet = useMemo(
     () => new Set((friends || []).map((email) => email.toLowerCase())),
     [friends]
@@ -261,9 +271,9 @@ export function useQuestingGroups() {
   // Check if user can manage a group (owner or member-managed)
   const canManage = useCallback(
     (group) => {
-      if (!group || !user?.email) return false;
+      if (!group || !user?.uid) return false;
       return group.creatorId === user.uid ||
-        (group.memberManaged && group.members?.includes(user.email.toLowerCase()));
+        (group.memberManaged && group.memberIds?.includes(user.uid));
     },
     [user?.uid, user?.email]
   );

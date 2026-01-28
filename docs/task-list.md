@@ -215,6 +215,10 @@
 - [x] 2026-01-28: Dual-read scheduler/group membership via uid arrays + email fallback.
 - [x] 2026-01-28: Enforce group invite blocking server-side (callable) + remove direct pendingInvites writes.
 - [x] 2026-01-27: Extend Discord login portal doc for username invites + blacklist/abuse rules.
+- [x] 2026-01-28: Switch scheduler/group reads to UID-only (remove participants/members usage).
+- [x] 2026-01-28: Update Firestore rules for UID-only participant/member checks.
+- [x] 2026-01-28: Extend UUID migration script with `--cleanup` to remove legacy fields.
+- [ ] 2026-01-28: Run UUID cleanup (`--cleanup`) after verifying backfill + rules in prod.
 - [ ] Manual QA for auth scenarios + Firebase Console checks (providers, one-account-per-email).
 
 ## Phase 18 — Calendar Event Sync (Design)

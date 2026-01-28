@@ -10,12 +10,6 @@ export const questingGroupsRef = () => collection(db, "questingGroups");
 export const questingGroupRef = (groupId) => doc(db, "questingGroups", groupId);
 
 // Query for groups user is a member of
-export const userGroupsQuery = (userEmail) =>
-  query(
-    questingGroupsRef(),
-    where("members", "array-contains", userEmail)
-  );
-
 export const userGroupsByIdQuery = (userId) =>
   query(
     questingGroupsRef(),
@@ -59,7 +53,6 @@ export async function createQuestingGroup({ name, creatorId, creatorEmail, membe
     creatorId,
     creatorEmail: normalizedEmail,
     memberManaged,
-    members: [normalizedEmail],
     memberIds: [creatorId],
     pendingInvites: [],
     createdAt: serverTimestamp(),
@@ -141,7 +134,6 @@ export async function acceptGroupInvitation(groupId, userEmail, userId = null) {
   }
 
   await updateDoc(ref, {
-    members: arrayUnion(normalizedEmail),
     ...(userId ? { memberIds: arrayUnion(userId) } : {}),
     pendingInvites: arrayRemove(normalizedEmail),
     [`pendingInviteMeta.${normalizedEmail}`]: deleteField(),
@@ -192,7 +184,6 @@ export async function removeMemberFromGroup(groupId, groupName, memberEmail, mem
   const ref = questingGroupRef(groupId);
 
   await updateDoc(ref, {
-    members: arrayRemove(memberEmail.toLowerCase()),
     ...(memberUserId ? { memberIds: arrayRemove(memberUserId) } : {}),
     updatedAt: serverTimestamp(),
   });
@@ -215,7 +206,6 @@ export async function leaveGroup(groupId, userEmail, userId = null) {
   const ref = questingGroupRef(groupId);
 
   await updateDoc(ref, {
-    members: arrayRemove(userEmail.toLowerCase()),
     ...(userId ? { memberIds: arrayRemove(userId) } : {}),
     updatedAt: serverTimestamp(),
   });

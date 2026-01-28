@@ -27,18 +27,13 @@ service cloud.firestore {
         && data.questingGroupId != null
         && data.questingGroupId != ""
         && exists(/databases/$(database)/documents/questingGroups/$(data.questingGroupId))
-        && (
-          (get(/databases/$(database)/documents/questingGroups/$(data.questingGroupId)).data.memberIds != null
-            && request.auth.uid in get(/databases/$(database)/documents/questingGroups/$(data.questingGroupId)).data.memberIds)
-          || (get(/databases/$(database)/documents/questingGroups/$(data.questingGroupId)).data.members != null
-            && userEmail() in get(/databases/$(database)/documents/questingGroups/$(data.questingGroupId)).data.members)
-        );
+        && (get(/databases/$(database)/documents/questingGroups/$(data.questingGroupId)).data.memberIds != null
+          && request.auth.uid in get(/databases/$(database)/documents/questingGroups/$(data.questingGroupId)).data.memberIds);
     }
 
     function isSchedulerParticipantData(data) {
       return isSignedIn() && (
-        (data.participantIds != null && request.auth.uid in data.participantIds) ||
-        (data.participants != null && userEmail() in data.participants)
+        (data.participantIds != null && request.auth.uid in data.participantIds)
       );
     }
 
@@ -151,8 +146,7 @@ service cloud.firestore {
 
     match /questingGroups/{groupId} {
       function isGroupMember(data) {
-        return (data.memberIds != null && request.auth.uid in data.memberIds)
-          || (data.members != null && userEmail() in data.members);
+        return (data.memberIds != null && request.auth.uid in data.memberIds);
       }
 
       function isGroupInvitee(data) {
@@ -175,7 +169,6 @@ service cloud.firestore {
       function isInviteeUpdate(data) {
         return isGroupInvitee(data)
           && request.resource.data.diff(data).affectedKeys().hasOnly([
-            "members",
             "memberIds",
             "pendingInvites",
             "pendingInviteMeta",
@@ -184,21 +177,24 @@ service cloud.firestore {
           && data.pendingInvites.size() == request.resource.data.pendingInvites.size() + 1
           && !(userEmail() in request.resource.data.pendingInvites)
           && data.pendingInvites.hasAll(request.resource.data.pendingInvites)
-          && request.resource.data.members.hasAll(data.members)
-          && request.resource.data.members.size() <= data.members.size() + 1;
+          && request.resource.data.memberIds.hasAll(data.memberIds)
+          && request.resource.data.memberIds.size() <= data.memberIds.size() + 1
+          && (
+            request.resource.data.memberIds.size() == data.memberIds.size()
+            || request.auth.uid in request.resource.data.memberIds
+          );
       }
 
       function isSelfLeave(data) {
         return isGroupMember(data)
           && request.resource.data.diff(data).affectedKeys().hasOnly([
-            "members",
             "memberIds",
             "updatedAt"
           ])
-          && userEmail() in data.members
-          && !(userEmail() in request.resource.data.members)
-          && data.members.size() == request.resource.data.members.size() + 1
-          && data.members.hasAll(request.resource.data.members);
+          && request.auth.uid in data.memberIds
+          && !(request.auth.uid in request.resource.data.memberIds)
+          && data.memberIds.size() == request.resource.data.memberIds.size() + 1
+          && data.memberIds.hasAll(request.resource.data.memberIds);
       }
 
       // Read: members, pending invites, or creator can read
@@ -232,7 +228,6 @@ service cloud.firestore {
       function canVoteScheduler(data) {
         return isSignedIn() && (
           (data.participantIds != null && request.auth.uid in data.participantIds) ||
-          (data.participants != null && userEmail() in data.participants) ||
           isQuestingGroupMember(data)
         );
       }
@@ -245,7 +240,6 @@ service cloud.firestore {
         return data.pendingInvites != null
           && isSchedulerInvitee(data)
           && request.resource.data.diff(data).affectedKeys().hasOnly([
-            "participants",
             "participantIds",
             "pendingInvites",
             "pendingInviteMeta",
@@ -254,11 +248,11 @@ service cloud.firestore {
           && data.pendingInvites.size() == request.resource.data.pendingInvites.size() + 1
           && !(userEmail() in request.resource.data.pendingInvites)
           && data.pendingInvites.hasAll(request.resource.data.pendingInvites)
-          && request.resource.data.participants.hasAll(data.participants)
-          && request.resource.data.participants.size() <= data.participants.size() + 1
+          && request.resource.data.participantIds.hasAll(data.participantIds)
+          && request.resource.data.participantIds.size() <= data.participantIds.size() + 1
           && (
-            request.resource.data.participants.size() == data.participants.size()
-            || userEmail() in request.resource.data.participants
+            request.resource.data.participantIds.size() == data.participantIds.size()
+            || request.auth.uid in request.resource.data.participantIds
           );
       }
 
@@ -266,28 +260,26 @@ service cloud.firestore {
         return isSignedIn()
           && data.allowLinkSharing == true
           && request.resource.data.diff(data).affectedKeys().hasOnly([
-            "participants",
             "participantIds",
             "pendingInvites",
             "pendingInviteMeta",
             "updatedAt"
           ])
-          && request.resource.data.participants.size() == data.participants.size() + 1
-          && userEmail() in request.resource.data.participants
-          && request.resource.data.participants.hasAll(data.participants);
+          && request.resource.data.participantIds.size() == data.participantIds.size() + 1
+          && request.auth.uid in request.resource.data.participantIds
+          && request.resource.data.participantIds.hasAll(data.participantIds);
       }
 
       function isSelfLeave(data) {
         return isSchedulerParticipant(data)
           && request.resource.data.diff(data).affectedKeys().hasOnly([
-            "participants",
             "participantIds",
             "updatedAt"
           ])
-          && userEmail() in data.participants
-          && !(userEmail() in request.resource.data.participants)
-          && data.participants.size() == request.resource.data.participants.size() + 1
-          && data.participants.hasAll(request.resource.data.participants);
+          && request.auth.uid in data.participantIds
+          && !(request.auth.uid in request.resource.data.participantIds)
+          && data.participantIds.size() == request.resource.data.participantIds.size() + 1
+          && data.participantIds.hasAll(request.resource.data.participantIds);
       }
 
       function creatorUpdateAllowed(data) {

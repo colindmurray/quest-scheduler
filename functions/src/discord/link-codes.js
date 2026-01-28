@@ -22,9 +22,9 @@ exports.discordGenerateLinkCode = onCall({ region: DISCORD_REGION }, async (requ
   }
 
   const groupData = groupSnap.data() || {};
-  const email = String(request.auth.token.email || "").toLowerCase();
   const isCreator = groupData.creatorId === request.auth.uid;
-  const isManager = groupData.memberManaged === true && (groupData.members || []).includes(email);
+  const isManager =
+    groupData.memberManaged === true && (groupData.memberIds || []).includes(request.auth.uid);
 
   if (!isCreator && !isManager) {
     throw new HttpsError("permission-denied", "You do not have permission to link this group.");

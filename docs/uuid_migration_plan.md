@@ -89,6 +89,13 @@ The Discord Login Portal feature (see `docs/discord-login-portal.md`) will add D
 
 ## Migration Strategy
 
+### Current Target State (Post Phase 4)
+
+- **Schedulers** use `participantIds` (UIDs) only. The legacy `participants[]` email array is removed.
+- **Questing groups** use `memberIds` (UIDs) only. The legacy `members[]` email array is removed.
+- **Pending invites** remain email-based (`pendingInvites[]` + `pendingInviteMeta`) to support non-registered users.
+- **Reads/writes** and **security rules** must reference UID arrays only.
+
 ### Phase 1: Add UID-Based Fields (Additive, Non-Breaking)
 
 Add new UID-based fields alongside existing email fields. No removal of old fields yet.
@@ -190,7 +197,7 @@ Add new UID-based fields alongside existing email fields. No removal of old fiel
 // Just add redundant UID field for consistency
 
 {
-  oderId: "uid_alice",  // NEW: explicit UID field
+  voterId: "uid_alice",  // NEW: explicit UID field
   userEmail: "alice@example.com",  // KEEP: for display/backward compat
   // ... vote data
 }
@@ -213,9 +220,6 @@ async function acceptSchedulerInvite(schedulerId, user) {
 
     // Remove from pending (email-based)
     pendingInvites: arrayRemove(user.email),
-
-    // DEPRECATED: Also update old array during transition
-    participants: arrayUnion(user.email),
 
     // Clean up metadata
     [`pendingInviteMeta.${user.email}`]: deleteField()
@@ -251,16 +255,31 @@ function isSchedulerParticipant() {
   return userEmail() in resource.data.participants;
 }
 
-// After (Phase 2)
+// After (Phase 2+)
 function isSchedulerParticipant() {
-  return request.auth.uid in resource.data.participantIds
-      || userEmail() in resource.data.pendingInvites;  // Allow pending to view
+  return request.auth.uid in resource.data.participantIds;
 }
 ```
 
 ### Phase 3: Data Migration Script
 
 Run a one-time migration to populate new UID fields from existing email data.
+
+Use the script in this repo:
+
+```
+node functions/scripts/migrate-uuid-identifiers.js \
+  --service-account /path/to/qs-admin-tools.json \
+  --project-id <project-id> \
+  --commit
+```
+
+This script backfills:
+- `schedulers.participantIds` from legacy `participants`
+- `questingGroups.memberIds` from legacy `members`
+- `votes.voterId` from document IDs
+
+Keep the dry-run default (omit `--commit`) until you review output.
 
 ```javascript
 // Migration script (run once)
@@ -327,6 +346,18 @@ async function removeDeprecatedFields() {
   }
 }
 ```
+
+**Scripted cleanup (recommended):**
+
+```
+node functions/scripts/migrate-uuid-identifiers.js \
+  --service-account /path/to/qs-admin-tools.json \
+  --project-id <project-id> \
+  --commit \
+  --cleanup
+```
+
+This removes legacy `participants` and `members` fields after UID backfill is complete.
 
 ## Handling Non-Registered User Invites
 

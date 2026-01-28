@@ -107,6 +107,14 @@ Apply:
 node functions/scripts/migrate-uuid-identifiers.js --service-account /home/colin/keys/qs-admin.json --commit
 ```
 
+Cleanup legacy email arrays (Phase 4):
+```
+node functions/scripts/migrate-uuid-identifiers.js \
+  --service-account /home/colin/keys/qs-admin.json \
+  --commit \
+  --cleanup
+```
+
 ## Notes
 - Google Calendar access uses OAuth token from Google sign-in. If finalization fails, re-auth.
 - SMTP credentials are placeholders until real provider credentials are added.
