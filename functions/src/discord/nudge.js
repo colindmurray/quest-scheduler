@@ -1,4 +1,4 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { createChannelMessage } = require("./discord-client");
 const { APP_URL, DISCORD_REGION, DISCORD_BOT_TOKEN } = require("./config");
@@ -45,36 +45,34 @@ function buildNudgeMessage({
  * Nudge Discord participants who haven't voted on a session poll.
  * Only the poll creator can trigger this, with an 8-hour cooldown per poll.
  */
-exports.nudgeDiscordParticipants = onCall(
-  {
-    region: DISCORD_REGION,
-    secrets: [DISCORD_BOT_TOKEN],
-  },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError("unauthenticated", "Login required");
+exports.nudgeDiscordParticipants = functions
+  .region(DISCORD_REGION)
+  .runWith({ secrets: [DISCORD_BOT_TOKEN] })
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.functions.https.HttpsError("unauthenticated", "Login required");
     }
 
-    const schedulerId = (request.data?.schedulerId || "").trim();
+    const schedulerId = (data?.schedulerId || "").trim();
     if (!schedulerId) {
-      throw new HttpsError("invalid-argument", "Missing schedulerId");
+      throw new functions.https.functions.https.HttpsError("invalid-argument", "Missing schedulerId");
     }
 
-    const userId = request.auth.uid;
+    const userId = context.auth.uid;
 
   // Get the scheduler document
   const schedulerRef = db.collection("schedulers").doc(schedulerId);
   const schedulerSnap = await schedulerRef.get();
 
   if (!schedulerSnap.exists) {
-    throw new HttpsError("not-found", "Session poll not found");
+    throw new functions.https.HttpsError("not-found", "Session poll not found");
   }
 
   const scheduler = schedulerSnap.data();
 
   // Verify caller is the creator
   if (scheduler.creatorId !== userId) {
-    throw new HttpsError(
+    throw new functions.https.HttpsError(
       "permission-denied",
       "Only the poll creator can nudge participants"
     );
@@ -83,7 +81,7 @@ exports.nudgeDiscordParticipants = onCall(
   // Check if poll is posted to Discord
   const discordChannelId = scheduler.discord?.channelId;
   if (!discordChannelId) {
-    throw new HttpsError(
+    throw new functions.https.HttpsError(
       "failed-precondition",
       "This poll is not posted to Discord"
     );
@@ -96,7 +94,7 @@ exports.nudgeDiscordParticipants = onCall(
     if (elapsed < NUDGE_COOLDOWN_MS) {
       const remainingMs = NUDGE_COOLDOWN_MS - elapsed;
       const remainingHours = Math.ceil(remainingMs / (60 * 60 * 1000));
-      throw new HttpsError(
+      throw new functions.https.HttpsError(
         "resource-exhausted",
         `Nudge is on cooldown. Try again in ${remainingHours} hour${remainingHours === 1 ? "" : "s"}.`
       );
@@ -105,7 +103,7 @@ exports.nudgeDiscordParticipants = onCall(
 
   // Check if poll is still open
   if (scheduler.status !== "OPEN") {
-    throw new HttpsError(
+    throw new functions.https.HttpsError(
       "failed-precondition",
       "Can only nudge participants on open polls"
     );
@@ -132,7 +130,7 @@ exports.nudgeDiscordParticipants = onCall(
   participantIds.delete(userId);
 
   if (participantIds.size === 0) {
-    throw new HttpsError(
+    throw new functions.https.HttpsError(
       "failed-precondition",
       "No participants to nudge"
     );
@@ -146,7 +144,7 @@ exports.nudgeDiscordParticipants = onCall(
   const nonVoterIds = Array.from(participantIds).filter((id) => !voterIds.has(id));
 
   if (nonVoterIds.length === 0) {
-    throw new HttpsError(
+    throw new functions.https.HttpsError(
       "failed-precondition",
       "Everyone has already voted!"
     );
@@ -174,7 +172,7 @@ exports.nudgeDiscordParticipants = onCall(
   }
 
   if (discordUserIds.length === 0) {
-    throw new HttpsError(
+    throw new functions.https.HttpsError(
       "failed-precondition",
       "No non-voters have linked their Discord accounts"
     );
@@ -206,7 +204,7 @@ exports.nudgeDiscordParticipants = onCall(
     });
   } catch (err) {
     console.error("Failed to send nudge message:", err);
-    throw new HttpsError(
+    throw new functions.https.HttpsError(
       "internal",
       "Failed to send Discord message. The bot may not have permission to post in this channel."
     );
