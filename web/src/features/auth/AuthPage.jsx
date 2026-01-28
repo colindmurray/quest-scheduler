@@ -26,6 +26,7 @@ const tabs = [
 ];
 
 const GOOGLE_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
+const PROVIDER_BUTTON_WIDTH = 320;
 let googleScriptPromise = null;
 
 function loadGoogleScript() {
@@ -196,12 +197,12 @@ export default function AuthPage() {
       type: "standard",
       theme: "filled_black",
       size: "large",
-      width: providerButtonWidth,
+      width: PROVIDER_BUTTON_WIDTH,
       text: "continue_with",
       shape: "pill",
       logo_alignment: "left",
     });
-  }, [googleReady, handleGoogleCredential, activeTab, providerButtonWidth]);
+  }, [googleReady, handleGoogleCredential, activeTab]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -275,7 +276,6 @@ export default function AuthPage() {
   };
 
   const isRegister = activeTab === "register";
-  const providerButtonWidth = 320;
   const normalizedEmail = normalizeEmail(email);
   const showGoogleFallback = !GOOGLE_OAUTH_CLIENT_ID || googleError;
 
@@ -340,7 +340,7 @@ export default function AuthPage() {
 
             <div className="mt-6 grid gap-4">
               {showGoogleFallback ? (
-                <div className="mx-auto w-full" style={{ maxWidth: providerButtonWidth }}>
+                <div className="mx-auto w-full" style={{ maxWidth: PROVIDER_BUTTON_WIDTH }}>
                   <button
                     type="button"
                     onClick={handleGoogle}
@@ -355,14 +355,14 @@ export default function AuthPage() {
                   <div
                     ref={googleButtonRef}
                     className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-transparent"
-                    style={{ colorScheme: "light", width: providerButtonWidth }}
+                    style={{ colorScheme: "light", width: PROVIDER_BUTTON_WIDTH }}
                   />
                   {googleLoading && (
                     <span className="text-xs text-slate-400">Connecting...</span>
                   )}
                 </div>
               )}
-              <div className="mx-auto w-full" style={{ maxWidth: providerButtonWidth }}>
+              <div className="mx-auto w-full" style={{ maxWidth: PROVIDER_BUTTON_WIDTH }}>
                 <button
                   type="button"
                   onClick={handleDiscordLogin}
