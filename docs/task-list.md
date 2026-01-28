@@ -93,6 +93,9 @@
 - [x] Load friend/group notifications globally on login
 - [x] Remove friend/group invite notifications on accept/decline
 - [x] Notify inviter when a group invite is accepted
+- [x] 2026-01-28: Show notification actors with display names + identifiers (add actor metadata, render via UserIdentity)
+- [x] 2026-01-28: Replace email-only labels in polls, groups, and invites with UserIdentity display
+- [x] 2026-01-28: Backfill friend request recipient IDs on user creation to strengthen UUID linkage
 
 ## Phase 11 — Friends System
 - [x] Replace address book with friend requests + accept flow
@@ -198,6 +201,7 @@
 - [x] Add admin user tool script for delete/suspend/invite allowance updates.
 - [x] 2026-01-27: Draft Discord login portal design doc (`docs/discord-login-portal.md`).
 - [x] 2026-01-27: Update Discord login portal doc with Discord ID invites + display-name privacy requirements.
+- [ ] 2026-01-28: Implement Discord OAuth login flow (start/callback + finish route) and `/auth` Discord button.
 - [x] 2026-01-27: Finalize Discord login email requirement (verified email required; compatible with UUID migration).
 
 ## Phase 18 — UUID Migration (Phase 1)

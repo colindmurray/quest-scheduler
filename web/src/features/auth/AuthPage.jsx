@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../../app/AuthProvider";
 import {
@@ -10,6 +10,7 @@ import {
   signInWithGoogleIdToken,
 } from "../../lib/auth";
 import { APP_NAME, GOOGLE_OAUTH_CLIENT_ID } from "../../lib/config";
+import { startDiscordLogin } from "../../lib/data/discord";
 import {
   Dialog,
   DialogContent,
@@ -92,6 +93,8 @@ function getAuthErrorMessage(error) {
 
 export default function AuthPage() {
   const { banned } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -99,6 +102,7 @@ export default function AuthPage() {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [discordLoading, setDiscordLoading] = useState(false);
   const [googleReady, setGoogleReady] = useState(false);
   const [googleError, setGoogleError] = useState(null);
   const [resetOpen, setResetOpen] = useState(false);
@@ -115,6 +119,24 @@ export default function AuthPage() {
       toast.error(getAuthErrorMessage(error));
     } finally {
       setGoogleLoading(false);
+    }
+  };
+
+  const handleDiscordLogin = async () => {
+    setDiscordLoading(true);
+    try {
+      const storedRedirect = localStorage.getItem("postLoginRedirect");
+      const returnTo =
+        storedRedirect && storedRedirect.startsWith("/") ? storedRedirect : "/dashboard";
+      const authUrl = await startDiscordLogin(returnTo);
+      if (!authUrl) {
+        throw new Error("Missing Discord auth URL.");
+      }
+      window.location.href = authUrl;
+    } catch (error) {
+      console.error("Failed to start Discord login:", error);
+      toast.error("Failed to start Discord login. Please try again.");
+      setDiscordLoading(false);
     }
   };
 
@@ -179,6 +201,28 @@ export default function AuthPage() {
       logo_alignment: "left",
     });
   }, [googleReady, handleGoogleCredential, activeTab]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const error = params.get("error");
+    if (!error) return;
+
+    const errorMessages = {
+      email_required:
+        "Discord login requires a verified email address. Please verify your email in Discord settings or use another sign-in method.",
+      discord_in_use: "That Discord account is already linked to another Quest Scheduler account.",
+      email_conflict:
+        "That email is already linked to another Discord account. Please log in with your existing method.",
+      missing_token: "Discord sign-in could not be completed. Please try again.",
+      discord_failed: "Discord sign-in failed. Please try again.",
+      server_error: "Discord sign-in failed due to a server error. Please try again.",
+      invalid_state: "Discord sign-in expired. Please try again.",
+    };
+
+    toast.error(errorMessages[error] || "Discord sign-in failed. Please try again.");
+    params.delete("error");
+    navigate(`/auth${params.toString() ? `?${params.toString()}` : ""}`, { replace: true });
+  }, [location.search, navigate]);
 
   const handleEmailLogin = async (event) => {
     event.preventDefault();
@@ -314,6 +358,15 @@ export default function AuthPage() {
                   )}
                 </div>
               )}
+              <button
+                type="button"
+                onClick={handleDiscordLogin}
+                disabled={discordLoading}
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-[#5865F2] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4752C4] disabled:opacity-60"
+              >
+                <img src="/assets/Discord-Symbol-Blurple.svg" alt="" className="h-5 w-5" />
+                {discordLoading ? "Connecting..." : "Continue with Discord"}
+              </button>
               {googleError && (
                 <p className="text-center text-xs text-amber-500">
                   Google sign-in is unavailable. Try email or disable blockers.

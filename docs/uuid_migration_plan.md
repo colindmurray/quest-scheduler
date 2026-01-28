@@ -369,6 +369,8 @@ async function onUserRegistered(user) {
 }
 ```
 
+**Additional backfill:** When a user registers, backfill `friendRequests.toUserId` for any pending friend requests addressed to their email. This preserves UUID linkage even if the request was created before the recipient had an account.
+
 ### Accept Invite Flow
 
 ```javascript

@@ -59,7 +59,10 @@ export function friendRequestNotificationId(requestId) {
   return `friendRequest:${requestId}`;
 }
 
-export async function ensureFriendRequestNotification(userId, { requestId, fromEmail }) {
+export async function ensureFriendRequestNotification(
+  userId,
+  { requestId, fromEmail, fromUserId }
+) {
   const notificationId = friendRequestNotificationId(requestId);
   const ref = notificationRef(userId, notificationId);
   await setDoc(ref, {
@@ -70,6 +73,9 @@ export async function ensureFriendRequestNotification(userId, { requestId, fromE
     metadata: {
       requestId,
       fromEmail,
+      fromUserId: fromUserId || null,
+      actorUserId: fromUserId || null,
+      actorEmail: fromEmail || null,
     },
     read: false,
     dismissed: false,
@@ -79,11 +85,14 @@ export async function ensureFriendRequestNotification(userId, { requestId, fromE
   return notificationId;
 }
 
-export async function createFriendRequestNotification(userId, { requestId, fromEmail }) {
-  return ensureFriendRequestNotification(userId, { requestId, fromEmail });
+export async function createFriendRequestNotification(userId, { requestId, fromEmail, fromUserId }) {
+  return ensureFriendRequestNotification(userId, { requestId, fromEmail, fromUserId });
 }
 
-export async function createFriendAcceptedNotification(userId, { requestId, friendEmail }) {
+export async function createFriendAcceptedNotification(
+  userId,
+  { requestId, friendEmail, friendUserId }
+) {
   return createNotification(userId, {
     type: NOTIFICATION_TYPES.FRIEND_ACCEPTED,
     title: "Friend Request Accepted",
@@ -92,6 +101,9 @@ export async function createFriendAcceptedNotification(userId, { requestId, frie
     metadata: {
       requestId,
       friendEmail,
+      friendUserId: friendUserId || null,
+      actorUserId: friendUserId || null,
+      actorEmail: friendEmail || null,
     },
   });
 }
@@ -100,7 +112,10 @@ export function pollInviteNotificationId(schedulerId) {
   return `pollInvite:${schedulerId}`;
 }
 
-export async function ensurePollInviteNotification(userId, { schedulerId, schedulerTitle, inviterEmail }) {
+export async function ensurePollInviteNotification(
+  userId,
+  { schedulerId, schedulerTitle, inviterEmail, inviterUserId }
+) {
   const notificationId = pollInviteNotificationId(schedulerId);
   const ref = notificationRef(userId, notificationId);
   await setDoc(ref, {
@@ -112,6 +127,9 @@ export async function ensurePollInviteNotification(userId, { schedulerId, schedu
       schedulerId,
       schedulerTitle,
       inviterEmail,
+      inviterUserId: inviterUserId || null,
+      actorUserId: inviterUserId || null,
+      actorEmail: inviterEmail || null,
     },
     read: false,
     dismissed: false,
@@ -121,11 +139,22 @@ export async function ensurePollInviteNotification(userId, { schedulerId, schedu
   return notificationId;
 }
 
-export async function createPollInviteNotification(userId, { schedulerId, schedulerTitle, inviterEmail }) {
-  return ensurePollInviteNotification(userId, { schedulerId, schedulerTitle, inviterEmail });
+export async function createPollInviteNotification(
+  userId,
+  { schedulerId, schedulerTitle, inviterEmail, inviterUserId }
+) {
+  return ensurePollInviteNotification(userId, {
+    schedulerId,
+    schedulerTitle,
+    inviterEmail,
+    inviterUserId,
+  });
 }
 
-export async function createGroupInviteAcceptedNotification(userId, { groupId, groupName, memberEmail }) {
+export async function createGroupInviteAcceptedNotification(
+  userId,
+  { groupId, groupName, memberEmail, memberUserId }
+) {
   return createNotification(userId, {
     type: NOTIFICATION_TYPES.GROUP_INVITE_ACCEPTED,
     title: "Group Invite Accepted",
@@ -135,6 +164,9 @@ export async function createGroupInviteAcceptedNotification(userId, { groupId, g
       groupId,
       groupName,
       memberEmail,
+      memberUserId: memberUserId || null,
+      actorUserId: memberUserId || null,
+      actorEmail: memberEmail || null,
     },
   });
 }
@@ -143,7 +175,10 @@ export function groupInviteNotificationId(groupId) {
   return `groupInvite:${groupId}`;
 }
 
-export async function ensureGroupInviteNotification(userId, { groupId, groupName, inviterEmail }) {
+export async function ensureGroupInviteNotification(
+  userId,
+  { groupId, groupName, inviterEmail, inviterUserId }
+) {
   const notificationId = groupInviteNotificationId(groupId);
   const ref = notificationRef(userId, notificationId);
   await setDoc(ref, {
@@ -155,6 +190,9 @@ export async function ensureGroupInviteNotification(userId, { groupId, groupName
       groupId,
       groupName,
       inviterEmail,
+      inviterUserId: inviterUserId || null,
+      actorUserId: inviterUserId || null,
+      actorEmail: inviterEmail || null,
     },
     read: false,
     dismissed: false,
@@ -165,12 +203,18 @@ export async function ensureGroupInviteNotification(userId, { groupId, groupName
 }
 
 // Create group invitation notification
-export async function createGroupInviteNotification(userId, { groupId, groupName, inviterEmail }) {
-  return ensureGroupInviteNotification(userId, { groupId, groupName, inviterEmail });
+export async function createGroupInviteNotification(
+  userId,
+  { groupId, groupName, inviterEmail, inviterUserId }
+) {
+  return ensureGroupInviteNotification(userId, { groupId, groupName, inviterEmail, inviterUserId });
 }
 
 // Create session finalized notification
-export async function createSessionFinalizedNotification(userId, { schedulerId, schedulerTitle, winningDate }) {
+export async function createSessionFinalizedNotification(
+  userId,
+  { schedulerId, schedulerTitle, winningDate }
+) {
   return createNotification(userId, {
     type: NOTIFICATION_TYPES.SESSION_FINALIZED,
     title: "Session Finalized",
@@ -183,7 +227,10 @@ export async function createSessionFinalizedNotification(userId, { schedulerId, 
   });
 }
 
-export async function createSessionInviteNotification(userId, { schedulerId, schedulerTitle, inviterEmail }) {
+export async function createSessionInviteNotification(
+  userId,
+  { schedulerId, schedulerTitle, inviterEmail, inviterUserId }
+) {
   return createNotification(userId, {
     type: NOTIFICATION_TYPES.SESSION_INVITE,
     title: "Session Poll Invitation",
@@ -193,11 +240,17 @@ export async function createSessionInviteNotification(userId, { schedulerId, sch
       schedulerId,
       schedulerTitle,
       inviterEmail,
+      inviterUserId: inviterUserId || null,
+      actorUserId: inviterUserId || null,
+      actorEmail: inviterEmail || null,
     },
   });
 }
 
-export async function createVoteSubmittedNotification(userId, { schedulerId, schedulerTitle, voterEmail }) {
+export async function createVoteSubmittedNotification(
+  userId,
+  { schedulerId, schedulerTitle, voterEmail, voterUserId }
+) {
   return createNotification(userId, {
     type: NOTIFICATION_TYPES.VOTE_SUBMITTED,
     title: "New Vote Submitted",
@@ -207,11 +260,17 @@ export async function createVoteSubmittedNotification(userId, { schedulerId, sch
       schedulerId,
       schedulerTitle,
       voterEmail,
+      voterUserId: voterUserId || null,
+      actorUserId: voterUserId || null,
+      actorEmail: voterEmail || null,
     },
   });
 }
 
-export async function createSessionJoinNotification(userId, { schedulerId, schedulerTitle, participantEmail }) {
+export async function createSessionJoinNotification(
+  userId,
+  { schedulerId, schedulerTitle, participantEmail, participantUserId }
+) {
   return createNotification(userId, {
     type: NOTIFICATION_TYPES.SESSION_JOINED,
     title: "New Participant",
@@ -221,6 +280,9 @@ export async function createSessionJoinNotification(userId, { schedulerId, sched
       schedulerId,
       schedulerTitle,
       participantEmail,
+      participantUserId: participantUserId || null,
+      actorUserId: participantUserId || null,
+      actorEmail: participantEmail || null,
     },
   });
 }

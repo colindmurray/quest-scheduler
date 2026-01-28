@@ -2,11 +2,13 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Plus, Users, Check, X } from "lucide-react";
 import { useQuestingGroups } from "../../../hooks/useQuestingGroups";
+import { useUserProfiles } from "../../../hooks/useUserProfiles";
 import { useNotifications } from "../../../hooks/useNotifications";
 import { groupInviteNotificationId } from "../../../lib/data/notifications";
 import { GroupCard } from "./GroupCard";
 import { CreateGroupModal } from "./CreateGroupModal";
 import { LoadingState } from "../../../components/ui/spinner";
+import { UserIdentity } from "../../../components/UserIdentity";
 
 export function QuestingGroupsTab({ friends = [] }) {
   const {
@@ -28,6 +30,10 @@ export function QuestingGroupsTab({ friends = [] }) {
     canManage,
   } = useQuestingGroups();
   const { removeLocal: removeNotification } = useNotifications();
+  const creatorEmails = (pendingInvites || [])
+    .map((group) => group.creatorEmail)
+    .filter(Boolean);
+  const { enrichUsers } = useUserProfiles(creatorEmails);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [processingInvite, setProcessingInvite] = useState(null);
@@ -108,7 +114,10 @@ export function QuestingGroupsTab({ friends = [] }) {
                     {group.name}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Invited by {group.creatorEmail}
+                    Invited by{" "}
+                    <UserIdentity
+                      user={enrichUsers([group.creatorEmail])[0] || { email: group.creatorEmail }}
+                    />
                   </p>
                 </div>
                 <div className="flex gap-2">

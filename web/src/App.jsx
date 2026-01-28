@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { Toaster } from "sonner";
 import LandingPage from "./features/landing/LandingPage";
 import AuthPage from "./features/auth/AuthPage";
+import DiscordFinishPage from "./features/auth/DiscordFinishPage";
 import DashboardPage from "./features/dashboard/DashboardPage";
 import SettingsPage from "./features/settings/SettingsPage";
 import FriendsPage from "./features/friends/FriendsPage";
@@ -78,6 +79,7 @@ export default function App() {
           </RedirectWhenSignedIn>
         }
       />
+      <Route path="/auth/discord/finish" element={<DiscordFinishPage />} />
       <Route path="/discord-bot" element={<DiscordBotPage />} />
       <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/terms" element={<TermsPage />} />

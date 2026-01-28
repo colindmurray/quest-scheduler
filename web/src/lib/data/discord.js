@@ -7,6 +7,13 @@ export async function startDiscordOAuth() {
   return response.data?.authUrl || null;
 }
 
+export async function startDiscordLogin(returnTo = "/dashboard") {
+  const functions = getFunctions();
+  const startAuth = httpsCallable(functions, "discordOAuthLoginStart");
+  const response = await startAuth({ returnTo });
+  return response.data?.authUrl || null;
+}
+
 export async function generateDiscordLinkCode(groupId) {
   const functions = getFunctions();
   const generateCode = httpsCallable(functions, "discordGenerateLinkCode");

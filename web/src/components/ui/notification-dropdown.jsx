@@ -1,10 +1,13 @@
 import { useNavigate } from "react-router-dom";
+import { useCallback, useMemo } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Check, X, Users, Calendar, Vote, Bell, UserPlus } from "lucide-react";
 import { useQuestingGroups } from "../../hooks/useQuestingGroups";
 import { useFriends } from "../../hooks/useFriends";
 import { usePollInvites } from "../../hooks/usePollInvites";
 import { NOTIFICATION_TYPES } from "../../lib/data/notifications";
+import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfiles";
+import { UserIdentity } from "../UserIdentity";
 
 function NotificationIcon({ type }) {
   switch (type) {
@@ -47,6 +50,7 @@ function NotificationItem({
   onAcceptPollInvite,
   onDeclinePollInvite,
   onRemoveLocal,
+  resolveActor,
 }) {
   const isGroupInvite = notification.type === NOTIFICATION_TYPES.GROUP_INVITE;
   const isFriendRequest = notification.type === NOTIFICATION_TYPES.FRIEND_REQUEST;
@@ -99,6 +103,81 @@ function NotificationItem({
     }
   };
 
+  const actor = resolveActor(notification);
+  const actorNode = actor ? <UserIdentity user={actor} /> : null;
+  const metadata = notification.metadata || {};
+
+  const renderBody = () => {
+    switch (notification.type) {
+      case NOTIFICATION_TYPES.FRIEND_REQUEST:
+        return actorNode ? (
+          <>
+            {actorNode} sent you a friend request
+          </>
+        ) : (
+          notification.body
+        );
+      case NOTIFICATION_TYPES.FRIEND_ACCEPTED:
+        return actorNode ? (
+          <>
+            {actorNode} accepted your friend request
+          </>
+        ) : (
+          notification.body
+        );
+      case NOTIFICATION_TYPES.POLL_INVITE:
+        return actorNode && metadata.schedulerTitle ? (
+          <>
+            {actorNode} invited you to join "{metadata.schedulerTitle}"
+          </>
+        ) : (
+          notification.body
+        );
+      case NOTIFICATION_TYPES.SESSION_INVITE:
+        return actorNode && metadata.schedulerTitle ? (
+          <>
+            {actorNode} invited you to vote on "{metadata.schedulerTitle}"
+          </>
+        ) : (
+          notification.body
+        );
+      case NOTIFICATION_TYPES.GROUP_INVITE:
+        return actorNode && metadata.groupName ? (
+          <>
+            {actorNode} invited you to join "{metadata.groupName}"
+          </>
+        ) : (
+          notification.body
+        );
+      case NOTIFICATION_TYPES.GROUP_INVITE_ACCEPTED:
+        return actorNode && metadata.groupName ? (
+          <>
+            {actorNode} accepted your invite to "{metadata.groupName}"
+          </>
+        ) : (
+          notification.body
+        );
+      case NOTIFICATION_TYPES.SESSION_JOINED:
+        return actorNode && metadata.schedulerTitle ? (
+          <>
+            {actorNode} joined "{metadata.schedulerTitle}"
+          </>
+        ) : (
+          notification.body
+        );
+      case NOTIFICATION_TYPES.VOTE_SUBMITTED:
+        return actorNode && metadata.schedulerTitle ? (
+          <>
+            {actorNode} updated votes for "{metadata.schedulerTitle}"
+          </>
+        ) : (
+          notification.body
+        );
+      default:
+        return notification.body;
+    }
+  };
+
   return (
     <div
       className={`flex gap-3 border-b border-slate-200/70 p-3 transition-colors last:border-b-0 dark:border-slate-700 ${
@@ -116,7 +195,7 @@ function NotificationItem({
           {notification.title}
         </p>
         <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
-          {notification.body}
+          {renderBody()}
         </p>
         {(isGroupInvite || isFriendRequest || isPollInvite) && (
           <div className="mt-2 flex gap-2">
@@ -173,11 +252,88 @@ export function NotificationDropdown({
   const { acceptFriendRequest, declineFriendRequest } = useFriends();
   const { acceptInvite: acceptPollInvite, declineInvite: declinePollInvite } = usePollInvites();
 
+  const actorUserIds = useMemo(
+    () =>
+      notifications
+        .map((notification) => {
+          const meta = notification.metadata || {};
+          return (
+            meta.actorUserId ||
+            meta.fromUserId ||
+            meta.inviterUserId ||
+            meta.friendUserId ||
+            meta.voterUserId ||
+            meta.participantUserId ||
+            meta.memberUserId ||
+            null
+          );
+        })
+        .filter(Boolean),
+    [notifications]
+  );
+
+  const actorEmails = useMemo(
+    () =>
+      notifications
+        .map((notification) => {
+          const meta = notification.metadata || {};
+          return (
+            meta.actorEmail ||
+            meta.fromEmail ||
+            meta.inviterEmail ||
+            meta.friendEmail ||
+            meta.voterEmail ||
+            meta.participantEmail ||
+            meta.memberEmail ||
+            null
+          );
+        })
+        .filter(Boolean),
+    [notifications]
+  );
+
+  const { profiles: profilesById } = useUserProfilesByIds(actorUserIds);
+  const { profiles: profilesByEmail } = useUserProfiles(actorEmails);
+
   const handleNavigate = (url) => {
     navigate(url);
   };
 
   const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const resolveActor = useCallback(
+    (notification) => {
+      const meta = notification?.metadata || {};
+      const actorUserId =
+        meta.actorUserId ||
+        meta.fromUserId ||
+        meta.inviterUserId ||
+        meta.friendUserId ||
+        meta.voterUserId ||
+        meta.participantUserId ||
+        meta.memberUserId ||
+        null;
+      const actorEmail =
+        meta.actorEmail ||
+        meta.fromEmail ||
+        meta.inviterEmail ||
+        meta.friendEmail ||
+        meta.voterEmail ||
+        meta.participantEmail ||
+        meta.memberEmail ||
+        null;
+
+      if (actorUserId && profilesById[actorUserId]) {
+        return profilesById[actorUserId];
+      }
+      if (actorEmail) {
+        const normalized = String(actorEmail).toLowerCase();
+        return profilesByEmail[normalized] || { email: actorEmail };
+      }
+      return null;
+    },
+    [profilesByEmail, profilesById]
+  );
 
   return (
     <div className="flex flex-col">
@@ -248,6 +404,7 @@ export function NotificationDropdown({
               onAcceptPollInvite={acceptPollInvite}
               onDeclinePollInvite={declinePollInvite}
               onRemoveLocal={onRemoveLocal}
+              resolveActor={resolveActor}
             />
           ))}
       </div>

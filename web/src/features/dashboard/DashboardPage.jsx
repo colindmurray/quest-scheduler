@@ -11,6 +11,8 @@ import { usePollInvites } from "../../hooks/usePollInvites";
 import { useNotifications } from "../../hooks/useNotifications";
 import { pollInviteNotificationId } from "../../lib/data/notifications";
 import { LoadingState } from "../../components/ui/spinner";
+import { useUserProfiles } from "../../hooks/useUserProfiles";
+import { UserIdentity } from "../../components/UserIdentity";
 import {
   Dialog,
   DialogContent,
@@ -82,6 +84,27 @@ export default function DashboardPage() {
   const [groupPollsLoading, setGroupPollsLoading] = useState(false);
   const [pendingInviteOpen, setPendingInviteOpen] = useState(false);
   const [selectedInvite, setSelectedInvite] = useState(null);
+  const inviterEmails = useMemo(
+    () =>
+      (pendingInvites || [])
+        .map((invite) => {
+          const meta = invite.pendingInviteMeta?.[user?.email?.toLowerCase() || ""] || {};
+          return meta.invitedByEmail || invite.creatorEmail || null;
+        })
+        .filter(Boolean),
+    [pendingInvites, user?.email]
+  );
+  const { enrichUsers } = useUserProfiles(inviterEmails);
+  const inviterMap = useMemo(() => {
+    const map = new Map();
+    const enriched = enrichUsers(inviterEmails);
+    enriched.forEach((entry) => {
+      if (entry?.email) {
+        map.set(entry.email.toLowerCase(), entry);
+      }
+    });
+    return map;
+  }, [enrichUsers, inviterEmails]);
 
   // Detect mobile viewport
   useEffect(() => {
@@ -567,6 +590,10 @@ export default function DashboardPage() {
               <div className="mt-4 space-y-2">
                 {pendingInvites.map((invite) => {
                   const meta = invite.pendingInviteMeta?.[normalizedEmail] || {};
+                  const inviterEmail = meta.invitedByEmail || invite.creatorEmail || null;
+                  const inviterProfile = inviterEmail
+                    ? inviterMap.get(inviterEmail.toLowerCase()) || { email: inviterEmail }
+                    : null;
                   return (
                     <button
                       key={invite.id}
@@ -577,7 +604,12 @@ export default function DashboardPage() {
                       <div>
                         <p className="text-sm font-semibold">{invite.title || "Session Poll"}</p>
                         <p className="mt-1 text-xs text-amber-700/90 dark:text-amber-200/80">
-                          Invited by {meta.invitedByEmail || invite.creatorEmail || "Unknown"}
+                          Invited by{" "}
+                          {inviterProfile ? (
+                            <UserIdentity user={inviterProfile} />
+                          ) : (
+                            "Unknown"
+                          )}
                         </p>
                       </div>
                       <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-800/60 dark:text-amber-200">
@@ -732,9 +764,14 @@ export default function DashboardPage() {
           {selectedInvite && (
             <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-700/60 dark:bg-amber-900/30 dark:text-amber-200">
               Invited by{" "}
-              {selectedInvite.pendingInviteMeta?.[normalizedEmail]?.invitedByEmail ||
-                selectedInvite.creatorEmail ||
-                "Unknown"}
+              {(() => {
+                const meta = selectedInvite.pendingInviteMeta?.[normalizedEmail] || {};
+                const inviterEmail = meta.invitedByEmail || selectedInvite.creatorEmail || null;
+                if (!inviterEmail) return "Unknown";
+                const inviterProfile =
+                  inviterMap.get(inviterEmail.toLowerCase()) || { email: inviterEmail };
+                return <UserIdentity user={inviterProfile} />;
+              })()}
             </div>
           )}
           <DialogFooter className="mt-6">

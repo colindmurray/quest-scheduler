@@ -72,12 +72,12 @@ export function useFriends() {
   }, [user?.uid, incoming.data]);
 
   const sendFriendRequest = useCallback(
-    async (email) => {
+    async (identifier) => {
       if (!user?.uid || !user?.email) return;
       return createFriendRequest({
         fromUserId: user.uid,
         fromEmail: user.email,
-        toEmail: email,
+        toIdentifier: identifier,
         fromDisplayName: user.displayName,
       });
     },

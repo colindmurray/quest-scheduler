@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Users, Settings, UserPlus, LogOut, Trash2, Crown } from "lucide-react";
 import { GroupColorPicker } from "./GroupColorPicker";
@@ -6,6 +6,7 @@ import { InviteMemberModal } from "./InviteMemberModal";
 import { AvatarBubble, AvatarStack, buildColorMap } from "../../../components/ui/voter-avatars";
 import { useUserProfiles } from "../../../hooks/useUserProfiles";
 import { generateDiscordLinkCode, fetchDiscordGuildRoles } from "../../../lib/data/discord";
+import { UserIdentity } from "../../../components/UserIdentity";
 import {
   Dialog,
   DialogContent,
@@ -48,9 +49,18 @@ export function GroupCard({
 
   const members = group.members || [];
   const pendingInvites = group.pendingInvites || [];
+  const profileEmails = useMemo(
+    () => Array.from(new Set([...members, ...pendingInvites].filter(Boolean))),
+    [members, pendingInvites]
+  );
   const colorMap = buildColorMap(members);
-  const { enrichUsers, getAvatar } = useUserProfiles(members);
+  const { enrichUsers, getAvatar } = useUserProfiles(profileEmails);
   const enrichedMembers = enrichUsers(members);
+  const pendingInviteUsers = enrichUsers(pendingInvites);
+  const memberToRemoveProfile = useMemo(
+    () => enrichedMembers.find((member) => member.email === memberToRemove),
+    [enrichedMembers, memberToRemove]
+  );
 
   const handleRemoveMember = async () => {
     if (!memberToRemove) return;
@@ -213,23 +223,25 @@ export function GroupCard({
 
         {/* Member list */}
         <div className="mt-3 flex flex-wrap gap-2">
-          {members.map((email) => (
+          {enrichedMembers.map((member) => (
             <div
-              key={email}
+              key={member.email}
               className="group flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 py-1 pl-1 pr-2 text-xs dark:border-slate-700 dark:bg-slate-800"
             >
               <AvatarBubble
-                email={email}
-                avatar={getAvatar(email)}
+                email={member.email}
+                avatar={getAvatar(member.email)}
                 size={18}
                 colorMap={colorMap}
               />
-              <span className="text-slate-600 dark:text-slate-300">{email}</span>
-              {canManage && email !== group.creatorEmail && (
+              <span className="text-slate-600 dark:text-slate-300">
+                <UserIdentity user={member} showIdentifier={false} />
+              </span>
+              {canManage && member.email !== group.creatorEmail && (
                 <button
                   type="button"
                   onClick={() => {
-                    setMemberToRemove(email);
+                    setMemberToRemove(member.email);
                     setRemoveMemberOpen(true);
                   }}
                   className="ml-1 hidden text-red-500 hover:text-red-600 group-hover:inline-block"
@@ -240,18 +252,20 @@ export function GroupCard({
               )}
             </div>
           ))}
-          {pendingInvites.map((email) => (
+          {pendingInviteUsers.map((invitee) => (
             <div
-              key={email}
+              key={invitee.email}
               className="group flex items-center gap-1 rounded-full border border-dashed border-amber-300 bg-amber-50 px-2 py-1 text-xs dark:border-amber-700 dark:bg-amber-900/30"
             >
-              <span className="text-amber-700 dark:text-amber-300">{email}</span>
+              <span className="text-amber-700 dark:text-amber-300">
+                <UserIdentity user={invitee} showIdentifier={false} />
+              </span>
               <span className="text-amber-500 dark:text-amber-400">(pending)</span>
               {canManage && (
                 <button
                   type="button"
                   onClick={() => {
-                    setRevokeInviteEmail(email);
+                    setRevokeInviteEmail(invitee.email);
                     setRevokeInviteOpen(true);
                   }}
                   className="ml-1 hidden text-amber-600 hover:text-amber-700 group-hover:inline-block"
@@ -450,7 +464,13 @@ export function GroupCard({
           <DialogHeader>
             <DialogTitle>Remove member</DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove {memberToRemove} from "{group.name}"?
+              Are you sure you want to remove{" "}
+              {memberToRemove ? (
+                <UserIdentity user={memberToRemoveProfile || { email: memberToRemove }} />
+              ) : (
+                "this member"
+              )}{" "}
+              from "{group.name}"?
             </DialogDescription>
           </DialogHeader>
 

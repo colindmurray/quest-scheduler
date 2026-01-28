@@ -10,15 +10,16 @@ import {
 } from "firebase/firestore";
 import { updateProfile } from "firebase/auth";
 import { db } from "../firebase";
+import { buildPublicIdentifier } from "../identity";
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
 }
 
-function defaultDisplayName({ email, displayName }) {
+function defaultDisplayName({ displayName, discordName }) {
   if (displayName) return displayName;
-  if (email) return email;
-  return "User";
+  if (discordName) return discordName;
+  return null;
 }
 
 export async function findUserIdByEmail(email) {
@@ -72,11 +73,21 @@ export async function ensureUserProfile(user) {
   const userData = userSnap.exists() ? userSnap.data() : {};
   const publicData = publicSnap.exists() ? publicSnap.data() : {};
 
+  const discordName =
+    userData.discord?.globalName || userData.discord?.username || null;
   const displayName =
     userData.displayName ||
     publicData.displayName ||
-    defaultDisplayName({ email, displayName: user.displayName });
+    defaultDisplayName({ email, displayName: user.displayName, discordName });
   const photoURL = userData.photoURL || publicData.photoURL || user.photoURL || null;
+  const publicIdentifierType =
+    userData.publicIdentifierType || publicData.publicIdentifierType || "email";
+  const publicIdentifier = buildPublicIdentifier({
+    publicIdentifierType,
+    qsUsername: userData.qsUsername || publicData.qsUsername || null,
+    discordUsername: userData.discord?.username || publicData.discordUsername || null,
+    email,
+  });
 
   const userHasEmailNotifications =
     userData.settings && Object.prototype.hasOwnProperty.call(userData.settings, "emailNotifications");
@@ -97,6 +108,9 @@ export async function ensureUserProfile(user) {
     userUpdates.settings = { emailNotifications };
   }
   if (!userSnap.exists()) userUpdates.createdAt = serverTimestamp();
+  if (!userData.publicIdentifierType) {
+    userUpdates.publicIdentifierType = publicIdentifierType;
+  }
   if (Object.keys(userUpdates).length > 0) {
     userUpdates.updatedAt = serverTimestamp();
     await setDoc(userRef, userUpdates, { merge: true });
@@ -107,6 +121,22 @@ export async function ensureUserProfile(user) {
   if (publicData.displayName !== displayName && displayName) publicUpdates.displayName = displayName;
   if (publicData.photoURL !== photoURL) publicUpdates.photoURL = photoURL;
   if (!publicHasEmailNotifications) publicUpdates.emailNotifications = emailNotifications;
+  if (publicData.publicIdentifierType !== publicIdentifierType) {
+    publicUpdates.publicIdentifierType = publicIdentifierType;
+  }
+  if (publicIdentifier && publicData.publicIdentifier !== publicIdentifier) {
+    publicUpdates.publicIdentifier = publicIdentifier;
+  }
+  if (userData.qsUsername && publicData.qsUsername !== userData.qsUsername) {
+    publicUpdates.qsUsername = userData.qsUsername;
+    publicUpdates.qsUsernameLower = String(userData.qsUsername).toLowerCase();
+  }
+  if (discordName && publicData.discordUsername !== userData.discord?.username) {
+    publicUpdates.discordUsername = userData.discord?.username || null;
+    publicUpdates.discordUsernameLower = userData.discord?.username
+      ? String(userData.discord.username).toLowerCase()
+      : null;
+  }
   if (Object.keys(publicUpdates).length > 0) {
     publicUpdates.updatedAt = serverTimestamp();
     await setDoc(publicRef, publicUpdates, { merge: true });

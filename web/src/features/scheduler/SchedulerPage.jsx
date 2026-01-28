@@ -58,8 +58,10 @@ import {
   uniqueUsers,
 } from "../../components/ui/voter-avatars";
 import { UserAvatar } from "../../components/ui/avatar";
+import { UserIdentity } from "../../components/UserIdentity";
 import { LoadingState } from "../../components/ui/spinner";
 import { isValidEmail } from "../../lib/utils";
+import { resolveIdentifier } from "../../lib/identifiers";
 import { createVoteSubmittedNotification, pollInviteNotificationId } from "../../lib/data/notifications";
 import { createSessionFinalizedNotification } from "../../lib/data/notifications";
 import { findUserIdByEmail, findUserIdsByEmails } from "../../lib/data/users";
@@ -246,12 +248,12 @@ export default function SchedulerPage() {
   );
   const profileEmails = useMemo(() => {
     const combined = new Set(
-      [...questingGroupMembers, ...cloneGroupMemberEmails]
+      [...questingGroupMembers, ...cloneGroupMemberEmails, ...cloneInvites, ...cloneRecommendedEmails]
         .filter(Boolean)
         .map((email) => normalizeEmail(email))
     );
     return Array.from(combined);
-  }, [questingGroupMembers, cloneGroupMemberEmails]);
+  }, [questingGroupMembers, cloneGroupMemberEmails, cloneInvites, cloneRecommendedEmails]);
   const { enrichUsers } = useUserProfiles(profileEmails);
   const groupUsers = useMemo(
     () => enrichUsers(questingGroupMembers),
@@ -260,6 +262,11 @@ export default function SchedulerPage() {
   const cloneGroupUsers = useMemo(
     () => enrichUsers(cloneGroupMembers),
     [enrichUsers, cloneGroupMembers]
+  );
+  const cloneInviteUsers = useMemo(() => enrichUsers(cloneInvites), [enrichUsers, cloneInvites]);
+  const cloneRecommendedUsers = useMemo(
+    () => enrichUsers(cloneRecommendedEmails),
+    [enrichUsers, cloneRecommendedEmails]
   );
   const cloneGroupOptions = useMemo(() => {
     const base = groups.map((group) => ({
@@ -383,6 +390,12 @@ export default function SchedulerPage() {
     () => scheduler.data?.pendingInvites || [],
     [scheduler.data?.pendingInvites]
   );
+  const { enrichUsers: enrichPendingInviteUsers } = useUserProfiles(pendingInviteEmails);
+  const pendingInviteUsers = useMemo(
+    () => enrichPendingInviteUsers(pendingInviteEmails),
+    [enrichPendingInviteUsers, pendingInviteEmails]
+  );
+  const { enrichUsers: enrichParticipantUsers } = useUserProfiles(participantEmails);
   const voterEmails = useMemo(
     () => allVotes.data.map((voteDoc) => voteDoc.userEmail).filter(Boolean),
     [allVotes.data]
@@ -398,13 +411,16 @@ export default function SchedulerPage() {
         .filter((voteDoc) => voteDoc.userEmail)
         .map((voteDoc) => [voteDoc.userEmail, voteDoc])
     );
-    return participantEmails.map((email) => ({
-      email,
-      avatar: voteMap.get(email)?.userAvatar || null,
-      hasVoted: voteMap.has(email),
-      isGroupMember: questingGroupMemberSet.has(normalizeEmail(email)),
-    }));
-  }, [allVotes.data, participantEmails, questingGroupMemberSet]);
+    return enrichParticipantUsers(participantEmails).map((userInfo) => {
+      const vote = voteMap.get(userInfo.email);
+      return {
+        ...userInfo,
+        avatar: vote?.userAvatar || userInfo.avatar || null,
+        hasVoted: voteMap.has(userInfo.email),
+        isGroupMember: questingGroupMemberSet.has(normalizeEmail(userInfo.email)),
+      };
+    });
+  }, [allVotes.data, participantEmails, questingGroupMemberSet, enrichParticipantUsers]);
   const nonGroupParticipants = useMemo(
     () => participants.filter((participant) => !participant.isGroupMember),
     [participants]
@@ -732,13 +748,17 @@ export default function SchedulerPage() {
     });
   };
 
-  const addCloneInvite = (email) => {
-    const normalized = normalizeEmail(email);
-    if (!normalized) return;
-    if (!isValidEmail(normalized)) {
-      setCloneInviteError("Enter a valid email address.");
+  const addCloneInvite = async (input) => {
+    const raw = String(input || "").trim();
+    if (!raw) return;
+    let resolved;
+    try {
+      resolved = await resolveIdentifier(raw);
+    } catch (err) {
+      setCloneInviteError(err.message || "Enter a valid email or Discord username.");
       return;
     }
+    const normalized = normalizeEmail(resolved.email);
     if (scheduler.data?.creatorEmail && normalized === normalizeEmail(scheduler.data.creatorEmail)) {
       setCloneInviteError("You are already included as a participant.");
       return;
@@ -803,6 +823,7 @@ export default function SchedulerPage() {
               schedulerId: id,
               schedulerTitle: scheduler.data?.title || "Session Poll",
               voterEmail: user.email,
+              voterUserId: user.uid,
             });
           }
         } catch (notifyErr) {
@@ -1354,6 +1375,7 @@ export default function SchedulerPage() {
   const pendingInviteMeta =
     (normalizedUserEmail && scheduler.data.pendingInviteMeta?.[normalizedUserEmail]) || {};
   const inviterLabel = pendingInviteMeta.invitedByEmail || scheduler.data.creatorEmail || "someone";
+  const inviterProfile = participantMap.get(normalizeEmail(inviterLabel)) || { email: inviterLabel };
   const canAccess =
     isCreator ||
     scheduler.data.allowLinkSharing ||
@@ -1584,7 +1606,7 @@ export default function SchedulerPage() {
                       className="flex items-center gap-2 rounded-xl border border-transparent bg-white/70 px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-slate-900/70 dark:text-slate-200"
                     >
                       <AvatarBubbleWithColors email={member.email} avatar={member.avatar} size={22} />
-                      <span className="text-xs">{member.email}</span>
+                      <UserIdentity user={member} className="text-xs" />
                       <span
                         className={`ml-auto text-[10px] font-semibold ${
                           member.hasVoted
@@ -1611,7 +1633,7 @@ export default function SchedulerPage() {
                   className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
                 >
                   <AvatarBubbleWithColors email={participant.email} avatar={participant.avatar} size={18} />
-                  <span className="text-slate-700 dark:text-slate-200">{participant.email}</span>
+                  <UserIdentity user={participant} className="text-slate-700 dark:text-slate-200" />
                   <span
                     className={`text-[10px] font-semibold ${
                       participant.hasVoted
@@ -1645,17 +1667,17 @@ export default function SchedulerPage() {
                   Pending invites
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {pendingInviteEmails.map((email) => (
+                  {pendingInviteUsers.map((invitee) => (
                     <div
-                      key={email}
+                      key={invitee.email}
                       className="flex items-center gap-2 rounded-full border border-dashed border-amber-300 bg-amber-50 px-3 py-1 text-xs text-amber-700 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200"
                     >
-                      <span>{email}</span>
+                      <UserIdentity user={invitee} showIdentifier={false} />
                       {isCreator && (
                         <button
                           type="button"
                           onClick={() => {
-                            setInviteToRevoke(email);
+                            setInviteToRevoke(invitee.email);
                             setRevokeInviteOpen(true);
                           }}
                           className="text-[10px] font-semibold text-amber-700 hover:text-amber-800 dark:text-amber-200 dark:hover:text-amber-100"
@@ -1923,9 +1945,10 @@ export default function SchedulerPage() {
                                   className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
                                 >
                                   <AvatarBubbleWithColors email={voter.email} avatar={voter.avatar} size={20} />
-                                  <span className="text-slate-700 dark:text-slate-200">
-                                    {voter.email}
-                                  </span>
+                                  <UserIdentity
+                                    user={participantMap.get(normalizeEmail(voter.email)) || voter}
+                                    className="text-slate-700 dark:text-slate-200"
+                                  />
                                   {voter.source === "discord" && (
                                     <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 dark:border-indigo-700/60 dark:bg-indigo-900/40 dark:text-indigo-200">
                                       Discord
@@ -1958,9 +1981,10 @@ export default function SchedulerPage() {
                                   className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
                                 >
                                   <AvatarBubbleWithColors email={voter.email} avatar={voter.avatar} size={20} />
-                                  <span className="text-slate-700 dark:text-slate-200">
-                                    {voter.email}
-                                  </span>
+                                  <UserIdentity
+                                    user={participantMap.get(normalizeEmail(voter.email)) || voter}
+                                    className="text-slate-700 dark:text-slate-200"
+                                  />
                                   {voter.source === "discord" && (
                                     <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 dark:border-indigo-700/60 dark:bg-indigo-900/40 dark:text-indigo-200">
                                       Discord
@@ -2279,7 +2303,16 @@ export default function SchedulerPage() {
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Invitees</p>
               {scheduler.data?.creatorEmail && (
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  You are included as {scheduler.data.creatorEmail}.
+                  You are included as{" "}
+                  <UserIdentity
+                    user={
+                      participantMap.get(normalizeEmail(scheduler.data.creatorEmail)) || {
+                        email: scheduler.data.creatorEmail,
+                      }
+                    }
+                    showIdentifier={false}
+                  />
+                  .
                 </p>
               )}
               {cloneSelectedGroup && (
@@ -2305,7 +2338,7 @@ export default function SchedulerPage() {
                         className="flex items-center gap-2 rounded-xl border border-transparent bg-white/70 px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-slate-900/70 dark:text-slate-200"
                       >
                         <UserAvatar email={member.email} src={member.avatar} size={22} />
-                        <span>{member.email}</span>
+                        <UserIdentity user={member} showIdentifier={false} />
                       </div>
                     ))}
                   </div>
@@ -2317,43 +2350,43 @@ export default function SchedulerPage() {
                     No additional invitees yet.
                   </span>
                 )}
-                {cloneInvites.map((email) => (
+                {cloneInviteUsers.map((invitee) => (
                   <button
-                    key={email}
+                    key={invitee.email}
                     type="button"
-                    onClick={() => removeCloneInvite(email)}
+                    onClick={() => removeCloneInvite(invitee.email)}
                     className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-red-50 hover:border-red-200 hover:text-red-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-red-900/30 dark:hover:border-red-800 dark:hover:text-red-300"
                     title="Remove"
                   >
-                    {email} ✕
+                    <UserIdentity user={invitee} /> ✕
                   </button>
                 ))}
               </div>
 
-              {cloneRecommendedEmails.length > 0 && (
-                <>
-                  <p className="mt-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    Recommended (from friends)
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {cloneRecommendedEmails.map((email) => (
+                {cloneRecommendedEmails.length > 0 && (
+                  <>
+                    <p className="mt-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      Recommended (from friends)
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                    {cloneRecommendedUsers.map((entry) => (
                       <button
-                        key={email}
+                        key={entry.email}
                         type="button"
                         className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-700"
-                        onClick={() => addCloneInvite(email)}
+                        onClick={() => addCloneInvite(entry.email)}
                       >
-                        + {email}
+                        + <UserIdentity user={entry} showIdentifier={false} />
                       </button>
                     ))}
-                  </div>
-                </>
-              )}
+                    </div>
+                  </>
+                )}
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <input
                   className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                  placeholder="Add one email"
+                  placeholder="Add email, Discord username, or @username"
                   value={cloneInviteInput}
                   onChange={(event) => setCloneInviteInput(event.target.value)}
                   onKeyDown={(event) => {
@@ -2517,9 +2550,13 @@ export default function SchedulerPage() {
           <DialogHeader>
             <DialogTitle>Join this session poll?</DialogTitle>
             <DialogDescription>
-              {isPendingInvite
-                ? `${inviterLabel} invited you to join this poll.`
-                : "This poll is open to anyone with the link."}
+              {isPendingInvite ? (
+                <>
+                  <UserIdentity user={inviterProfile} /> invited you to join this poll.
+                </>
+              ) : (
+                "This poll is open to anyone with the link."
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
@@ -2579,7 +2616,13 @@ export default function SchedulerPage() {
           <DialogHeader>
             <DialogTitle>Remove participant</DialogTitle>
             <DialogDescription>
-              Remove {memberToRemove} from this poll? Their votes will be cleared.
+              Remove{" "}
+              {memberToRemove ? (
+                <UserIdentity user={participantMap.get(normalizeEmail(memberToRemove)) || { email: memberToRemove }} />
+              ) : (
+                "this participant"
+              )}{" "}
+              from this poll? Their votes will be cleared.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-6">

@@ -114,6 +114,7 @@ export async function inviteMemberToGroup(
         groupId,
         groupName,
         inviterEmail,
+        inviterUserId,
       });
     } catch (err) {
       console.warn("Failed to create group invite notification:", err);
@@ -156,6 +157,7 @@ export async function acceptGroupInvitation(groupId, userEmail, userId = null) {
       groupId,
       groupName: data.name || "Questing Group",
       memberEmail: normalizedEmail,
+      memberUserId: userId,
     });
   }
 }

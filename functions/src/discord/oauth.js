@@ -15,6 +15,28 @@ function getRedirectUri() {
   return `https://${DISCORD_REGION}-${project}.cloudfunctions.net/discordOAuthCallback`;
 }
 
+function sanitizeReturnTo(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "/dashboard";
+  if (!trimmed.startsWith("/")) return "/dashboard";
+  if (trimmed.startsWith("//")) return "/dashboard";
+  if (trimmed.includes("://")) return "/dashboard";
+  return trimmed;
+}
+
+function buildAuthorizeUrl({ scope, state }) {
+  const redirectUri = getRedirectUri();
+  const params = new URLSearchParams({
+    client_id: DISCORD_CLIENT_ID.value(),
+    response_type: "code",
+    scope,
+    state,
+    redirect_uri: redirectUri,
+    prompt: "consent",
+  });
+  return `https://discord.com/api/oauth2/authorize?${params.toString()}`;
+}
+
 exports.discordOAuthStart = onCall(
   {
     region: DISCORD_REGION,
@@ -30,21 +52,37 @@ exports.discordOAuthStart = onCall(
     await admin.firestore().collection("oauthStates").doc(state).set({
       uid: request.auth.uid,
       provider: "discord",
+      intent: "link",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       expiresAt,
     });
 
-    const redirectUri = getRedirectUri();
-    const params = new URLSearchParams({
-      client_id: DISCORD_CLIENT_ID.value(),
-      response_type: "code",
-      scope: "identify",
-      state,
-      redirect_uri: redirectUri,
+    return {
+      authUrl: buildAuthorizeUrl({ scope: "identify", state }),
+    };
+  }
+);
+
+exports.discordOAuthLoginStart = onCall(
+  {
+    region: DISCORD_REGION,
+    secrets: [DISCORD_CLIENT_ID],
+  },
+  async (request) => {
+    const state = crypto.randomBytes(16).toString("hex");
+    const expiresAt = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000));
+    const returnTo = sanitizeReturnTo(request.data?.returnTo);
+
+    await admin.firestore().collection("oauthStates").doc(state).set({
+      provider: "discord",
+      intent: "login",
+      returnTo,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiresAt,
     });
 
     return {
-      authUrl: `https://discord.com/api/oauth2/authorize?${params.toString()}`,
+      authUrl: buildAuthorizeUrl({ scope: "identify email", state }),
     };
   }
 );
@@ -72,7 +110,7 @@ exports.discordOAuthCallback = onRequest(
 
       const stateData = stateSnap.data() || {};
       const expiresAt = stateData.expiresAt?.toDate?.();
-      if (stateData.provider !== "discord" || !stateData.uid) {
+      if (stateData.provider !== "discord") {
         await stateRef.delete();
         res.status(400).send("Invalid state");
         return;
@@ -126,9 +164,141 @@ exports.discordOAuthCallback = onRequest(
         return;
       }
 
+      const intent = stateData.intent || "link";
       const discordUserId = String(userJson.id);
-      const linkRef = admin.firestore().collection("discordUserLinks").doc(discordUserId);
+      const discordUsername = userJson.username || null;
+      const discordGlobalName = userJson.global_name || null;
+      const discordEmail = userJson.verified === true ? userJson.email || null : null;
+
+      const db = admin.firestore();
+      const linkRef = db.collection("discordUserLinks").doc(discordUserId);
       const existingLink = await linkRef.get();
+
+      if (intent === "login") {
+        let uid = existingLink.exists ? existingLink.data()?.qsUserId : null;
+
+        if (!uid) {
+          if (!discordEmail) {
+            await stateRef.delete();
+            res.redirect(`${APP_URL}/auth?error=email_required`);
+            return;
+          }
+
+          try {
+            const existingUser = await admin.auth().getUserByEmail(discordEmail);
+            uid = existingUser.uid;
+          } catch (err) {
+            if (err?.code !== "auth/user-not-found") {
+              await stateRef.delete();
+              res.redirect(`${APP_URL}/auth?error=server_error`);
+              return;
+            }
+          }
+        }
+
+        if (!uid) {
+          const newUser = await admin.auth().createUser({
+            email: discordEmail,
+            emailVerified: true,
+            displayName: discordGlobalName || discordUsername || undefined,
+          });
+          uid = newUser.uid;
+        } else {
+          if (discordEmail) {
+            try {
+              const authRecord = await admin.auth().getUser(uid);
+              const authEmail = String(authRecord.email || "").trim().toLowerCase();
+              if (authEmail && authEmail === String(discordEmail).toLowerCase()) {
+                await admin.auth().updateUser(uid, { emailVerified: true });
+              }
+            } catch (err) {
+              console.warn("Failed to update emailVerified for Discord login", err);
+            }
+          }
+          const userDoc = await db.collection("users").doc(uid).get();
+          const linkedDiscordId = userDoc.data()?.discord?.userId;
+          if (linkedDiscordId && linkedDiscordId !== discordUserId) {
+            await stateRef.delete();
+            res.redirect(`${APP_URL}/auth?error=email_conflict`);
+            return;
+          }
+        }
+
+        if (existingLink.exists && existingLink.data()?.qsUserId !== uid) {
+          await stateRef.delete();
+          res.redirect(`${APP_URL}/auth?error=discord_in_use`);
+          return;
+        }
+
+        await linkRef.set({
+          qsUserId: uid,
+          linkedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        const userRef = db.collection("users").doc(uid);
+        const publicRef = db.collection("usersPublic").doc(uid);
+        const userSnap = await userRef.get();
+        const existingUserData = userSnap.exists ? userSnap.data() : {};
+        const displayName = discordGlobalName || discordUsername || null;
+
+        const userUpdates = {
+          discord: {
+            userId: discordUserId,
+            username: discordUsername,
+            globalName: discordGlobalName,
+            linkedAt: admin.firestore.FieldValue.serverTimestamp(),
+            linkSource: "oauth",
+          },
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        if (!existingUserData.email && discordEmail) {
+          userUpdates.email = discordEmail;
+        }
+        if (!existingUserData.displayName && displayName) {
+          userUpdates.displayName = displayName;
+        }
+        if (!existingUserData.publicIdentifierType && discordUsername) {
+          userUpdates.publicIdentifierType = "discordUsername";
+        }
+
+        const publicUpdates = {
+          discordUsername,
+          discordUsernameLower: discordUsername ? String(discordUsername).toLowerCase() : null,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        if (!existingUserData.email && discordEmail) {
+          publicUpdates.email = discordEmail;
+        }
+        if (!existingUserData.displayName && displayName) {
+          publicUpdates.displayName = displayName;
+        }
+        if (!existingUserData.publicIdentifierType && discordUsername) {
+          publicUpdates.publicIdentifierType = "discordUsername";
+          publicUpdates.publicIdentifier = discordUsername;
+        }
+
+        await Promise.all([
+          userRef.set(userUpdates, { merge: true }),
+          publicRef.set(publicUpdates, { merge: true }),
+        ]);
+
+        const customToken = await admin.auth().createCustomToken(uid);
+        const returnTo = sanitizeReturnTo(stateData.returnTo);
+        await stateRef.delete();
+        res.redirect(
+          `${APP_URL}/auth/discord/finish?token=${encodeURIComponent(
+            customToken
+          )}&returnTo=${encodeURIComponent(returnTo)}`
+        );
+        return;
+      }
+
+      if (!stateData.uid) {
+        await stateRef.delete();
+        res.status(400).send("Invalid state");
+        return;
+      }
+
       if (existingLink.exists && existingLink.data()?.qsUserId !== stateData.uid) {
         await stateRef.delete();
         res.status(409).send("Discord account already linked to another user");
@@ -140,19 +310,29 @@ exports.discordOAuthCallback = onRequest(
         linkedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      await admin.firestore().collection("users").doc(stateData.uid).set(
-        {
-          discord: {
-            userId: discordUserId,
-            username: userJson.username || null,
-            globalName: userJson.global_name || null,
-            linkedAt: admin.firestore.FieldValue.serverTimestamp(),
-            linkSource: "oauth",
+      await Promise.all([
+        db.collection("users").doc(stateData.uid).set(
+          {
+            discord: {
+              userId: discordUserId,
+              username: discordUsername,
+              globalName: discordGlobalName,
+              linkedAt: admin.firestore.FieldValue.serverTimestamp(),
+              linkSource: "oauth",
+            },
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
+          { merge: true }
+        ),
+        db.collection("usersPublic").doc(stateData.uid).set(
+          {
+            discordUsername,
+            discordUsernameLower: discordUsername ? String(discordUsername).toLowerCase() : null,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        ),
+      ]);
 
       await stateRef.delete();
       res.redirect(`${APP_URL}/settings?discord=linked`);

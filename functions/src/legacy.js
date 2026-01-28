@@ -13,6 +13,18 @@ if (!admin.apps.length) {
 const MAX_INVITE_ALLOWANCE = 50;
 const MAX_POLL_INVITES_PER_RECIPIENT = 3;
 const INVITE_BLOCK_PENALTY = 5;
+const DISCORD_USERNAME_REGEX = /^[a-z0-9_.]{2,32}$/i;
+const LEGACY_DISCORD_TAG_REGEX = /^.+#\d{4}$/;
+const DISCORD_ID_REGEX = /^\d{17,20}$/;
+const QS_USERNAME_REGEX = /^[a-z][a-z0-9_]{2,19}$/;
+const RESERVED_QS_USERNAMES = new Set([
+  "admin",
+  "support",
+  "help",
+  "system",
+  "quest",
+  "scheduler",
+]);
 
 const SCOPES = [
   "openid",
@@ -35,6 +47,41 @@ function encodeEmailId(value) {
   return encodeURIComponent(normalizeEmail(value));
 }
 
+function isDiscordUsername(value) {
+  if (!value) return false;
+  if (!DISCORD_USERNAME_REGEX.test(value)) return false;
+  if (value.startsWith(".") || value.endsWith(".")) return false;
+  if (value.includes("..")) return false;
+  return true;
+}
+
+function isValidQsUsername(value) {
+  if (!value) return false;
+  if (!QS_USERNAME_REGEX.test(value)) return false;
+  return !RESERVED_QS_USERNAMES.has(value);
+}
+
+function parseIdentifier(raw) {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) return { type: "unknown", value: "" };
+  if (trimmed.startsWith("@")) {
+    return { type: "qsUsername", value: trimmed.slice(1).toLowerCase() };
+  }
+  if (trimmed.includes("@") && !trimmed.startsWith("@") && trimmed.includes(".")) {
+    return { type: "email", value: normalizeEmail(trimmed) };
+  }
+  if (DISCORD_ID_REGEX.test(trimmed)) {
+    return { type: "discordId", value: trimmed };
+  }
+  if (LEGACY_DISCORD_TAG_REGEX.test(trimmed)) {
+    return { type: "legacyDiscordTag", value: trimmed };
+  }
+  if (isDiscordUsername(trimmed)) {
+    return { type: "discordUsername", value: trimmed.toLowerCase() };
+  }
+  return { type: "unknown", value: trimmed };
+}
+
 function friendRequestIdForEmails(fromEmail, toEmail) {
   return `friendRequest:${encodeURIComponent(`${fromEmail}__${toEmail}`)}`;
 }
@@ -50,6 +97,43 @@ async function findUserIdByEmail(email) {
     .get();
   if (snapshot.empty) return null;
   return snapshot.docs[0]?.id || null;
+}
+
+async function findUserByDiscordUsername(usernameLower) {
+  if (!usernameLower) return null;
+  const snapshot = await admin
+    .firestore()
+    .collection("usersPublic")
+    .where("discordUsernameLower", "==", usernameLower)
+    .limit(1)
+    .get();
+  if (snapshot.empty) return null;
+  const docSnap = snapshot.docs[0];
+  const data = docSnap.data() || {};
+  return { uid: docSnap.id, email: normalizeEmail(data.email), data };
+}
+
+async function findUserByQsUsername(usernameLower) {
+  if (!usernameLower) return null;
+  const usernameDoc = await admin.firestore().collection("qsUsernames").doc(usernameLower).get();
+  if (!usernameDoc.exists) return null;
+  const uid = usernameDoc.data()?.uid || null;
+  if (!uid) return null;
+  const publicSnap = await admin.firestore().collection("usersPublic").doc(uid).get();
+  if (!publicSnap.exists) return { uid, email: null, data: null };
+  const data = publicSnap.data() || {};
+  return { uid, email: normalizeEmail(data.email), data };
+}
+
+async function getUserIdentifierHints(uid) {
+  if (!uid) return { discordUsernameLower: null, qsUsernameLower: null };
+  const snap = await admin.firestore().collection("usersPublic").doc(uid).get();
+  if (!snap.exists) return { discordUsernameLower: null, qsUsernameLower: null };
+  const data = snap.data() || {};
+  return {
+    discordUsernameLower: data.discordUsernameLower || null,
+    qsUsernameLower: data.qsUsernameLower || null,
+  };
 }
 
 async function findUserIdsByEmails(emails = []) {
@@ -135,7 +219,7 @@ async function countOutstandingInvites(uid) {
   return pendingFriendRequests + pendingPollInvites;
 }
 
-async function isBlockedByUser(targetUserId, senderEmail) {
+async function isBlockedByUser(targetUserId, senderEmail, senderUserId = null, senderDiscord = null, senderQs = null) {
   if (!targetUserId) return false;
   const db = admin.firestore();
   const blockedCollection = db
@@ -144,6 +228,27 @@ async function isBlockedByUser(targetUserId, senderEmail) {
     .collection("blockedUsers");
   const legacySnap = await blockedCollection.doc(encodeEmailId(senderEmail)).get();
   if (legacySnap.exists) return true;
+  if (senderUserId) {
+    const uidSnap = await blockedCollection
+      .where("blockedUserId", "==", senderUserId)
+      .limit(1)
+      .get();
+    if (!uidSnap.empty) return true;
+  }
+  if (senderDiscord) {
+    const discordSnap = await blockedCollection
+      .where("discordUsernameLower", "==", senderDiscord)
+      .limit(1)
+      .get();
+    if (!discordSnap.empty) return true;
+  }
+  if (senderQs) {
+    const qsSnap = await blockedCollection
+      .where("qsUsernameLower", "==", senderQs)
+      .limit(1)
+      .get();
+    if (!qsSnap.empty) return true;
+  }
   const emailSnap = await blockedCollection
     .where("email", "==", normalizeEmail(senderEmail))
     .limit(1)
@@ -181,7 +286,7 @@ async function adjustInviteAllowance(userId, delta) {
   });
 }
 
-async function createFriendRequestNotification(userId, { requestId, fromEmail }) {
+async function createFriendRequestNotification(userId, { requestId, fromEmail, fromUserId }) {
   const ref = admin
     .firestore()
     .collection("users")
@@ -198,6 +303,9 @@ async function createFriendRequestNotification(userId, { requestId, fromEmail })
       metadata: {
         requestId,
         fromEmail,
+        fromUserId: fromUserId || null,
+        actorUserId: fromUserId || null,
+        actorEmail: fromEmail || null,
       },
       read: false,
       dismissed: false,
@@ -207,7 +315,7 @@ async function createFriendRequestNotification(userId, { requestId, fromEmail })
   );
 }
 
-async function createFriendAcceptedNotification(userId, { requestId, friendEmail }) {
+async function createFriendAcceptedNotification(userId, { requestId, friendEmail, friendUserId }) {
   const ref = admin
     .firestore()
     .collection("users")
@@ -223,6 +331,9 @@ async function createFriendAcceptedNotification(userId, { requestId, friendEmail
     metadata: {
       requestId,
       friendEmail,
+      friendUserId: friendUserId || null,
+      actorUserId: friendUserId || null,
+      actorEmail: friendEmail || null,
     },
     read: false,
     dismissed: false,
@@ -230,7 +341,10 @@ async function createFriendAcceptedNotification(userId, { requestId, friendEmail
   });
 }
 
-async function createPollInviteNotification(userId, { schedulerId, schedulerTitle, inviterEmail }) {
+async function createPollInviteNotification(
+  userId,
+  { schedulerId, schedulerTitle, inviterEmail, inviterUserId }
+) {
   const ref = admin
     .firestore()
     .collection("users")
@@ -248,6 +362,9 @@ async function createPollInviteNotification(userId, { schedulerId, schedulerTitl
         schedulerId,
         schedulerTitle,
         inviterEmail,
+        inviterUserId: inviterUserId || null,
+        actorUserId: inviterUserId || null,
+        actorEmail: inviterEmail || null,
       },
       read: false,
       dismissed: false,
@@ -922,7 +1039,16 @@ exports.sendFriendRequest = functions.https.onCall(async (data, context) => {
   });
 
   const toUserId = await findUserIdByEmail(toEmail);
-  if (await isBlockedByUser(toUserId, fromEmail)) {
+  const inviterIdentifiers = await getUserIdentifierHints(fromUserId);
+  if (
+    await isBlockedByUser(
+      toUserId,
+      fromEmail,
+      fromUserId,
+      inviterIdentifiers.discordUsernameLower,
+      inviterIdentifiers.qsUsernameLower
+    )
+  ) {
     throw new functions.https.HttpsError(
       "permission-denied",
       "This user is not accepting new invites from you."
@@ -958,6 +1084,7 @@ exports.sendFriendRequest = functions.https.onCall(async (data, context) => {
     await createFriendRequestNotification(toUserId, {
       requestId,
       fromEmail,
+      fromUserId,
     });
   }
 
@@ -1031,6 +1158,7 @@ exports.acceptFriendInviteLink = functions.https.onCall(async (data, context) =>
       await createFriendAcceptedNotification(senderDoc.id, {
         requestId: existingDoc.id,
         friendEmail: userEmail,
+        friendUserId: context.auth.uid,
       });
       await db
         .collection("users")
@@ -1063,6 +1191,7 @@ exports.acceptFriendInviteLink = functions.https.onCall(async (data, context) =>
   await createFriendAcceptedNotification(senderDoc.id, {
     requestId,
     friendEmail: userEmail,
+    friendUserId: context.auth.uid,
   });
 
   return {
@@ -1113,6 +1242,7 @@ exports.sendPollInvites = functions.https.onCall(async (data, context) => {
 
   const participants = (scheduler.participants || []).map(normalizeEmail);
   const pending = (scheduler.pendingInvites || []).map(normalizeEmail);
+  const inviterIdentifiers = await getUserIdentifierHints(inviterId);
   const normalizedInvitees = Array.from(
     new Set(invitees.map(normalizeEmail).filter(Boolean))
   ).filter((email) => email && email !== inviterEmail);
@@ -1133,7 +1263,16 @@ exports.sendPollInvites = functions.https.onCall(async (data, context) => {
 
   for (const email of candidates) {
     const userId = userIdMap.get(email) || null;
-    if (userId && (await isBlockedByUser(userId, inviterEmail))) {
+    if (
+      userId &&
+      (await isBlockedByUser(
+        userId,
+        inviterEmail,
+        inviterId,
+        inviterIdentifiers.discordUsernameLower,
+        inviterIdentifiers.qsUsernameLower
+      ))
+    ) {
       rejected.push({ email, reason: "blocked" });
       continue;
     }
@@ -1180,6 +1319,7 @@ exports.sendPollInvites = functions.https.onCall(async (data, context) => {
           schedulerId,
           schedulerTitle,
           inviterEmail,
+          inviterUserId: inviterId,
         });
       } catch (err) {
         console.warn("Failed to create poll invite notification:", err);
@@ -1191,6 +1331,73 @@ exports.sendPollInvites = functions.https.onCall(async (data, context) => {
     added: valid.map(({ email }) => email),
     rejected,
   };
+});
+
+exports.registerQsUsername = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Login required");
+  }
+
+  const raw = String(data?.username || "").trim().toLowerCase();
+  if (!raw || !isValidQsUsername(raw)) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Username must be 3-20 characters, start with a letter, and contain only letters, numbers, or underscores."
+    );
+  }
+
+  if (RESERVED_QS_USERNAMES.has(raw)) {
+    throw new functions.https.HttpsError("invalid-argument", "Username is reserved.");
+  }
+
+  const db = admin.firestore();
+  const uid = context.auth.uid;
+  const usernameRef = db.collection("qsUsernames").doc(raw);
+  const userRef = db.collection("users").doc(uid);
+  const publicRef = db.collection("usersPublic").doc(uid);
+
+  await db.runTransaction(async (tx) => {
+    const [usernameSnap, userSnap] = await Promise.all([
+      tx.get(usernameRef),
+      tx.get(userRef),
+    ]);
+
+    if (usernameSnap.exists && usernameSnap.data()?.uid !== uid) {
+      throw new functions.https.HttpsError("already-exists", "Username is already taken.");
+    }
+
+    const existingUsername = userSnap.exists ? userSnap.data()?.qsUsername : null;
+    if (existingUsername && existingUsername !== raw) {
+      tx.delete(db.collection("qsUsernames").doc(existingUsername));
+    }
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    if (!usernameSnap.exists) {
+      tx.set(usernameRef, { uid, username: raw, createdAt: now, updatedAt: now });
+    } else {
+      tx.set(usernameRef, { uid, username: raw, updatedAt: now }, { merge: true });
+    }
+
+    tx.set(
+      userRef,
+      {
+        qsUsername: raw,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+    tx.set(
+      publicRef,
+      {
+        qsUsername: raw,
+        qsUsernameLower: raw,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+  });
+
+  return { username: raw };
 });
 
 exports.revokePollInvite = functions.https.onCall(async (data, context) => {
@@ -1291,7 +1498,16 @@ exports.sendGroupInvite = functions.https.onCall(async (data, context) => {
   }
 
   const inviteeUserId = await findUserIdByEmail(inviteeEmail);
-  if (await isBlockedByUser(inviteeUserId, inviterEmail)) {
+  const inviterIdentifiers = await getUserIdentifierHints(inviterId);
+  if (
+    await isBlockedByUser(
+      inviteeUserId,
+      inviterEmail,
+      inviterId,
+      inviterIdentifiers.discordUsernameLower,
+      inviterIdentifiers.qsUsernameLower
+    )
+  ) {
     return { added: false, reason: "blocked" };
   }
 
@@ -1461,12 +1677,64 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
 
   const blockerId = context.auth.uid;
   const blockerEmail = normalizeEmail(context.auth.token.email);
-  const targetEmail = normalizeEmail(data?.email);
+  const identifier = data?.identifier || data?.email;
+  const parsed = parseIdentifier(identifier);
 
-  if (!blockerEmail || !targetEmail) {
-    throw new functions.https.HttpsError("invalid-argument", "Missing email.");
+  if (!blockerEmail || !identifier) {
+    throw new functions.https.HttpsError("invalid-argument", "Missing identifier.");
   }
-  if (blockerEmail === targetEmail) {
+
+  let targetEmail = null;
+  let targetUserId = null;
+  let targetDiscordUsername = null;
+  let targetQsUsername = null;
+
+  if (parsed.type === "email") {
+    targetEmail = normalizeEmail(parsed.value);
+    targetUserId = await findUserIdByEmail(targetEmail);
+  } else if (parsed.type === "discordUsername") {
+    const user = await findUserByDiscordUsername(parsed.value);
+    if (!user?.uid) {
+      throw new functions.https.HttpsError(
+        "not-found",
+        "No Quest Scheduler user found with that Discord username."
+      );
+    }
+    targetEmail = user.email;
+    targetUserId = user.uid;
+    targetDiscordUsername = parsed.value;
+  } else if (parsed.type === "qsUsername") {
+    const user = await findUserByQsUsername(parsed.value);
+    if (!user?.uid) {
+      throw new functions.https.HttpsError("not-found", "No user found with that username.");
+    }
+    targetEmail = user.email;
+    targetUserId = user.uid;
+    targetQsUsername = parsed.value;
+  } else if (parsed.type === "legacyDiscordTag") {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Legacy Discord tags are not supported. Use their current Discord username or email."
+    );
+  } else if (parsed.type === "discordId") {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Discord IDs are not supported. Use a Discord username or email."
+    );
+  } else {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Please enter a valid email, Discord username, or @username."
+    );
+  }
+
+  if (!targetEmail && !targetUserId) {
+    throw new functions.https.HttpsError("failed-precondition", "User could not be resolved.");
+  }
+  if (targetEmail && blockerEmail === targetEmail) {
+    throw new functions.https.HttpsError("failed-precondition", "You cannot block yourself.");
+  }
+  if (targetUserId && blockerId === targetUserId) {
     throw new functions.https.HttpsError("failed-precondition", "You cannot block yourself.");
   }
 
@@ -1475,34 +1743,67 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
     .collection("users")
     .doc(blockerId)
     .collection("blockedUsers");
-  const legacyRef = blockedCollection.doc(encodeEmailId(targetEmail));
-  const legacySnap = await legacyRef.get();
-  if (legacySnap.exists) {
-    return { ok: true, alreadyBlocked: true };
+  if (targetEmail) {
+    const legacyRef = blockedCollection.doc(encodeEmailId(targetEmail));
+    const legacySnap = await legacyRef.get();
+    if (legacySnap.exists) {
+      return { ok: true, alreadyBlocked: true };
+    }
+    const existingSnap = await blockedCollection
+      .where("email", "==", targetEmail)
+      .limit(1)
+      .get();
+    if (!existingSnap.empty) {
+      return { ok: true, alreadyBlocked: true };
+    }
   }
-  const existingSnap = await blockedCollection
-    .where("email", "==", targetEmail)
-    .limit(1)
-    .get();
-  if (!existingSnap.empty) {
-    return { ok: true, alreadyBlocked: true };
+  if (targetUserId) {
+    const uidSnap = await blockedCollection
+      .where("blockedUserId", "==", targetUserId)
+      .limit(1)
+      .get();
+    if (!uidSnap.empty) {
+      return { ok: true, alreadyBlocked: true };
+    }
+  }
+  if (targetDiscordUsername) {
+    const discordSnap = await blockedCollection
+      .where("discordUsernameLower", "==", targetDiscordUsername)
+      .limit(1)
+      .get();
+    if (!discordSnap.empty) {
+      return { ok: true, alreadyBlocked: true };
+    }
+  }
+  if (targetQsUsername) {
+    const qsSnap = await blockedCollection
+      .where("qsUsernameLower", "==", targetQsUsername)
+      .limit(1)
+      .get();
+    if (!qsSnap.empty) {
+      return { ok: true, alreadyBlocked: true };
+    }
   }
 
-  const friendSnap = await db
-    .collection("friendRequests")
-    .where("fromEmail", "==", targetEmail)
-    .where("toEmail", "==", blockerEmail)
-    .where("status", "==", "pending")
-    .limit(1)
-    .get();
+  const friendSnap = targetEmail
+    ? await db
+        .collection("friendRequests")
+        .where("fromEmail", "==", targetEmail)
+        .where("toEmail", "==", blockerEmail)
+        .where("status", "==", "pending")
+        .limit(1)
+        .get()
+    : { docs: [] };
   const friendDoc = friendSnap.docs[0] || null;
   const hasPendingFriend = Boolean(friendDoc);
 
-  const pollSnap = await db
-    .collection("schedulers")
-    .where("creatorEmail", "==", targetEmail)
-    .where("pendingInvites", "array-contains", blockerEmail)
-    .get();
+  const pollSnap = targetEmail
+    ? await db
+        .collection("schedulers")
+        .where("creatorEmail", "==", targetEmail)
+        .where("pendingInvites", "array-contains", blockerEmail)
+        .get()
+    : { empty: true, docs: [] };
 
   const hasPendingPollInvites = !pollSnap.empty;
   const groupSnap = await db
@@ -1511,7 +1812,7 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
     .get();
   const groupInvites = groupSnap.docs.filter((docSnap) => {
     const meta = docSnap.data()?.pendingInviteMeta?.[blockerEmail] || {};
-    return normalizeEmail(meta.invitedByEmail) === targetEmail;
+    return targetEmail && normalizeEmail(meta.invitedByEmail) === targetEmail;
   });
   const hasPendingGroupInvites = groupInvites.length > 0;
   let offenderUserId = null;
@@ -1525,7 +1826,7 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
     const meta = groupInvites[0].data()?.pendingInviteMeta?.[blockerEmail] || {};
     offenderUserId = meta.invitedByUserId || null;
   }
-  if (!offenderUserId && hasPendingGroupInvites) {
+  if (!offenderUserId && hasPendingGroupInvites && targetEmail) {
     offenderUserId = await findUserIdByEmail(targetEmail);
   }
 
@@ -1535,8 +1836,10 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
 
   const blockRef = blockedCollection.doc();
   await blockRef.set({
-    email: targetEmail,
-    blockedUserId: offenderUserId || null,
+    email: targetEmail || null,
+    blockedUserId: offenderUserId || targetUserId || null,
+    discordUsernameLower: targetDiscordUsername || null,
+    qsUsernameLower: targetQsUsername || null,
     blockedAt: admin.firestore.FieldValue.serverTimestamp(),
     penalized: shouldPenalize,
     penaltyValue: shouldPenalize ? INVITE_BLOCK_PENALTY : 0,
@@ -1615,9 +1918,37 @@ exports.unblockUser = functions.https.onCall(async (data, context) => {
   }
 
   const blockerId = context.auth.uid;
-  const targetEmail = normalizeEmail(data?.email);
-  if (!targetEmail) {
-    throw new functions.https.HttpsError("invalid-argument", "Missing email.");
+  const identifier = data?.identifier || data?.email;
+  const parsed = parseIdentifier(identifier);
+  if (!identifier) {
+    throw new functions.https.HttpsError("invalid-argument", "Missing identifier.");
+  }
+
+  let targetEmail = null;
+  let targetDiscordUsername = null;
+  let targetQsUsername = null;
+
+  if (parsed.type === "email") {
+    targetEmail = normalizeEmail(parsed.value);
+  } else if (parsed.type === "discordUsername") {
+    targetDiscordUsername = parsed.value;
+  } else if (parsed.type === "qsUsername") {
+    targetQsUsername = parsed.value;
+  } else if (parsed.type === "legacyDiscordTag") {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Legacy Discord tags are not supported. Use their current Discord username or email."
+    );
+  } else if (parsed.type === "discordId") {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Discord IDs are not supported. Use a Discord username or email."
+    );
+  } else {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Please enter a valid email, Discord username, or @username."
+    );
   }
 
   const db = admin.firestore();
@@ -1625,17 +1956,38 @@ exports.unblockUser = functions.https.onCall(async (data, context) => {
     .collection("users")
     .doc(blockerId)
     .collection("blockedUsers");
-  const legacyRef = blockedCollection.doc(encodeEmailId(targetEmail));
-  const legacySnap = await legacyRef.get();
-  const querySnap = await blockedCollection.where("email", "==", targetEmail).get();
   const blocks = [];
-  if (legacySnap.exists) {
-    blocks.push({ ref: legacyRef, data: legacySnap.data() || {} });
+
+  if (targetEmail) {
+    const legacyRef = blockedCollection.doc(encodeEmailId(targetEmail));
+    const legacySnap = await legacyRef.get();
+    if (legacySnap.exists) {
+      blocks.push({ ref: legacyRef, data: legacySnap.data() || {} });
+    }
+    const querySnap = await blockedCollection.where("email", "==", targetEmail).get();
+    querySnap.docs.forEach((docSnap) => {
+      if (docSnap.id === legacyRef.id) return;
+      blocks.push({ ref: docSnap.ref, data: docSnap.data() || {} });
+    });
   }
-  querySnap.docs.forEach((docSnap) => {
-    if (docSnap.id === legacyRef.id) return;
-    blocks.push({ ref: docSnap.ref, data: docSnap.data() || {} });
-  });
+
+  if (targetDiscordUsername) {
+    const discordSnap = await blockedCollection
+      .where("discordUsernameLower", "==", targetDiscordUsername)
+      .get();
+    discordSnap.docs.forEach((docSnap) => {
+      blocks.push({ ref: docSnap.ref, data: docSnap.data() || {} });
+    });
+  }
+
+  if (targetQsUsername) {
+    const qsSnap = await blockedCollection
+      .where("qsUsernameLower", "==", targetQsUsername)
+      .get();
+    qsSnap.docs.forEach((docSnap) => {
+      blocks.push({ ref: docSnap.ref, data: docSnap.data() || {} });
+    });
+  }
 
   if (blocks.length === 0) {
     return { ok: true, alreadyUnblocked: true };
@@ -1646,7 +1998,7 @@ exports.unblockUser = functions.https.onCall(async (data, context) => {
 
   if (penalizedBlock) {
     const offenderUserId =
-      penalizedBlock.data.blockedUserId || (await findUserIdByEmail(targetEmail));
+      penalizedBlock.data.blockedUserId || (targetEmail && (await findUserIdByEmail(targetEmail)));
     if (offenderUserId) {
       await adjustInviteAllowance(offenderUserId, INVITE_BLOCK_PENALTY);
     }

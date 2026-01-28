@@ -59,13 +59,15 @@ service cloud.firestore {
               "inviteAllowance",
               "suspended",
               "suspendedAt",
-              "discord"
+              "discord",
+              "qsUsername"
             ])
           : !request.resource.data.diff(resource.data).affectedKeys().hasAny([
               "inviteAllowance",
               "suspended",
               "suspendedAt",
-              "discord"
+              "discord",
+              "qsUsername"
             ]);
       }
 
@@ -109,6 +111,11 @@ service cloud.firestore {
     match /usersPublic/{userId} {
       allow read: if isSignedIn();
       allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /qsUsernames/{usernameLower} {
+      allow read: if isSignedIn();
+      allow write: if false;
     }
 
     match /bannedEmails/{emailId} {

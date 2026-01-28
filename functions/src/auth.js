@@ -45,7 +45,7 @@ exports.sendPasswordResetInfo = functions.https.onCall(async (data) => {
 
 exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
   const email = user.email ? normalizeEmail(user.email) : null;
-  const displayName = user.displayName || email || "User";
+  const displayName = user.displayName || null;
   const photoURL = user.photoURL || null;
   const now = admin.firestore.FieldValue.serverTimestamp();
 
@@ -56,8 +56,9 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
     userRef.set(
       {
         ...(email ? { email } : {}),
-        displayName,
+        ...(displayName ? { displayName } : {}),
         photoURL,
+        publicIdentifierType: "email",
         settings: {
           emailNotifications: true,
         },
@@ -69,12 +70,37 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
     publicRef.set(
       {
         ...(email ? { email } : {}),
-        displayName,
+        ...(displayName ? { displayName } : {}),
         photoURL,
         emailNotifications: true,
+        publicIdentifierType: "email",
+        ...(email ? { publicIdentifier: email } : {}),
         updatedAt: now,
       },
       { merge: true }
     ),
   ]);
+
+  if (email) {
+    try {
+      const pendingSnap = await admin
+        .firestore()
+        .collection("friendRequests")
+        .where("toEmail", "==", email)
+        .where("status", "==", "pending")
+        .get();
+      if (!pendingSnap.empty) {
+        const batch = admin.firestore().batch();
+        pendingSnap.docs.forEach((docSnap) => {
+          const data = docSnap.data() || {};
+          if (!data.toUserId) {
+            batch.update(docSnap.ref, { toUserId: user.uid });
+          }
+        });
+        await batch.commit();
+      }
+    } catch (err) {
+      console.warn("onUserCreate: failed to backfill friend request user IDs", err);
+    }
+  }
 });

@@ -178,7 +178,6 @@ Building on UUID migration and Discord login portal:
   email: "spammer@example.com",  // Kept for lookup
 
   // From Discord login portal
-  discordUserId: "discord_123",
   discordUsernameLower: "spammer",
 
   // NEW: Quest Scheduler username

@@ -5,12 +5,13 @@ import { Check, Users, UserPlus, X } from "lucide-react";
 import { useFriends } from "../../hooks/useFriends";
 import { useBlockedUsers } from "../../hooks/useBlockedUsers";
 import { normalizeFriendRequestId } from "../../lib/data/friends";
+import { resolveIdentifier } from "../../lib/identifiers";
 import { APP_URL } from "../../lib/config";
 import { useUserProfiles } from "../../hooks/useUserProfiles";
-import { isValidEmail } from "../../lib/utils";
 import { QuestingGroupsTab } from "../settings/components/QuestingGroupsTab";
 import { UserAvatar } from "../../components/ui/avatar";
 import { LoadingState } from "../../components/ui/spinner";
+import { UserIdentity } from "../../components/UserIdentity";
 import { useAuth } from "../../app/AuthProvider";
 import { useNotifications } from "../../hooks/useNotifications";
 import { friendRequestNotificationId } from "../../lib/data/notifications";
@@ -90,7 +91,16 @@ export default function FriendsPage() {
     [outgoingRequests, normalizedRequestId]
   );
 
-  const { enrichUsers } = useUserProfiles(friends);
+  const profileEmails = useMemo(() => {
+    const set = new Set([
+      ...friends,
+      ...incomingRequests.map((request) => request.fromEmail),
+      ...outgoingRequests.map((request) => request.toEmail),
+    ]);
+    return Array.from(set).filter(Boolean);
+  }, [friends, incomingRequests, outgoingRequests]);
+
+  const { enrichUsers, profiles: profileMap } = useUserProfiles(profileEmails);
   const friendProfiles = enrichUsers(friends);
   const visibleFriends = useMemo(
     () => friendProfiles.filter((friend) => !hiddenFriends.has(friend.email)),
@@ -111,6 +121,12 @@ export default function FriendsPage() {
     });
     return set;
   }, [blockedUsers]);
+
+  const resolveProfile = (email) => {
+    if (!email) return null;
+    const normalized = String(email).toLowerCase();
+    return profileMap[normalized] || { email };
+  };
 
   useEffect(() => {
     setHiddenFriends((prev) => {
@@ -166,7 +182,8 @@ export default function FriendsPage() {
       try {
         const result = await acceptInviteLink(inviteCode);
         if (result?.senderEmail) {
-          toast.success(`You're now friends with ${result.senderEmail}`);
+          const label = result.senderDisplayName || result.senderEmail;
+          toast.success(`You're now friends with ${label}`);
         } else {
           toast.success("Friend request accepted");
         }
@@ -181,16 +198,20 @@ export default function FriendsPage() {
   }, [inviteCode, acceptInviteLink, searchParams, setSearchParams]);
 
   const handleSendRequest = async () => {
-    const normalized = email.trim().toLowerCase();
+    const raw = email.trim();
     setError(null);
-    if (!normalized) {
-      setError("Enter an email address.");
+    if (!raw) {
+      setError("Enter an email or Discord username.");
       return;
     }
-    if (!isValidEmail(normalized)) {
-      setError("Enter a valid email address.");
+    let resolved;
+    try {
+      resolved = await resolveIdentifier(raw);
+    } catch (err) {
+      setError(err.message || "Enter a valid email or Discord username.");
       return;
     }
+    const normalized = resolved.email.toLowerCase();
     if (friends.includes(normalized)) {
       setError("You are already friends.");
       return;
@@ -209,7 +230,7 @@ export default function FriendsPage() {
     }
     setSending(true);
     try {
-      await sendFriendRequest(normalized);
+      await sendFriendRequest(raw);
       setEmail("");
       toast.success("Friend request sent");
     } catch (err) {
@@ -232,27 +253,31 @@ export default function FriendsPage() {
   };
 
   const handleBlockUser = async () => {
-    const normalized = blockEmail.trim().toLowerCase();
+    const raw = blockEmail.trim();
     setBlockError(null);
-    if (!normalized) {
-      setBlockError("Enter an email address.");
+    if (!raw) {
+      setBlockError("Enter an email, Discord username, or @username.");
       return;
     }
-    if (!isValidEmail(normalized)) {
-      setBlockError("Enter a valid email address.");
+    let resolved;
+    try {
+      resolved = await resolveIdentifier(raw);
+    } catch (err) {
+      setBlockError(err.message || "Enter a valid email or username.");
       return;
     }
+    const normalized = resolved.email.toLowerCase();
     if (normalized === user?.email?.toLowerCase()) {
       setBlockError("You cannot block yourself.");
       return;
     }
     if (blockedEmailSet.has(normalized)) {
-      setBlockError("That email is already blocked.");
+      setBlockError("That user is already blocked.");
       return;
     }
     setBlocking(true);
     try {
-      await blockUser(normalized);
+      await blockUser(raw);
       setBlockEmail("");
       toast.success("User blocked");
     } catch (err) {
@@ -263,11 +288,11 @@ export default function FriendsPage() {
     }
   };
 
-  const handleUnblockUser = async (emailToUnblock) => {
-    if (!emailToUnblock) return;
-    setUnblocking(emailToUnblock);
+  const handleUnblockUser = async (identifierToUnblock) => {
+    if (!identifierToUnblock) return;
+    setUnblocking(identifierToUnblock);
     try {
-      await unblockUser(emailToUnblock);
+      await unblockUser(identifierToUnblock);
       toast.success("User unblocked");
     } catch (err) {
       console.error("Failed to unblock user:", err);
@@ -423,12 +448,12 @@ export default function FriendsPage() {
               Add a friend
             </h3>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Send a friend request by email. They can accept after logging in.
+              Send a friend request by email, Discord username, or @username. They can accept after logging in.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <input
                 className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                placeholder="friend@example.com"
+                placeholder="friend@example.com, discord_username, or @username"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 onKeyDown={(event) => {
@@ -473,7 +498,7 @@ export default function FriendsPage() {
                     }`}
                   >
                     <span className="text-slate-600 dark:text-slate-300">
-                      {request.fromEmail} sent you a request
+                      <UserIdentity user={resolveProfile(request.fromEmail)} /> sent you a request
                     </span>
                     <div className="flex gap-2">
                       <button
@@ -518,7 +543,7 @@ export default function FriendsPage() {
                     className="flex items-center justify-between rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs dark:border-slate-700 dark:bg-slate-900/40"
                   >
                     <span className="text-slate-500 dark:text-slate-400">
-                      Waiting for {request.toEmail} to accept
+                      Waiting for <UserIdentity user={resolveProfile(request.toEmail)} /> to accept
                     </span>
                     <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
                       Pending
@@ -550,10 +575,7 @@ export default function FriendsPage() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        {friend.displayName || friend.email}
-                      </p>
-                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                        {friend.email}
+                        <UserIdentity user={friend} />
                       </p>
                     </div>
                     <div className="ml-auto flex items-center gap-2">
@@ -580,13 +602,13 @@ export default function FriendsPage() {
               Blocked users
             </h3>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Block people you don’t want to receive invites from. Blocking removes any pending
-              invites they sent you.
+              Block people you don’t want to receive invites from. Use email, Discord username, or @username.
+              Blocking removes any pending invites they sent you.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <input
                 className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                placeholder="email@example.com"
+                placeholder="email@example.com, discord_username, or @username"
                 value={blockEmail}
                 onChange={(event) => setBlockEmail(event.target.value)}
                 onKeyDown={(event) => {
@@ -615,14 +637,18 @@ export default function FriendsPage() {
             )}
             {blockedUsers.length > 0 && (
               <div className="mt-3 space-y-2">
-                {blockedUsers.map((block) => (
+                {blockedUsers.map((block) => {
+                  const blockLabel = block.qsUsernameLower
+                    ? `@${block.qsUsernameLower}`
+                    : block.discordUsernameLower || block.email;
+                  return (
                   <div
                     key={block.id || block.email}
                     className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs dark:border-slate-700 dark:bg-slate-800"
                   >
                     <div>
                       <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        {block.email}
+                        {blockLabel}
                       </p>
                       {block.penalized && (
                         <p className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">
@@ -632,14 +658,15 @@ export default function FriendsPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleUnblockUser(block.email)}
-                      disabled={unblocking === block.email}
+                      onClick={() => handleUnblockUser(blockLabel)}
+                      disabled={unblocking === blockLabel}
                       className="rounded-full border border-slate-200 px-3 py-1 text-[10px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
                     >
-                      {unblocking === block.email ? "Unblocking..." : "Unblock"}
+                      {unblocking === blockLabel ? "Unblocking..." : "Unblock"}
                     </button>
                   </div>
-                ))}
+                );
+                })}
               </div>
             )}
           </section>
@@ -651,11 +678,20 @@ export default function FriendsPage() {
           <DialogHeader>
             <DialogTitle>Welcome to Quest Scheduler</DialogTitle>
             <DialogDescription>
-              {highlightedRequest
-                ? `${highlightedRequest.fromEmail} sent you a friend request.`
-                : outgoingMatch
-                  ? `You're waiting on ${outgoingMatch.toEmail} to accept your request.`
-                  : "This friend request is intended for another account or has already been handled."}
+              {highlightedRequest ? (
+                <>
+                  <UserIdentity user={resolveProfile(highlightedRequest.fromEmail)} /> sent you a
+                  friend request.
+                </>
+              ) : outgoingMatch ? (
+                <>
+                  You're waiting on{" "}
+                  <UserIdentity user={resolveProfile(outgoingMatch.toEmail)} /> to accept your
+                  request.
+                </>
+              ) : (
+                "This friend request is intended for another account or has already been handled."
+              )}
             </DialogDescription>
           </DialogHeader>
 
@@ -703,7 +739,13 @@ export default function FriendsPage() {
           <DialogHeader>
             <DialogTitle>Remove friend</DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove {removeFriendEmail} from your friends list?
+              Are you sure you want to remove{" "}
+              {removeFriendEmail ? (
+                <UserIdentity user={resolveProfile(removeFriendEmail)} />
+              ) : (
+                "this friend"
+              )}{" "}
+              from your friends list?
             </DialogDescription>
           </DialogHeader>
 

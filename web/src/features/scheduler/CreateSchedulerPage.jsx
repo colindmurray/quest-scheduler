@@ -17,7 +17,7 @@ import { useFirestoreDoc } from "../../hooks/useFirestoreDoc";
 import { db } from "../../lib/firebase";
 import { APP_URL } from "../../lib/config";
 import { schedulerSlotsRef, schedulerVotesRef } from "../../lib/data/schedulers";
-import { isValidEmail } from "../../lib/utils";
+import { resolveIdentifier } from "../../lib/identifiers";
 import { createSessionInviteNotification } from "../../lib/data/notifications";
 import { createEmailMessage } from "../../lib/emailTemplates";
 import { sendPendingPollInvites, revokePollInvite } from "../../lib/data/pollInvites";
@@ -39,6 +39,7 @@ import {
 } from "../../components/ui/dialog";
 import { AvatarStack, buildColorMap, uniqueUsers } from "../../components/ui/voter-avatars";
 import { UserAvatar } from "../../components/ui/avatar";
+import { UserIdentity } from "../../components/UserIdentity";
 import { DatePicker } from "../../components/ui/date-picker";
 import { Switch } from "../../components/ui/switch";
 import "react-big-calendar/lib/css/react-big-calendar.css";
@@ -388,6 +389,7 @@ export default function CreateSchedulerPage() {
           schedulerId,
           schedulerTitle: pollTitle,
           inviterEmail: user?.email || "Someone",
+          inviterUserId: user?.uid || null,
         });
       })
     );
@@ -730,13 +732,17 @@ export default function CreateSchedulerPage() {
     }
   };
 
-  const addInvite = (email) => {
-    const normalized = normalizeEmail(email);
-    if (!normalized) return;
-    if (!isValidEmail(normalized)) {
-      setInviteError("Enter a valid email address.");
+  const addInvite = async (input) => {
+    const raw = String(input || "").trim();
+    if (!raw) return;
+    let resolved;
+    try {
+      resolved = await resolveIdentifier(raw);
+    } catch (err) {
+      setInviteError(err.message || "Enter a valid email or Discord username.");
       return;
     }
+    const normalized = normalizeEmail(resolved.email);
     if (user?.email && normalized === normalizeEmail(user.email)) {
       setInviteError("You are already included as a participant.");
       return;
@@ -904,7 +910,12 @@ export default function CreateSchedulerPage() {
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Invitees</p>
               {user?.email && (
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  You are included as {user.email}.
+                  You are included as{" "}
+                  <UserIdentity
+                    user={{ displayName: user.displayName || null, email: user.email }}
+                    showIdentifier={false}
+                  />
+                  .
                 </p>
               )}
               {selectedGroup && (
@@ -930,7 +941,7 @@ export default function CreateSchedulerPage() {
                         className="flex items-center gap-2 rounded-xl border border-transparent bg-white/70 px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-slate-900/70 dark:text-slate-200"
                       >
                         <UserAvatar email={member.email} src={member.avatar} size={24} />
-                        <span>{member.email}</span>
+                        <UserIdentity user={member} showIdentifier={false} />
                       </div>
                     ))}
                   </div>
@@ -952,7 +963,7 @@ export default function CreateSchedulerPage() {
                     title="Remove"
                   >
                     <UserAvatar email={invitee.email} src={invitee.avatar} size={20} />
-                    <span>{invitee.email}</span>
+                    <UserIdentity user={invitee} />
                     <span className="text-xs">✕</span>
                   </button>
                 ))}
@@ -978,7 +989,7 @@ export default function CreateSchedulerPage() {
                         title="Remove pending invite"
                       >
                         <UserAvatar email={invitee.email} src={invitee.avatar} size={20} />
-                        <span>{invitee.email}</span>
+                        <UserIdentity user={invitee} />
                         <span className="text-xs">✕</span>
                       </button>
                     ))}
@@ -1000,7 +1011,7 @@ export default function CreateSchedulerPage() {
                         onClick={() => addInvite(entry.email)}
                       >
                         <UserAvatar email={entry.email} src={entry.avatar} size={18} />
-                        + {entry.email}
+                        + <UserIdentity user={entry} showIdentifier={false} />
                       </button>
                     ))}
                   </div>
@@ -1010,7 +1021,7 @@ export default function CreateSchedulerPage() {
               <div className="mt-4 flex flex-wrap gap-2">
                 <input
                   className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                  placeholder="Add one email"
+                  placeholder="Add email, Discord username, or @username"
                   value={inviteInput}
                   onChange={(event) => setInviteInput(event.target.value)}
                   onKeyDown={(event) => {

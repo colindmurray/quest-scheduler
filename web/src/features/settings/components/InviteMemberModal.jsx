@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { isValidEmail } from "../../../lib/utils";
+import { resolveIdentifier } from "../../../lib/identifiers";
+import { useUserProfiles } from "../../../hooks/useUserProfiles";
+import { UserIdentity } from "../../../components/UserIdentity";
 import {
   Dialog,
   DialogContent,
@@ -25,26 +27,30 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
   const availableSuggestions = friends.filter(
     (e) => !existingMembers.has(e.toLowerCase())
   );
+  const { enrichUsers } = useUserProfiles(availableSuggestions);
+  const suggestionUsers = enrichUsers(availableSuggestions);
   const normalizedEmail = email.trim().toLowerCase();
-  const isFriend = normalizedEmail ? friendSet.has(normalizedEmail) : false;
-  const showFriendInviteToggle =
-    normalizedEmail && isValidEmail(normalizedEmail) && !isFriend;
+  const showFriendInviteToggle = Boolean(normalizedEmail);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
 
     if (!normalizedEmail) {
-      setError("Please enter an email address");
+      setError("Please enter an email or Discord username");
       return;
     }
 
-    if (!isValidEmail(normalizedEmail)) {
-      setError("Please enter a valid email address");
+    let resolved;
+    try {
+      resolved = await resolveIdentifier(normalizedEmail);
+    } catch (err) {
+      setError(err.message || "Please enter a valid email or Discord username");
       return;
     }
 
-    if (existingMembers.has(normalizedEmail)) {
+    const resolvedEmail = resolved.email.toLowerCase();
+    if (existingMembers.has(resolvedEmail)) {
       setError("This person is already a member or has a pending invite");
       return;
     }
@@ -57,7 +63,7 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
       setEmail("");
       setSendFriendInvite(false);
       onOpenChange(false);
-      toast.success(`Invitation sent to ${normalizedEmail}`);
+      toast.success(`Invitation sent to ${resolvedEmail}`);
     } catch (err) {
       console.error("Failed to invite member:", err);
       setError(err.message || "Failed to send invitation");
@@ -78,16 +84,16 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
         <DialogHeader>
           <DialogTitle>Invite to {group?.name}</DialogTitle>
           <DialogDescription>
-            Invite someone to join this questing group. They'll receive an email and in-app notification.
+            Invite someone by email, Discord username, or @username. They'll receive an email and in-app notification.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
           <div className="mt-4 space-y-4">
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">
-              Email address
+              Email, Discord username, or @username
               <input
-                type="email"
+                type="text"
                 value={email}
                 onChange={(e) => {
                   const nextValue = e.target.value;
@@ -98,7 +104,7 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
                   }
                   setError(null);
                 }}
-                placeholder="friend@example.com"
+                placeholder="friend@example.com, discord_username, or @username"
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 autoFocus
               />
@@ -126,14 +132,14 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
                   From your friends
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {availableSuggestions.slice(0, 6).map((suggestedEmail) => (
+                  {suggestionUsers.slice(0, 6).map((suggestedUser) => (
                     <button
-                      key={suggestedEmail}
+                      key={suggestedUser.email}
                       type="button"
-                      onClick={() => handleSuggestionClick(suggestedEmail)}
+                      onClick={() => handleSuggestionClick(suggestedUser.email)}
                       className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-700"
                     >
-                      + {suggestedEmail}
+                      + <UserIdentity user={suggestedUser} showIdentifier={false} />
                     </button>
                   ))}
                 </div>

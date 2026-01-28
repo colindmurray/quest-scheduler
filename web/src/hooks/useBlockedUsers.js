@@ -3,8 +3,8 @@ import { useAuth } from "../app/AuthProvider";
 import { useFirestoreCollection } from "./useFirestoreCollection";
 import {
   blockedUsersQuery,
-  blockUserByEmail,
-  unblockUserByEmail,
+  blockUserByIdentifier,
+  unblockUserByIdentifier,
 } from "../lib/data/blocks";
 
 export function useBlockedUsers() {
@@ -17,14 +17,14 @@ export function useBlockedUsers() {
 
   const blockedUsers = useFirestoreCollection(blockedRef);
 
-  const blockUser = useCallback(async (email) => {
-    if (!email) return;
-    return blockUserByEmail(email);
+  const blockUser = useCallback(async (identifier) => {
+    if (!identifier) return;
+    return blockUserByIdentifier(identifier);
   }, []);
 
-  const unblockUser = useCallback(async (email) => {
-    if (!email) return;
-    return unblockUserByEmail(email);
+  const unblockUser = useCallback(async (identifier) => {
+    if (!identifier) return;
+    return unblockUserByIdentifier(identifier);
   }, []);
 
   return {

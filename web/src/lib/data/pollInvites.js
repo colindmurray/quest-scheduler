@@ -78,6 +78,7 @@ export async function acceptPollInvite(schedulerId, userEmail, userId = null) {
         schedulerId,
         schedulerTitle: data.title || "Session Poll",
         participantEmail: normalizedEmail,
+        participantUserId: userId,
       });
     } catch (err) {
       console.warn("Failed to notify poll creator about join:", err);

@@ -52,6 +52,7 @@ describe("inviteMemberToGroup", () => {
       groupId: "group_1",
       groupName: "The Heroes",
       inviterEmail: "inviter@example.com",
+      inviterUserId: null,
     });
   });
 

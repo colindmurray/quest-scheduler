@@ -10,6 +10,7 @@ import { useFriends } from "./useFriends";
 import { APP_URL } from "../lib/config";
 import { createEmailMessage } from "../lib/emailTemplates";
 import { createFriendRequest } from "../lib/data/friends";
+import { resolveIdentifier } from "../lib/identifiers";
 import {
   userGroupsQuery,
   userGroupsByIdQuery,
@@ -142,17 +143,18 @@ export function useQuestingGroups() {
 
   // Invite a member (also sends email notification)
   const inviteMember = useCallback(
-    async (groupId, groupName, inviteeEmail, { sendFriendInvite = false } = {}) => {
+    async (groupId, groupName, inviteeIdentifier, { sendFriendInvite = false } = {}) => {
       if (!user?.email) return;
-      const normalizedInvitee = inviteeEmail.toLowerCase();
+      const resolved = await resolveIdentifier(inviteeIdentifier);
+      const normalizedInvitee = resolved.email.toLowerCase();
       const shouldSendFriendInvite = sendFriendInvite && !friendSet.has(normalizedInvitee);
 
       await inviteMemberToGroup(
         groupId,
         groupName,
         user.email,
-        inviteeEmail,
-        null,
+        normalizedInvitee,
+        resolved.userId || null,
         user.uid
       );
 

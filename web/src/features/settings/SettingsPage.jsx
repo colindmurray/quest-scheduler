@@ -1,4 +1,4 @@
-import { updateProfile } from "firebase/auth";
+import { EmailAuthProvider, linkWithCredential, updateProfile } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -9,8 +9,11 @@ import { useTheme } from "../../app/ThemeProvider";
 import { db } from "../../lib/firebase";
 import { linkGoogleAccount, resendVerificationEmail, signOutUser } from "../../lib/auth";
 import { startDiscordOAuth, unlinkDiscordAccount } from "../../lib/data/discord";
+import { registerQsUsername } from "../../lib/data/usernames";
+import { buildPublicIdentifier } from "../../lib/identity";
 import { LoadingState } from "../../components/ui/spinner";
 import { Switch } from "../../components/ui/switch";
+import { UserIdentity } from "../../components/UserIdentity";
 import {
   Select,
   SelectContent,
@@ -39,6 +42,10 @@ export default function SettingsPage() {
   const [defaultTitle, setDefaultTitle] = useState("Quest Session");
   const [defaultDescription, setDefaultDescription] = useState("");
   const [emailNotifications, setEmailNotifications] = useState(true);
+  const [qsUsernameInput, setQsUsernameInput] = useState("");
+  const [qsUsernameCurrent, setQsUsernameCurrent] = useState("");
+  const [qsUsernameSaving, setQsUsernameSaving] = useState(false);
+  const [publicIdentifierType, setPublicIdentifierType] = useState("email");
   const [timezoneMode, setTimezoneMode] = useState("auto");
   const [timezone, setTimezone] = useState(
     Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -58,6 +65,10 @@ export default function SettingsPage() {
   const [discordUnlinking, setDiscordUnlinking] = useState(false);
   const [googleLinking, setGoogleLinking] = useState(false);
   const [verificationSending, setVerificationSending] = useState(false);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [passwordValue, setPasswordValue] = useState("");
+  const [passwordConfirmValue, setPasswordConfirmValue] = useState("");
+  const [passwordLinking, setPasswordLinking] = useState(false);
   const [defaultTimes, setDefaultTimes] = useState({
     1: "18:00",
     2: "18:00",
@@ -81,6 +92,7 @@ export default function SettingsPage() {
     linkedCalendarEmail &&
     user?.email &&
     linkedCalendarEmail.toLowerCase() !== user.email.toLowerCase();
+  const canUnlinkDiscord = hasPasswordProvider || Boolean(googleProviderEmail);
 
   useEffect(() => {
     if (!userRef) return;
@@ -89,7 +101,7 @@ export default function SettingsPage() {
       .then((snap) => {
         if (snap.exists()) {
           const data = snap.data();
-          setDisplayName(data.displayName || user?.displayName || user?.email || "");
+          setDisplayName(data.displayName || user?.displayName || "");
           setDefaultDuration(data.settings?.defaultDurationMinutes ?? 240);
           setDefaultTitle(data.settings?.defaultTitle ?? "Quest Session");
           setDefaultDescription(data.settings?.defaultDescription ?? "");
@@ -111,6 +123,9 @@ export default function SettingsPage() {
             setCalendarNames({ [data.settings.googleCalendarId]: data.settings.googleCalendarName });
           }
           setDiscordInfo(data.discord || null);
+          setQsUsernameInput(data.qsUsername || "");
+          setQsUsernameCurrent(data.qsUsername || "");
+          setPublicIdentifierType(data.publicIdentifierType || "email");
         }
       })
       .catch((err) => {
@@ -122,7 +137,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!user) return;
-    setDisplayName((prev) => prev || user.displayName || user.email || "");
+    setDisplayName((prev) => prev || user.displayName || "");
   }, [user]);
 
   useEffect(() => {
@@ -220,12 +235,46 @@ export default function SettingsPage() {
     try {
       await unlinkDiscordAccount();
       setDiscordInfo(null);
+      if (publicIdentifierType === "discordUsername") {
+        const nextType = qsUsernameInput.trim() ? "qsUsername" : "email";
+        setPublicIdentifierType(nextType);
+      }
       toast.success("Discord account unlinked.");
     } catch (err) {
       console.error("Failed to unlink Discord:", err);
       toast.error(err?.message || "Failed to unlink Discord.");
     } finally {
       setDiscordUnlinking(false);
+    }
+  };
+
+  const handleAddPassword = async () => {
+    if (!user?.email) {
+      toast.error("Email is required to add a password.");
+      return;
+    }
+    if (passwordValue.length < 6) {
+      toast.error("Password must be at least 6 characters.");
+      return;
+    }
+    if (passwordValue !== passwordConfirmValue) {
+      toast.error("Passwords do not match.");
+      return;
+    }
+    setPasswordLinking(true);
+    try {
+      const credential = EmailAuthProvider.credential(user.email, passwordValue);
+      await linkWithCredential(user, credential);
+      toast.success("Password added.");
+      setPasswordDialogOpen(false);
+      setPasswordValue("");
+      setPasswordConfirmValue("");
+      await refreshUser();
+    } catch (err) {
+      console.error("Failed to add password:", err);
+      toast.error(err?.message || "Failed to add password.");
+    } finally {
+      setPasswordLinking(false);
     }
   };
 
@@ -278,8 +327,14 @@ export default function SettingsPage() {
     if (!userRef) return;
     setSaving(true);
     try {
-      const normalizedDisplayName =
-        displayName.trim() || user?.displayName || user?.email || "User";
+      const normalizedDisplayName = displayName.trim() || user?.displayName || null;
+      const nextQsUsername = qsUsernameInput.trim().replace(/^@/, "").toLowerCase();
+      if (nextQsUsername && nextQsUsername !== qsUsernameCurrent) {
+        setQsUsernameSaving(true);
+        await registerQsUsername(nextQsUsername);
+        setQsUsernameCurrent(nextQsUsername);
+        setQsUsernameInput(nextQsUsername);
+      }
       const primaryCalendarId = [...calendarIds].sort((a, b) => {
         const nameA = calendarNames[a] || a;
         const nameB = calendarNames[b] || b;
@@ -288,14 +343,21 @@ export default function SettingsPage() {
       const primaryCalendarName = primaryCalendarId
         ? calendarNames[primaryCalendarId] || primaryCalendarId
         : null;
+      const publicIdentifier = buildPublicIdentifier({
+        publicIdentifierType,
+        qsUsername: nextQsUsername || qsUsernameCurrent,
+        discordUsername: discordInfo?.username || null,
+        email: user.email?.toLowerCase() || null,
+      });
 
       await setDoc(
         userRef,
         {
           email: user.email?.toLowerCase(),
-          displayName: normalizedDisplayName,
+          ...(normalizedDisplayName ? { displayName: normalizedDisplayName } : {}),
           photoURL: user.photoURL,
           calendarSyncPreference,
+          publicIdentifierType,
           settings: {
             defaultDurationMinutes: Number(defaultDuration || 0),
             defaultTitle,
@@ -317,18 +379,22 @@ export default function SettingsPage() {
         doc(db, "usersPublic", user.uid),
         {
           email: user.email?.toLowerCase(),
-          displayName: normalizedDisplayName,
+          ...(normalizedDisplayName ? { displayName: normalizedDisplayName } : {}),
           photoURL: user.photoURL,
           emailNotifications,
+          publicIdentifierType,
+          publicIdentifier,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
-      if (user.displayName !== normalizedDisplayName) {
+      if (normalizedDisplayName && user.displayName !== normalizedDisplayName) {
         await updateProfile(user, { displayName: normalizedDisplayName });
         await refreshUser();
       }
-      setDisplayName(normalizedDisplayName);
+      if (normalizedDisplayName) {
+        setDisplayName(normalizedDisplayName);
+      }
       setAvailableCalendars([]);
       setCalendarError(null);
       toast.success("Settings saved successfully");
@@ -336,6 +402,7 @@ export default function SettingsPage() {
       console.error("Failed to save settings:", err);
       toast.error(err.message || "Failed to save settings");
     } finally {
+      setQsUsernameSaving(false);
       setSaving(false);
     }
   };
@@ -451,6 +518,15 @@ export default function SettingsPage() {
                     Email + Password
                   </span>
                 )}
+                {!hasPasswordProvider && (
+                  <button
+                    type="button"
+                    onClick={() => setPasswordDialogOpen(true)}
+                    className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    Add password
+                  </button>
+                )}
                 {googleProviderEmail && (
                   <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700 dark:border-emerald-700/60 dark:bg-emerald-900/30 dark:text-emerald-100">
                     Google ({googleProviderEmail})
@@ -461,7 +537,7 @@ export default function SettingsPage() {
                     Google account differs from login email.
                   </span>
                 )}
-                {hasPasswordProvider && !googleProviderEmail && (
+                {!googleProviderEmail && (
                   <button
                     type="button"
                     onClick={handleGoogleLink}
@@ -471,7 +547,124 @@ export default function SettingsPage() {
                     {googleLinking ? "Linking..." : "Link Google account"}
                   </button>
                 )}
+                {discordInfo?.userId && (
+                  <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-indigo-700 dark:border-indigo-700/60 dark:bg-indigo-900/30 dark:text-indigo-100">
+                    Discord ({discordInfo.globalName || discordInfo.username || "linked"})
+                  </span>
+                )}
+                {discordInfo?.userId ? (
+                  <button
+                    type="button"
+                    onClick={handleDiscordUnlink}
+                    disabled={!canUnlinkDiscord || discordUnlinking}
+                    className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                    title={
+                      canUnlinkDiscord
+                        ? ""
+                        : "Link Google or add a password before unlinking Discord."
+                    }
+                  >
+                    {discordUnlinking ? "Unlinking..." : "Unlink Discord"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleDiscordLink}
+                    disabled={discordLinking}
+                    className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    {discordLinking ? "Linking..." : "Link Discord"}
+                  </button>
+                )}
+                {discordInfo?.userId && !canUnlinkDiscord && (
+                  <span className="text-[11px] text-amber-600 dark:text-amber-200">
+                    Add Google or a password before unlinking Discord.
+                  </span>
+                )}
               </div>
+            </section>
+            <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Your Identity
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Choose how other players identify you. Your public identifier is shown alongside your
+                display name.
+              </p>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Quest Scheduler username
+                  <input
+                    value={qsUsernameInput}
+                    onChange={(event) => setQsUsernameInput(event.target.value)}
+                    placeholder="questmaster"
+                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  />
+                  <span className="mt-2 block text-[11px] text-slate-400 dark:text-slate-500">
+                    3-20 characters, start with a letter, lowercase letters/numbers/underscores only.
+                  </span>
+                </label>
+                <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Public identifier
+                  <div className="mt-2 space-y-2 text-xs text-slate-600 dark:text-slate-300">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="publicIdentifier"
+                        value="email"
+                        checked={publicIdentifierType === "email"}
+                        onChange={() => setPublicIdentifierType("email")}
+                      />
+                      Email ({user?.email})
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="publicIdentifier"
+                        value="discordUsername"
+                        disabled={!discordInfo?.username}
+                        checked={publicIdentifierType === "discordUsername"}
+                        onChange={() => setPublicIdentifierType("discordUsername")}
+                      />
+                      Discord username ({discordInfo?.username || "link Discord to enable"})
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="publicIdentifier"
+                        value="qsUsername"
+                        disabled={!qsUsernameInput.trim()}
+                        checked={publicIdentifierType === "qsUsername"}
+                        onChange={() => setPublicIdentifierType("qsUsername")}
+                      />
+                      Quest Scheduler username (@{qsUsernameInput.trim() || "set a username"})
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 text-xs text-slate-500 dark:text-slate-400">
+                Preview:{" "}
+                <UserIdentity
+                  user={{
+                    displayName: displayName || user?.displayName || null,
+                    publicIdentifier: buildPublicIdentifier({
+                      publicIdentifierType,
+                      qsUsername: qsUsernameInput.trim().replace(/^@/, "").toLowerCase(),
+                      discordUsername: discordInfo?.username || null,
+                      email: user?.email?.toLowerCase() || null,
+                    }),
+                    publicIdentifierType,
+                    qsUsername: qsUsernameInput.trim().replace(/^@/, "").toLowerCase(),
+                    discordUsername: discordInfo?.username || null,
+                    email: user?.email?.toLowerCase() || null,
+                  }}
+                />
+              </div>
+              {qsUsernameSaving && (
+                <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                  Saving username...
+                </p>
+              )}
             </section>
             <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Timezone</h3>
@@ -625,38 +818,6 @@ export default function SettingsPage() {
               </div>
             </section>
             <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
-              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Discord</h3>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Link your Discord account to vote directly from Discord.
-              </p>
-              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
-                {discordInfo?.userId ? (
-                  <>
-                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700 dark:border-emerald-700/60 dark:bg-emerald-900/30 dark:text-emerald-100">
-                      Linked as {discordInfo.globalName || discordInfo.username}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleDiscordUnlink}
-                      disabled={discordUnlinking}
-                      className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
-                    >
-                      {discordUnlinking ? "Unlinking..." : "Unlink Discord"}
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleDiscordLink}
-                    disabled={discordLinking}
-                    className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
-                  >
-                    {discordLinking ? "Linking..." : "Link Discord"}
-                  </button>
-                )}
-              </div>
-            </section>
-            <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Default calendar entry</h3>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -768,6 +929,59 @@ export default function SettingsPage() {
               {saving ? "Saving..." : "Save settings"}
             </button>
           </div>
+
+          <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add a password</DialogTitle>
+                <DialogDescription>
+                  Set a password to enable email/password login alongside your other sign-in methods.
+                </DialogDescription>
+              </DialogHeader>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  handleAddPassword();
+                }}
+                className="space-y-4"
+              >
+                <input
+                  type="password"
+                  value={passwordValue}
+                  onChange={(event) => setPasswordValue(event.target.value)}
+                  placeholder="New password"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  minLength={6}
+                  required
+                />
+                <input
+                  type="password"
+                  value={passwordConfirmValue}
+                  onChange={(event) => setPasswordConfirmValue(event.target.value)}
+                  placeholder="Confirm password"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  minLength={6}
+                  required
+                />
+                <DialogFooter>
+                  <button
+                    type="button"
+                    onClick={() => setPasswordDialogOpen(false)}
+                    className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={passwordLinking}
+                    className="rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:opacity-60"
+                  >
+                    {passwordLinking ? "Saving..." : "Add password"}
+                  </button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
             <DialogContent>

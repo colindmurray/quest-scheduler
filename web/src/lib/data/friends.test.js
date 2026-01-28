@@ -7,6 +7,7 @@ import {
 import { setDoc, updateDoc, getDoc } from "firebase/firestore";
 import { createFriendAcceptedNotification } from "./notifications";
 import { findUserIdByEmail } from "./users";
+import { resolveIdentifier } from "../identifiers";
 
 vi.mock("firebase/firestore", () => ({
   collection: vi.fn(),
@@ -41,6 +42,14 @@ vi.mock("./users", () => ({
   findUserIdByEmail: vi.fn(),
 }));
 
+vi.mock("../identifiers", () => ({
+  resolveIdentifier: vi.fn(async (input) => ({
+    email: String(input || "").toLowerCase(),
+    userId: null,
+    userData: null,
+  })),
+}));
+
 describe("friends data helpers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -54,6 +63,11 @@ describe("friends data helpers", () => {
 
   it("creates a friend request and sends notification when recipient exists", async () => {
     findUserIdByEmail.mockResolvedValue("user_2");
+    resolveIdentifier.mockResolvedValue({
+      email: "friend@example.com",
+      userId: "user_2",
+      userData: null,
+    });
 
     await createFriendRequest({
       fromUserId: "user_1",
@@ -85,6 +99,7 @@ describe("friends data helpers", () => {
     expect(createFriendAcceptedNotification).toHaveBeenCalledWith("sender_1", {
       requestId: "req_1",
       friendEmail: "friend@example.com",
+      friendUserId: "friend_1",
     });
   });
 

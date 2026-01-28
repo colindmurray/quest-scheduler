@@ -21,6 +21,7 @@ import {
 import { findUserIdByEmail } from "./users";
 import { APP_URL } from "../config";
 import { createEmailMessage } from "../emailTemplates";
+import { resolveIdentifier } from "../identifiers";
 
 export const friendRequestsRef = () => collection(db, "friendRequests");
 export const friendRequestRef = (requestId) =>
@@ -73,12 +74,14 @@ export async function createFriendRequest(
     fromUserId,
     fromEmail,
     toEmail,
+    toIdentifier,
     fromDisplayName,
   },
   { sendEmail = true, notifyRecipient = true } = {}
 ) {
   const normalizedFrom = (fromEmail || "").trim().toLowerCase();
-  const normalizedTo = (toEmail || "").trim().toLowerCase();
+  const resolved = await resolveIdentifier(toIdentifier || toEmail);
+  const normalizedTo = (resolved.email || "").trim().toLowerCase();
   if (!normalizedFrom || !normalizedTo) {
     throw new Error("Missing email for friend request.");
   }
@@ -142,6 +145,7 @@ export async function acceptFriendRequest(requestId, { userId, userEmail }) {
     await createFriendAcceptedNotification(senderUserId, {
       requestId,
       friendEmail: normalizedEmail,
+      friendUserId: userId,
     });
   }
 
@@ -215,6 +219,7 @@ export async function syncFriendRequestNotifications(userId, pendingRequests) {
       return ensureFriendRequestNotification(userId, {
         requestId: request.id,
         fromEmail: request.fromEmail || "Unknown",
+        fromUserId: request.fromUserId || null,
       });
     })
   );

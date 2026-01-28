@@ -8,16 +8,16 @@ export const blockedUsersRef = (userId) =>
 export const blockedUsersQuery = (userId) =>
   query(blockedUsersRef(userId), orderBy("blockedAt", "desc"));
 
-export async function blockUserByEmail(email) {
+export async function blockUserByIdentifier(identifier) {
   const functions = getFunctions();
   const blockUser = httpsCallable(functions, "blockUser");
-  const response = await blockUser({ email });
+  const response = await blockUser({ identifier });
   return response.data;
 }
 
-export async function unblockUserByEmail(email) {
+export async function unblockUserByIdentifier(identifier) {
   const functions = getFunctions();
   const unblockUser = httpsCallable(functions, "unblockUser");
-  const response = await unblockUser({ email });
+  const response = await unblockUser({ identifier });
   return response.data;
 }
