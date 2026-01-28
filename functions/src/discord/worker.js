@@ -478,6 +478,7 @@ async function handleVoteButton(interaction, schedulerId) {
       buildUserNotLinkedMessage(APP_URL)
     );
   }
+  const userEmail = linkedUser.email || null;
 
   const isParticipant = await ensureParticipant(scheduler, linkedUser.uid);
   if (!isParticipant) {
@@ -736,6 +737,7 @@ async function handleClearVotes(interaction, schedulerId, noTimesWork) {
       buildUserNotLinkedMessage(APP_URL)
     );
   }
+  const userEmail = linkedUser.email || null;
 
   const isParticipant = await ensureParticipant(scheduler, linkedUser.uid);
   if (!isParticipant) {
