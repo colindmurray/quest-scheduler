@@ -1,9 +1,9 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-28 — Added RTL component tests for Settings + Auth UI surfaces (`AuthPage`, `SettingsPage`). Ran `npm test -- AuthPage.test.jsx SettingsPage.test.jsx`.
-- Next Step: Test plan complete. Awaiting further tasks.
-- Open Issues: `npm run test:rules` failed — firebase-tools requires JDK 21+. Playwright install warned about missing system deps (`npx playwright install-deps` or apt libs). `npm install` reported 4 vulnerabilities (3 moderate, 1 high) — run audit once test plan allows. `functions/npm install` reports 2 moderate vulnerabilities. Functions tests emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Worker tests log expected warnings on missing secrets.
+- Last Completed: 2026-01-28 — Ran `npm run test:rules` successfully after JDK 21 install; addressed npm audit advisories (web + functions).
+- Next Step: Awaiting user action for system-level Playwright deps or any further tasks.
+- Open Issues: Playwright system deps still require sudo (`npx playwright install-deps`). Functions tests emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Worker tests log expected warnings on missing secrets. `firebase-tools` emits `punycode` deprecation warnings during emulator runs.
 - Last Updated (YYYY-MM-DD): 2026-01-28
 
 ## Automated Testing Overhaul (Unit / Integration / E2E)
