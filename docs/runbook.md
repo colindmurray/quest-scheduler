@@ -46,12 +46,18 @@ cat /path/to/client_secret.json | firebase functions:secrets:set QS_GOOGLE_OAUTH
 ## Admin user tool
 - Script: `functions/scripts/admin-user-tool.js`
 - Requires admin credentials (Application Default Credentials or `GOOGLE_APPLICATION_CREDENTIALS`).
+- Local service account key (qs-admin-tools): `/home/colin/keys/qs-admin.json`
 - Examples:
   - `node functions/scripts/admin-user-tool.js info --email user@example.com`
   - `node functions/scripts/admin-user-tool.js suspend --uid <uid> --commit`
   - `node functions/scripts/admin-user-tool.js unsuspend --email user@example.com --allowance 50 --commit`
   - `node functions/scripts/admin-user-tool.js set-allowance --email user@example.com --allowance 10 --commit`
   - `node functions/scripts/admin-user-tool.js delete --uid <uid> --commit`
+
+## Admin database access
+- Preferred: set `GOOGLE_APPLICATION_CREDENTIALS=/home/colin/keys/qs-admin.json`
+- Migration tools accept `--service-account /home/colin/keys/qs-admin.json` for explicit credentials
+- Keep the key outside the repo and never commit it
 
 ## Firebase deploy
 - Hosting + Firestore rules + Extensions (recommended):

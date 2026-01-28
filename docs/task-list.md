@@ -207,7 +207,7 @@
 - [x] 2026-01-28: Switch friend request creation + accept-invite link to auto IDs (field-based lookup).
 - [x] 2026-01-28: Update block checks to support auto-ID blockedUsers docs and legacy email-keyed docs.
 - [x] 2026-01-28: Add `functions/scripts/migrate-uuid-identifiers.js` (participantIds/memberIds/voterId backfill).
-- [ ] 2026-01-28: Run UUID backfill script with qs-admin-tools service account.
+- [x] 2026-01-28: Run UUID backfill script with qs-admin-tools service account.
 - [x] 2026-01-27: Extend Discord login portal doc for username invites + blacklist/abuse rules.
 - [ ] Manual QA for auth scenarios + Firebase Console checks (providers, one-account-per-email).
 
