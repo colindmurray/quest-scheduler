@@ -5,6 +5,12 @@
 web/dist/
 web/.vite/
 
+# Test artifacts
+web/coverage/
+web/test-results/
+web/playwright-report/
+web/e2e/test-results/
+
 # Logs
 *.log
 

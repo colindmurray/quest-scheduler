@@ -2683,7 +2683,7 @@ export async function clearTestData() {
 ### Phase 3: Component & Hook Tests (Week 5-6)
 - [x] Add component tests for UI components
 - [x] Add hook tests with mocked Firebase (profiles, groups, invites, blocks, friends, notifications)
-- [ ] Achieve 60% component coverage
+- [x] Achieve 60% component coverage
 
 ### Phase 4: E2E Tests (Week 7-8)
 - [x] Install and configure Playwright
@@ -2704,6 +2704,9 @@ export async function clearTestData() {
 - [x] Add coverage reporting
 - [x] Add test result artifacts
 - [x] Documentation and maintenance guide
+
+## BLOCKED TASKS
+- Discord role mapping test remains skipped. Requires a real Discord bot token + role payloads or explicit approval to mock REST responses.
 
 ## References
 
