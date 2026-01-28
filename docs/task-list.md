@@ -1,8 +1,8 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-28 — Added Google auth E2E coverage with stubbed GSI script; E2E via emulators now 21/21.
-- Next Step: Add emulator integration test for Discord worker + schedulers.
+- Last Completed: 2026-01-28 — Added Discord worker emulator integration test; fixed submit-vote userEmail; functions tests pass via Firestore emulator.
+- Next Step: Raise component coverage to 60% target.
 - Open Issues: Functions tests still emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning.
 - Last Updated (YYYY-MM-DD): 2026-01-28
 

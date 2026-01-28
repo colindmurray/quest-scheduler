@@ -2697,7 +2697,7 @@ export async function clearTestData() {
 - [x] Create `functions/vitest.config.js`
 - [x] Unit test callable functions (Discord OAuth, link codes, nudge, unlink, roles)
 - [x] Unit test queue handlers (processDiscordInteraction)
-- [ ] Integration test with emulator (Discord worker + schedulers)
+- [x] Integration test with emulator (Discord worker + schedulers)
 
 ### Phase 6: CI/CD & Polish (Week 11-12)
 - [x] Set up GitHub Actions workflow

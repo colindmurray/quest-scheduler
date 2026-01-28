@@ -896,6 +896,7 @@ async function handleSubmitVote(interaction, schedulerId) {
       buildUserNotLinkedMessage(APP_URL)
     );
   }
+  const userEmail = linkedUser.email || null;
 
   const participation = await getParticipationDecision(scheduler, linkedUser);
   if (!participation.allowed) {
