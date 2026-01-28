@@ -196,11 +196,12 @@ export default function AuthPage() {
       type: "standard",
       theme: "filled_black",
       size: "large",
+      width: providerButtonWidth,
       text: "continue_with",
       shape: "pill",
       logo_alignment: "left",
     });
-  }, [googleReady, handleGoogleCredential, activeTab]);
+  }, [googleReady, handleGoogleCredential, activeTab, providerButtonWidth]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -274,6 +275,7 @@ export default function AuthPage() {
   };
 
   const isRegister = activeTab === "register";
+  const providerButtonWidth = 320;
   const normalizedEmail = normalizeEmail(email);
   const showGoogleFallback = !GOOGLE_OAUTH_CLIENT_ID || googleError;
 
@@ -338,35 +340,39 @@ export default function AuthPage() {
 
             <div className="mt-6 grid gap-4">
               {showGoogleFallback ? (
-                <button
-                  type="button"
-                  onClick={handleGoogle}
-                  disabled={googleLoading}
-                  className="flex w-full items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                >
-                  {googleLoading ? "Connecting..." : "Continue with Google"}
-                </button>
+                <div className="mx-auto w-full" style={{ maxWidth: providerButtonWidth }}>
+                  <button
+                    type="button"
+                    onClick={handleGoogle}
+                    disabled={googleLoading}
+                    className="flex w-full items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    {googleLoading ? "Connecting..." : "Continue with Google"}
+                  </button>
+                </div>
               ) : (
                 <div className="flex flex-col items-center gap-2">
                   <div
                     ref={googleButtonRef}
                     className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-transparent"
-                    style={{ colorScheme: "light" }}
+                    style={{ colorScheme: "light", width: providerButtonWidth }}
                   />
                   {googleLoading && (
                     <span className="text-xs text-slate-400">Connecting...</span>
                   )}
                 </div>
               )}
-              <button
-                type="button"
-                onClick={handleDiscordLogin}
-                disabled={discordLoading}
-                className="flex w-full items-center justify-center gap-2 rounded-full bg-[#5865F2] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4752C4] disabled:opacity-60"
-              >
-                <img src="/assets/Discord-Symbol-Blurple.svg" alt="" className="h-5 w-5" />
-                {discordLoading ? "Connecting..." : "Continue with Discord"}
-              </button>
+              <div className="mx-auto w-full" style={{ maxWidth: providerButtonWidth }}>
+                <button
+                  type="button"
+                  onClick={handleDiscordLogin}
+                  disabled={discordLoading}
+                  className="flex w-full items-center justify-center gap-2 rounded-full bg-[#5865F2] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4752C4] disabled:opacity-60"
+                >
+                  <img src="/assets/Discord-Symbol-Blurple.svg" alt="" className="h-5 w-5" />
+                  {discordLoading ? "Connecting..." : "Continue with Discord"}
+                </button>
+              </div>
               {googleError && (
                 <p className="text-center text-xs text-amber-500">{googleError}</p>
               )}
