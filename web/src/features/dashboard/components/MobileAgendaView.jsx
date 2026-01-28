@@ -40,7 +40,7 @@ function getDateLabel(date) {
   return format(date, "EEEE, MMM d");
 }
 
-function AgendaItem({ session, groupColor }) {
+function AgendaItem({ session, groupColor, showVoteNeeded }) {
   const navigate = useNavigate();
   const date = session.winningSlot?.start
     ? new Date(session.winningSlot.start)
@@ -74,7 +74,12 @@ function AgendaItem({ session, groupColor }) {
         </p>
         <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
           {date && <span>{format(date, "h:mm a")}</span>}
-          {session.status === "OPEN" && (
+          {session.status === "OPEN" && showVoteNeeded && (
+            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+              Vote needed
+            </span>
+          )}
+          {session.status === "OPEN" && !showVoteNeeded && (
             <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
               Open
             </span>
@@ -86,7 +91,7 @@ function AgendaItem({ session, groupColor }) {
   );
 }
 
-export function MobileAgendaView({ sessions = [], getGroupColor = () => null }) {
+export function MobileAgendaView({ sessions = [], getGroupColor = () => null, needsVote = new Set() }) {
   const groupedSessions = groupSessionsByDate(sessions);
 
   if (groupedSessions.length === 0) {
@@ -122,6 +127,7 @@ export function MobileAgendaView({ sessions = [], getGroupColor = () => null }) 
                     ? getGroupColor(session.questingGroupId)
                     : null
                 }
+                showVoteNeeded={needsVote.has(session.id)}
               />
             ))}
           </div>

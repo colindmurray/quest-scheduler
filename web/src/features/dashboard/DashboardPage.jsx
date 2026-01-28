@@ -388,6 +388,11 @@ export default function DashboardPage() {
     return [...upcomingFinalized, ...pastFinalized];
   }, [upcomingFinalized, pastFinalized]);
 
+  // Sessions for mobile agenda view (includes open polls)
+  const mobileAgendaSessions = useMemo(() => {
+    return [...upcomingOpen, ...upcomingFinalized];
+  }, [upcomingOpen, upcomingFinalized]);
+
   // Detect conflicts between finalized sessions
   const conflictMap = useMemo(() => {
     const conflicts = new Map();
@@ -495,8 +500,9 @@ export default function DashboardPage() {
             <div className="mt-4">
               {isMobile ? (
                 <MobileAgendaView
-                  sessions={calendarSessions}
+                  sessions={mobileAgendaSessions}
                   getGroupColor={getGroupColor}
+                  needsVote={needsVote}
                 />
               ) : (
                 <DashboardCalendar
@@ -508,7 +514,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Session List Below Calendar */}
-            {!isMobile && (upcomingOpen.length > 0 || upcomingFinalized.length > 0) && (
+            {(upcomingOpen.length > 0 || upcomingFinalized.length > 0) && (
               <div className="mt-6 space-y-6">
                 <div className="space-y-3">
                   <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
