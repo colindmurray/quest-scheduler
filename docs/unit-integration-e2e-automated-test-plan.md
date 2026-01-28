@@ -2678,7 +2678,7 @@ export async function clearTestData() {
 - [x] Set up Firebase Emulator Suite (Firestore/Auth/Storage) - add emulator config to `firebase.json`
 - [x] Add `@firebase/rules-unit-testing` package
 - [x] Write comprehensive Firestore + Storage rules tests
-- [ ] Add integration tests for critical UID-based flows
+- [x] Add integration tests for critical UID-based flows
 
 ### Phase 3: Component & Hook Tests (Week 5-6)
 - [x] Add component tests for UI components

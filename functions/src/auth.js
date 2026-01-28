@@ -1,5 +1,6 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const { FieldValue } = require("firebase-admin/firestore");
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -47,7 +48,7 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
   const email = user.email ? normalizeEmail(user.email) : null;
   const displayName = user.displayName || null;
   const photoURL = user.photoURL || null;
-  const now = admin.firestore.FieldValue.serverTimestamp();
+  const now = FieldValue.serverTimestamp();
 
   const userRef = admin.firestore().collection("users").doc(user.uid);
   const publicRef = admin.firestore().collection("usersPublic").doc(user.uid);
