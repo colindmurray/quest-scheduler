@@ -1,9 +1,9 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-28 — Ran `npm run test:e2e` after Playwright deps install (6 passed, 6 skipped).
-- Next Step: Provide emulator/test credentials and seeded data to un-skip Discord OAuth + UID-only poll E2E flows (optional).
-- Open Issues: E2E has 6 skipped tests (Discord OAuth + UID-only poll need emulator/test creds + seeded scheduler). Functions tests emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Worker tests log expected warnings on missing secrets. `firebase-tools` emits `punycode` deprecation warnings during emulator runs.
+- Last Completed: 2026-01-28 — Ran `npm run test:e2e` with emulator + seeded scheduler (12/12 passed).
+- Next Step: Optional cleanup of emulator warnings (firebase-functions update, punycode deprecations) if desired.
+- Open Issues: Functions tests still emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning.
 - Last Updated (YYYY-MM-DD): 2026-01-28
 
 ## Automated Testing Overhaul (Unit / Integration / E2E)
@@ -16,7 +16,7 @@
 - [x] 2026-01-28: Add unit tests for `web/src/lib/identifiers.js` and `web/src/lib/identity.js`.
 - [x] 2026-01-28: Add unit tests for `web/src/lib/auth.js` (Google + Discord token flows).
 - [x] 2026-01-28: Add unit tests for new data modules (`pollInvites`, `blocks`, `discord`, `usernames`).
-- [x] 2026-01-28: Add Playwright E2E scaffold + critical flows (Discord + UID-only polling) (6 skipped: OAuth + UID poll need emulator/test creds).
+- [x] 2026-01-28: Add Playwright E2E scaffold + critical flows (Discord + UID-only polling) (12/12 passing with emulator + seed).
 
 ### P1 — Functions + Hooks
 - [x] 2026-01-28: Add `vitest` + `firebase-functions-test` to `functions/package.json` with `functions/vitest.config.js`.

@@ -1,5 +1,6 @@
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
+const { Timestamp, FieldValue } = require("firebase-admin/firestore");
 const crypto = require("crypto");
 const { DISCORD_REGION, DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, APP_URL } = require("./config");
 
@@ -63,12 +64,12 @@ exports.discordOAuthStart = onCall(
     }
 
     const state = crypto.randomBytes(16).toString("hex");
-    const expiresAt = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000));
+    const expiresAt = Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000));
     await admin.firestore().collection("oauthStates").doc(state).set({
       uid: request.auth.uid,
       provider: "discord",
       intent: "link",
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
       expiresAt,
     });
 
@@ -85,14 +86,14 @@ exports.discordOAuthLoginStart = onCall(
   },
   async (request) => {
     const state = crypto.randomBytes(16).toString("hex");
-    const expiresAt = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000));
+    const expiresAt = Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000));
     const returnTo = sanitizeReturnTo(request.data?.returnTo);
 
     await admin.firestore().collection("oauthStates").doc(state).set({
       provider: "discord",
       intent: "login",
       returnTo,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
       expiresAt,
     });
 
@@ -270,7 +271,7 @@ exports.discordOAuthCallback = onRequest(
 
         await linkRef.set({
           qsUserId: uid,
-          linkedAt: admin.firestore.FieldValue.serverTimestamp(),
+          linkedAt: FieldValue.serverTimestamp(),
         });
 
         const userRef = db.collection("users").doc(uid);
@@ -285,10 +286,10 @@ exports.discordOAuthCallback = onRequest(
             username: discordUsername,
             globalName: discordGlobalName,
             avatarHash: discordAvatarHash,
-            linkedAt: admin.firestore.FieldValue.serverTimestamp(),
+            linkedAt: FieldValue.serverTimestamp(),
             linkSource: "oauth",
           },
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         };
         if (!existingUserData.email && discordEmail) {
           userUpdates.email = discordEmail;
@@ -306,7 +307,7 @@ exports.discordOAuthCallback = onRequest(
         const publicUpdates = {
           discordUsername,
           discordUsernameLower: discordUsername ? String(discordUsername).toLowerCase() : null,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         };
         if (!existingUserData.email && discordEmail) {
           publicUpdates.email = discordEmail;
@@ -352,7 +353,7 @@ exports.discordOAuthCallback = onRequest(
 
       await linkRef.set({
         qsUserId: stateData.uid,
-        linkedAt: admin.firestore.FieldValue.serverTimestamp(),
+        linkedAt: FieldValue.serverTimestamp(),
       });
 
       const userRef = db.collection("users").doc(stateData.uid);
@@ -369,11 +370,11 @@ exports.discordOAuthCallback = onRequest(
               username: discordUsername,
               globalName: discordGlobalName,
               avatarHash: discordAvatarHash,
-              linkedAt: admin.firestore.FieldValue.serverTimestamp(),
+              linkedAt: FieldValue.serverTimestamp(),
               linkSource: "oauth",
             },
             ...(shouldSetPhoto ? { photoURL: discordAvatarUrl } : {}),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
           },
           { merge: true }
         ),
@@ -382,7 +383,7 @@ exports.discordOAuthCallback = onRequest(
             discordUsername,
             discordUsernameLower: discordUsername ? String(discordUsername).toLowerCase() : null,
             ...(shouldSetPhoto ? { photoURL: discordAvatarUrl } : {}),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
           },
           { merge: true }
         ),

@@ -20,7 +20,7 @@ test.describe('Scheduler poll access', () => {
     await page.goto('/auth');
     await page.getByLabel('Email').fill(user.email);
     await page.getByLabel('Password').fill(user.password);
-    await page.getByRole('button', { name: /^log in$/i }).click();
+    await page.locator('form').getByRole('button', { name: /^log in$/i }).click();
     await page.waitForURL(/\/dashboard/);
 
     await page.goto(`/scheduler/${schedulerId}`);
