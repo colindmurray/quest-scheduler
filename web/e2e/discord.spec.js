@@ -7,8 +7,12 @@ test.describe('Discord bot entry', () => {
     await expect(page.getByText('Add Quest Scheduler to your Discord server.')).toBeVisible();
   });
 
-  test.skip('discord OAuth login flow (requires emulator + test credentials)', async ({ page }) => {
-    // TODO: seed test user, click login, and verify redirect to Discord OAuth.
+  test('discord OAuth login flow (requires emulator + test credentials)', async ({ page }) => {
     await page.goto('/auth');
+    await page.getByRole('button', { name: /continue with discord/i }).click();
+    await page.waitForURL(/discord\.com\/oauth2\/authorize/);
+    const url = new URL(page.url());
+    expect(url.searchParams.get('client_id')).toBeTruthy();
+    expect(url.searchParams.get('redirect_uri')).toBeTruthy();
   });
 });
