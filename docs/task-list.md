@@ -1,8 +1,8 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-28 — Added Firestore + Storage rules tests/config; `npm run test:rules` blocked by Firebase CLI JDK 21 requirement.
-- Next Step: Add unit tests for `web/src/lib/identifiers.js` and `web/src/lib/identity.js`.
+- Last Completed: 2026-01-28 — Added unit tests for `web/src/lib/identifiers.js` and `web/src/lib/identity.js` (vitest run passed).
+- Next Step: Add unit tests for `web/src/lib/auth.js` and new data modules (`pollInvites`, `blocks`, `discord`, `usernames`).
 - Open Issues: `npm run test:rules` failed — firebase-tools requires JDK 21+. `npm install` reported 4 vulnerabilities (3 moderate, 1 high) — run audit once test plan allows.
 - Last Updated (YYYY-MM-DD): 2026-01-28
 
@@ -13,7 +13,7 @@
 - [x] 2026-01-28: Install web test deps: `@testing-library/react`, `@testing-library/jest-dom`, `msw`, `@playwright/test`.
 - [x] 2026-01-28: Add Firebase Emulator config in `firebase.json` (auth, firestore, storage, functions) + npm scripts.
 - [x] 2026-01-28: Add Firestore + Storage rules tests with `@firebase/rules-unit-testing` (test run blocked: firebase-tools requires JDK 21+).
-- [ ] Add unit tests for `web/src/lib/identifiers.js` and `web/src/lib/identity.js`.
+- [x] 2026-01-28: Add unit tests for `web/src/lib/identifiers.js` and `web/src/lib/identity.js`.
 - [ ] Add unit tests for `web/src/lib/auth.js` (Google + Discord token flows).
 - [ ] Add unit tests for new data modules (`pollInvites`, `blocks`, `discord`, `usernames`).
 - [ ] Add Playwright E2E scaffold + critical flows (Discord + UID-only polling).
