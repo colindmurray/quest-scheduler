@@ -26,7 +26,7 @@ const tabs = [
 ];
 
 const GOOGLE_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
-const PROVIDER_BUTTON_WIDTH = 320;
+const PROVIDER_BUTTON_WIDTH = 256;
 let googleScriptPromise = null;
 
 function loadGoogleScript() {
