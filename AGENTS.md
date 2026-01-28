@@ -62,22 +62,29 @@ This file is the working contract for all agents (including Codex) contributing 
 - **Keep docs updated** as decisions are made.
 - Use `docs/decisions.md` to record key architectural choices.
 - Update `docs/task-list.md` as work progresses.
+- Use `docs/testing.md` as the source of truth for local test commands and emulator setup.
 
 ## 5) Implementation Workflow (for Codex)
 - Work in small, reviewable steps.
 - After each compact step, update `docs/task-list.md` with progress notes.
 - Prefer patching one feature at a time.
 
-### 5.1 Discord Bot MVP Workflow (Codex)
-- Use `docs/discord-bot-feature-design-doc.md` + `docs/discord-bot-feature-design-tasks-list.md` as source of truth.
-- Use the `discord-task-runner` skill when executing the Discord MVP task list.
+### 5.1 Long-Running Test Plan Workflow (Codex)
+- Use `docs/unit-integration-e2e-automated-test-plan.md` as the source of truth.
+- Use the `test-plan-runner` skill when executing the test plan or any testing-overhaul tasks.
 - Execute tasks in priority order (P0 → P1 → P2 → P3…), then numeric order.
 - Mark task `Status` as `[x]` only after the task is completed **and** validated (tests run or explicitly noted).
-- If a dependency mismatch appears, update the task list priority/order and explain in Notes.
-- If any Discord/Firebase/API behavior is unclear, do web research (official docs first) and update the design doc to reflect corrections.
-- Commit at milestones (typically each Section 1.x group) after tests pass; message format: `discord: <milestone summary>`.
-- When all P0 tasks are complete and tests pass, stop and await user manual testing before continuing.
-- For long-running chunks, split tasks into smaller prompts and run everything locally in the CLI.
+- Maintain a persistent checkpoint in `docs/task-list.md` named `Test Plan Execution Checkpoint` with: `Last Completed`, `Next Step`, `Open Issues`, `Last Updated (YYYY-MM-DD)`.
+- At the start of each cycle, read the checkpoint first; after each task and at the end, update it even if no tasks were completed.
+- If dependencies shift, update priorities/order and explain in Notes.
+- If any tool/API/test behavior is unclear, do web research (official docs first) and update the test plan or `docs/decisions.md` with corrections.
+- For long-running chunks, split tasks into smaller prompts and run everything locally in the CLI, but do not pause for user input unless blocked.
+- Always run tests after writing tests or changing test-related code; record results in task notes.
+
+### 5.2 Autonomy, Decisions, and Commits
+- Operate autonomously and continue through the test plan without interruption unless blocked by missing credentials, conflicting instructions, or destructive risk.
+- Resolve routine decisions independently and document assumptions in `docs/decisions.md` when needed.
+- If a bug is discovered during this process, commit the current state before fixing it, then fix the bug, run tests, and commit again once tests pass.
 
 ## 6) Deployment Notes
 - Target Firebase Hosting for frontend.

@@ -1,7 +1,7 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-28 — Added `scripts/run-e2e.sh` and `npm run test:e2e:emulators` for one-step emulator E2E runs.
+- Last Completed: 2026-01-28 — Documented testing in `docs/testing.md` and linked in AGENTS/CLAUDE.
 - Next Step: Optional cleanup of emulator warnings (firebase-functions update, punycode deprecations) if desired.
 - Open Issues: Functions tests still emit firebase secret warnings; roles mapping test skipped (needs bot token/REST stubbing). Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning.
 - Last Updated (YYYY-MM-DD): 2026-01-28

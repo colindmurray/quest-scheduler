@@ -25,6 +25,17 @@ firebase deploy --only hosting,firestore,extensions --project studio-473406021-8
 firebase deploy --only hosting --project studio-473406021-87ead   # Hosting only
 ```
 
+### Testing
+See `docs/testing.md` for full setup and emulator steps.
+
+```bash
+npm --prefix web run test                      # Web unit tests (Vitest)
+npm --prefix functions run test                # Functions unit tests (Vitest)
+npm --prefix web run test:rules                # Firestore/Storage rules (emulator)
+npm --prefix web run test:e2e                  # Playwright E2E (assumes emulators + seed)
+npm --prefix web run test:e2e:emulators        # One-step emulator + seed + E2E
+```
+
 ## Architecture
 
 ### Frontend Stack
