@@ -246,6 +246,19 @@ export default function SchedulerPage() {
     () => (cloneSelectedGroup?.id ? getGroupColor(cloneSelectedGroup.id) : null),
     [cloneSelectedGroup?.id, getGroupColor]
   );
+  const cloneInviteSet = useMemo(
+    () => new Set(cloneInvites.map((email) => normalizeEmail(email))),
+    [cloneInvites]
+  );
+  const cloneRecommendedEmails = useMemo(() => {
+    const userEmail = user?.email ? normalizeEmail(user.email) : null;
+    return friends
+      .map((email) => normalizeEmail(email))
+      .filter(Boolean)
+      .filter((email) => email !== userEmail)
+      .filter((email) => !cloneInviteSet.has(email))
+      .filter((email) => !cloneGroupMemberSet.has(email));
+  }, [friends, cloneInviteSet, cloneGroupMemberSet, user?.email]);
   const profileEmails = useMemo(() => {
     const combined = new Set(
       [...questingGroupMembers, ...cloneGroupMemberEmails, ...cloneInvites, ...cloneRecommendedEmails]
@@ -283,19 +296,6 @@ export default function SchedulerPage() {
     }
     return base;
   }, [groups, scheduler.data?.questingGroupId, scheduler.data?.questingGroupName]);
-  const cloneInviteSet = useMemo(
-    () => new Set(cloneInvites.map((email) => normalizeEmail(email))),
-    [cloneInvites]
-  );
-  const cloneRecommendedEmails = useMemo(() => {
-    const userEmail = user?.email ? normalizeEmail(user.email) : null;
-    return friends
-      .map((email) => normalizeEmail(email))
-      .filter(Boolean)
-      .filter((email) => email !== userEmail)
-      .filter((email) => !cloneInviteSet.has(email))
-      .filter((email) => !cloneGroupMemberSet.has(email));
-  }, [friends, cloneInviteSet, cloneGroupMemberSet, user?.email]);
 
   useEffect(() => {
     if (!cloneGroupId) return;
