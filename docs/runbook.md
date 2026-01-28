@@ -96,6 +96,17 @@ Force set for all schedulers (rare):
 node functions/scripts/migrate-allow-link-sharing.js --all --commit
 ```
 
+### UUID identifier backfill (participantIds/memberIds/voterId)
+Dry run:
+```
+node functions/scripts/migrate-uuid-identifiers.js --service-account /home/colin/keys/qs-admin.json
+```
+
+Apply:
+```
+node functions/scripts/migrate-uuid-identifiers.js --service-account /home/colin/keys/qs-admin.json --commit
+```
+
 ## Notes
 - Google Calendar access uses OAuth token from Google sign-in. If finalization fails, re-auth.
 - SMTP credentials are placeholders until real provider credentials are added.

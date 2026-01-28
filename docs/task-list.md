@@ -208,6 +208,8 @@
 - [x] 2026-01-28: Update block checks to support auto-ID blockedUsers docs and legacy email-keyed docs.
 - [x] 2026-01-28: Add `functions/scripts/migrate-uuid-identifiers.js` (participantIds/memberIds/voterId backfill).
 - [x] 2026-01-28: Run UUID backfill script with qs-admin-tools service account.
+- [x] 2026-01-28: Dual-read scheduler/group membership via uid arrays + email fallback.
+- [x] 2026-01-28: Enforce group invite blocking server-side (callable) + remove direct pendingInvites writes.
 - [x] 2026-01-27: Extend Discord login portal doc for username invites + blacklist/abuse rules.
 - [ ] Manual QA for auth scenarios + Firebase Console checks (providers, one-account-per-email).
 

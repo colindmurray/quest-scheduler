@@ -16,6 +16,12 @@ export const userGroupsQuery = (userEmail) =>
     where("members", "array-contains", userEmail)
   );
 
+export const userGroupsByIdQuery = (userId) =>
+  query(
+    questingGroupsRef(),
+    where("memberIds", "array-contains", userId)
+  );
+
 // Query for groups user is invited to
 export const userPendingInvitesQuery = (userEmail) =>
   query(
@@ -81,25 +87,30 @@ export async function inviteMemberToGroup(
   inviteeUserId = null,
   inviterUserId = null
 ) {
-  const ref = questingGroupRef(groupId);
   const normalizedInvitee = inviteeEmail.toLowerCase();
-  const normalizedInviter = inviterEmail.toLowerCase();
-
-  // Add to pending invites
-  await updateDoc(ref, {
-    pendingInvites: arrayUnion(normalizedInvitee),
-    [`pendingInviteMeta.${normalizedInvitee}`]: {
-      invitedByEmail: normalizedInviter,
-      invitedByUserId: inviterUserId || null,
-      invitedAt: serverTimestamp(),
-    },
-    updatedAt: serverTimestamp(),
+  const functions = getFunctions();
+  const sendGroupInvite = httpsCallable(functions, "sendGroupInvite");
+  const response = await sendGroupInvite({
+    groupId,
+    inviteeEmail: normalizedInvitee,
   });
+  const result = response.data || {};
+  if (!result.added) {
+    if (result.reason === "blocked") {
+      throw new Error("This user is not accepting new invites from you.");
+    }
+    if (result.reason === "member" || result.reason === "pending") {
+      throw new Error("This person is already a member or has a pending invite.");
+    }
+    throw new Error("Unable to send group invite.");
+  }
+
+  const resolvedUserId = result.inviteeUserId || inviteeUserId || null;
 
   // Create in-app notification if we have the user ID
-  if (inviteeUserId) {
+  if (resolvedUserId) {
     try {
-      await createGroupInviteNotification(inviteeUserId, {
+      await createGroupInviteNotification(resolvedUserId, {
         groupId,
         groupName,
         inviterEmail,
@@ -166,22 +177,12 @@ export async function declineGroupInvitation(groupId, userEmail, userId = null) 
 }
 
 export async function revokeGroupInvite(groupId, inviteeEmail, inviteeUserId = null) {
-  const ref = questingGroupRef(groupId);
-  const normalizedInvitee = inviteeEmail.toLowerCase();
-
-  await updateDoc(ref, {
-    pendingInvites: arrayRemove(normalizedInvitee),
-    [`pendingInviteMeta.${normalizedInvitee}`]: deleteField(),
-    updatedAt: serverTimestamp(),
+  const functions = getFunctions();
+  const revokeInvite = httpsCallable(functions, "revokeGroupInvite");
+  await revokeInvite({
+    groupId,
+    inviteeEmail: inviteeEmail.toLowerCase(),
   });
-
-  if (inviteeUserId) {
-    try {
-      await deleteNotification(inviteeUserId, groupInviteNotificationId(groupId));
-    } catch (err) {
-      console.warn("Failed to remove group invite notification:", err);
-    }
-  }
 }
 
 // Remove a member from the group

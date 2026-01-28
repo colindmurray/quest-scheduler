@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { inviteMemberToGroup } from "./questingGroups";
-import { updateDoc, arrayUnion, serverTimestamp } from "firebase/firestore";
 import { createGroupInviteNotification } from "./notifications";
+import { httpsCallable } from "firebase/functions";
 
 vi.mock("firebase/firestore", () => ({
   collection: vi.fn(),
@@ -25,12 +25,21 @@ vi.mock("./notifications", () => ({
   ensureGroupInviteNotification: vi.fn(),
 }));
 
+vi.mock("firebase/functions", () => ({
+  getFunctions: vi.fn(),
+  httpsCallable: vi.fn(),
+}));
+
 describe("inviteMemberToGroup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("adds pending invite and creates in-app notification when user id is provided", async () => {
+  it("creates in-app notification when invite succeeds", async () => {
+    httpsCallable.mockReturnValue(async () => ({
+      data: { added: true, inviteeUserId: "user_123" },
+    }));
+
     await inviteMemberToGroup(
       "group_1",
       "The Heroes",
@@ -39,27 +48,18 @@ describe("inviteMemberToGroup", () => {
       "user_123"
     );
 
-    expect(updateDoc).toHaveBeenCalledWith(expect.anything(), {
-      pendingInvites: { __arrayUnion: "invitee@example.com" },
-      "pendingInviteMeta.invitee@example.com": {
-        invitedByEmail: "inviter@example.com",
-        invitedByUserId: null,
-        invitedAt: "ts",
-      },
-      updatedAt: "ts",
-    });
-
     expect(createGroupInviteNotification).toHaveBeenCalledWith("user_123", {
       groupId: "group_1",
       groupName: "The Heroes",
       inviterEmail: "inviter@example.com",
     });
-
-    expect(arrayUnion).toHaveBeenCalledWith("invitee@example.com");
-    expect(serverTimestamp).toHaveBeenCalled();
   });
 
-  it("adds pending invite without notification when user id is missing", async () => {
+  it("skips notification when invitee user id is missing", async () => {
+    httpsCallable.mockReturnValue(async () => ({
+      data: { added: true, inviteeUserId: null },
+    }));
+
     await inviteMemberToGroup(
       "group_1",
       "The Heroes",
@@ -68,7 +68,22 @@ describe("inviteMemberToGroup", () => {
       null
     );
 
-    expect(updateDoc).toHaveBeenCalledTimes(1);
     expect(createGroupInviteNotification).not.toHaveBeenCalled();
+  });
+
+  it("throws when invite is blocked", async () => {
+    httpsCallable.mockReturnValue(async () => ({
+      data: { added: false, reason: "blocked" },
+    }));
+
+    await expect(
+      inviteMemberToGroup(
+        "group_1",
+        "The Heroes",
+        "inviter@example.com",
+        "invitee@example.com",
+        null
+      )
+    ).rejects.toThrow("This user is not accepting new invites from you.");
   });
 });

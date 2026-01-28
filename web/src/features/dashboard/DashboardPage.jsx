@@ -148,6 +148,14 @@ export default function DashboardPage() {
     );
   }, [user?.email]);
 
+  const allParticipatingIdsQuery = useMemo(() => {
+    if (!user?.uid) return null;
+    return query(
+      collection(db, "schedulers"),
+      where("participantIds", "array-contains", user.uid)
+    );
+  }, [user?.uid]);
+
   // Query for polls user created
   const myQuery = useMemo(() => {
     if (!user?.uid) return null;
@@ -155,6 +163,7 @@ export default function DashboardPage() {
   }, [user?.uid]);
 
   const allParticipating = useFirestoreCollection(allParticipatingQuery);
+  const allParticipatingById = useFirestoreCollection(allParticipatingIdsQuery);
   const mine = useFirestoreCollection(myQuery);
   const groupMembersById = useMemo(() => {
     const map = new Map();
@@ -168,11 +177,11 @@ export default function DashboardPage() {
   }, [groups]);
   const participatingSchedulers = useMemo(() => {
     const deduped = new Map();
-    [...allParticipating.data, ...groupSchedulers].forEach((scheduler) => {
+    [...allParticipating.data, ...allParticipatingById.data, ...groupSchedulers].forEach((scheduler) => {
       deduped.set(scheduler.id, scheduler);
     });
     return Array.from(deduped.values());
-  }, [allParticipating.data, groupSchedulers]);
+  }, [allParticipating.data, allParticipatingById.data, groupSchedulers]);
 
   // Fetch slots and votes for all schedulers to get winning slots and vote counts
   useEffect(() => {

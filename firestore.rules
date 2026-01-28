@@ -27,13 +27,25 @@ service cloud.firestore {
         && data.questingGroupId != null
         && data.questingGroupId != ""
         && exists(/databases/$(database)/documents/questingGroups/$(data.questingGroupId))
-        && userEmail() in get(/databases/$(database)/documents/questingGroups/$(data.questingGroupId)).data.members;
+        && (
+          (get(/databases/$(database)/documents/questingGroups/$(data.questingGroupId)).data.memberIds != null
+            && request.auth.uid in get(/databases/$(database)/documents/questingGroups/$(data.questingGroupId)).data.memberIds)
+          || (get(/databases/$(database)/documents/questingGroups/$(data.questingGroupId)).data.members != null
+            && userEmail() in get(/databases/$(database)/documents/questingGroups/$(data.questingGroupId)).data.members)
+        );
+    }
+
+    function isSchedulerParticipantData(data) {
+      return isSignedIn() && (
+        (data.participantIds != null && request.auth.uid in data.participantIds) ||
+        (data.participants != null && userEmail() in data.participants)
+      );
     }
 
     function canReadScheduler(data) {
       return isSignedIn() && (
         isCreator(data) ||
-        userEmail() in data.participants ||
+        isSchedulerParticipantData(data) ||
         isQuestingGroupMember(data) ||
         hasPendingInvite(data) ||
         data.allowLinkSharing == true
@@ -132,7 +144,8 @@ service cloud.firestore {
 
     match /questingGroups/{groupId} {
       function isGroupMember(data) {
-        return userEmail() in data.members;
+        return (data.memberIds != null && request.auth.uid in data.memberIds)
+          || (data.members != null && userEmail() in data.members);
       }
 
       function isGroupInvitee(data) {
@@ -142,6 +155,14 @@ service cloud.firestore {
       function isGroupManager(data) {
         return data.creatorId == request.auth.uid
           || (data.memberManaged == true && isGroupMember(data));
+      }
+
+      function managerUpdateAllowed(data) {
+        return isGroupManager(data)
+          && !request.resource.data.diff(data).affectedKeys().hasAny([
+            "pendingInvites",
+            "pendingInviteMeta"
+          ]);
       }
 
       function isInviteeUpdate(data) {
@@ -187,7 +208,7 @@ service cloud.firestore {
 
       // Update: creator always can update, members can update if memberManaged is true, invitees can accept/decline
       allow update: if isSignedIn() && (
-        isGroupManager(resource.data) ||
+        managerUpdateAllowed(resource.data) ||
         isInviteeUpdate(resource.data) ||
         isSelfLeave(resource.data)
       );
@@ -198,12 +219,13 @@ service cloud.firestore {
 
     match /schedulers/{schedulerId} {
       function isSchedulerParticipant(data) {
-        return isSignedIn() && userEmail() in data.participants;
+        return isSchedulerParticipantData(data);
       }
 
       function canVoteScheduler(data) {
         return isSignedIn() && (
-          userEmail() in data.participants ||
+          (data.participantIds != null && request.auth.uid in data.participantIds) ||
+          (data.participants != null && userEmail() in data.participants) ||
           isQuestingGroupMember(data)
         );
       }

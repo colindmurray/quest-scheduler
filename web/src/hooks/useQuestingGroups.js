@@ -12,6 +12,7 @@ import { createEmailMessage } from "../lib/emailTemplates";
 import { createFriendRequest } from "../lib/data/friends";
 import {
   userGroupsQuery,
+  userGroupsByIdQuery,
   userPendingInvitesQuery,
   createQuestingGroup,
   updateQuestingGroup,
@@ -32,10 +33,15 @@ export function useQuestingGroups() {
   const { friends } = useFriends();
 
   // Query for groups user is a member of
-  const groupsQueryRef = useMemo(() => {
+  const groupsByEmailQueryRef = useMemo(() => {
     if (!user?.email) return null;
     return userGroupsQuery(user.email.toLowerCase());
   }, [user?.email]);
+
+  const groupsByIdQueryRef = useMemo(() => {
+    if (!user?.uid) return null;
+    return userGroupsByIdQuery(user.uid);
+  }, [user?.uid]);
 
   // Query for pending invitations
   const invitesQueryRef = useMemo(() => {
@@ -47,10 +53,19 @@ export function useQuestingGroups() {
   const userRef = useMemo(() => (user ? doc(db, "users", user.uid) : null), [user]);
   const { data: userData } = useFirestoreDoc(userRef);
 
-  const { data: groups, loading: groupsLoading } = useFirestoreCollection(groupsQueryRef);
+  const groupsByEmail = useFirestoreCollection(groupsByEmailQueryRef);
+  const groupsById = useFirestoreCollection(groupsByIdQueryRef);
+  const groups = useMemo(() => {
+    const map = new Map();
+    [...groupsByEmail.data, ...groupsById.data].forEach((group) => {
+      if (!group?.id) return;
+      map.set(group.id, group);
+    });
+    return Array.from(map.values());
+  }, [groupsByEmail.data, groupsById.data]);
   const { data: pendingInvites, loading: invitesLoading } = useFirestoreCollection(invitesQueryRef);
 
-  const loading = groupsLoading || invitesLoading;
+  const loading = groupsByEmail.loading || groupsById.loading || invitesLoading;
   const friendSet = useMemo(
     () => new Set((friends || []).map((email) => email.toLowerCase())),
     [friends]
@@ -132,13 +147,12 @@ export function useQuestingGroups() {
       const normalizedInvitee = inviteeEmail.toLowerCase();
       const shouldSendFriendInvite = sendFriendInvite && !friendSet.has(normalizedInvitee);
 
-      const inviteeUserId = await findUserIdByEmail(inviteeEmail);
       await inviteMemberToGroup(
         groupId,
         groupName,
         user.email,
         inviteeEmail,
-        inviteeUserId,
+        null,
         user.uid
       );
 
@@ -229,8 +243,7 @@ export function useQuestingGroups() {
   const revokeInvite = useCallback(
     async (groupId, inviteeEmail) => {
       if (!user?.uid) return;
-      const inviteeUserId = await findUserIdByEmail(inviteeEmail);
-      await revokeGroupInvite(groupId, inviteeEmail, inviteeUserId);
+      await revokeGroupInvite(groupId, inviteeEmail);
     },
     [user?.uid]
   );

@@ -164,19 +164,24 @@ export default function SchedulerPage() {
   const normalizeEmail = (value) => value.trim().toLowerCase();
   const normalizedUserEmail = user?.email?.toLowerCase() || null;
   const isGroupMember = Boolean(
-    normalizedUserEmail &&
-      scheduler.data?.questingGroupId &&
-      questingGroup.data?.members?.some(
-        (email) => normalizeEmail(email) === normalizedUserEmail
-      )
+    scheduler.data?.questingGroupId && (
+      (user?.uid && questingGroup.data?.memberIds?.includes(user.uid)) ||
+      (normalizedUserEmail &&
+        questingGroup.data?.members?.some(
+          (email) => normalizeEmail(email) === normalizedUserEmail
+        ))
+    )
   );
-  const isExplicitParticipant = useMemo(
-    () =>
+  const isExplicitParticipant = useMemo(() => {
+    if (user?.uid && scheduler.data?.participantIds?.includes(user.uid)) {
+      return true;
+    }
+    return (
       scheduler.data?.participants?.some(
         (email) => normalizedUserEmail && email?.toLowerCase() === normalizedUserEmail
-      ) || false,
-    [scheduler.data?.participants, normalizedUserEmail]
-  );
+      ) || false
+    );
+  }, [scheduler.data?.participants, scheduler.data?.participantIds, normalizedUserEmail, user?.uid]);
   const isEffectiveParticipant = isExplicitParticipant || isGroupMember;
   const [calendarView, setCalendarView] = useState("month");
   const [expandedSlots, setExpandedSlots] = useState({});
@@ -296,9 +301,11 @@ export default function SchedulerPage() {
     if (!scheduler.data || !user?.email || !id) return;
     if (isCreator) return;
     const normalizedEmail = user.email.toLowerCase();
-    const participantMatch = scheduler.data.participants?.some(
-      (email) => email?.toLowerCase() === normalizedEmail
-    );
+    const participantMatch =
+      scheduler.data.participantIds?.includes(user?.uid) ||
+      scheduler.data.participants?.some(
+        (email) => email?.toLowerCase() === normalizedEmail
+      );
     const isPendingInvite = scheduler.data.pendingInvites?.some(
       (email) => email?.toLowerCase() === normalizedEmail
     );
@@ -311,7 +318,7 @@ export default function SchedulerPage() {
     } else {
       setInvitePromptOpen(false);
     }
-  }, [id, scheduler.data, user?.email, isCreator]);
+  }, [id, scheduler.data, user?.email, user?.uid, isCreator]);
 
   useEffect(() => {
     if (!userVote.data) return;

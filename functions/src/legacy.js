@@ -1242,6 +1242,126 @@ exports.revokePollInvite = functions.https.onCall(async (data, context) => {
   return { ok: true };
 });
 
+exports.sendGroupInvite = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Login required");
+  }
+
+  const groupId = String(data?.groupId || "").trim();
+  const inviteeEmail = normalizeEmail(data?.inviteeEmail);
+  if (!groupId || !inviteeEmail) {
+    throw new functions.https.HttpsError("invalid-argument", "Missing group or invitee email.");
+  }
+
+  const inviterId = context.auth.uid;
+  const inviterEmail = normalizeEmail(context.auth.token.email);
+  if (!inviterEmail) {
+    throw new functions.https.HttpsError("failed-precondition", "User email not available.");
+  }
+
+  if (inviteeEmail === inviterEmail) {
+    throw new functions.https.HttpsError("failed-precondition", "You cannot invite yourself.");
+  }
+
+  const db = admin.firestore();
+  const groupRef = db.collection("questingGroups").doc(groupId);
+  const groupSnap = await groupRef.get();
+  if (!groupSnap.exists) {
+    throw new functions.https.HttpsError("not-found", "Questing group not found.");
+  }
+  const group = groupSnap.data() || {};
+  const members = Array.isArray(group.members) ? group.members.map(normalizeEmail) : [];
+  const memberIds = Array.isArray(group.memberIds) ? group.memberIds : [];
+  const pending = Array.isArray(group.pendingInvites)
+    ? group.pendingInvites.map(normalizeEmail)
+    : [];
+
+  const isCreator = group.creatorId === inviterId;
+  const isMember = memberIds.includes(inviterId) || members.includes(inviterEmail);
+  const canInvite = isCreator || (group.memberManaged === true && isMember);
+  if (!canInvite) {
+    throw new functions.https.HttpsError("permission-denied", "Only group managers can invite.");
+  }
+
+  if (members.includes(inviteeEmail)) {
+    return { added: false, reason: "member" };
+  }
+  if (pending.includes(inviteeEmail)) {
+    return { added: false, reason: "pending" };
+  }
+
+  const inviteeUserId = await findUserIdByEmail(inviteeEmail);
+  if (await isBlockedByUser(inviteeUserId, inviterEmail)) {
+    return { added: false, reason: "blocked" };
+  }
+
+  await groupRef.update({
+    pendingInvites: admin.firestore.FieldValue.arrayUnion(inviteeEmail),
+    [`pendingInviteMeta.${inviteeEmail}`]: {
+      invitedByEmail: inviterEmail,
+      invitedByUserId: inviterId,
+      invitedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { added: true, inviteeUserId: inviteeUserId || null };
+});
+
+exports.revokeGroupInvite = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Login required");
+  }
+
+  const groupId = String(data?.groupId || "").trim();
+  const inviteeEmail = normalizeEmail(data?.inviteeEmail);
+  if (!groupId || !inviteeEmail) {
+    throw new functions.https.HttpsError("invalid-argument", "Missing group or invitee email.");
+  }
+
+  const inviterId = context.auth.uid;
+  const inviterEmail = normalizeEmail(context.auth.token.email);
+  if (!inviterEmail) {
+    throw new functions.https.HttpsError("failed-precondition", "User email not available.");
+  }
+
+  const db = admin.firestore();
+  const groupRef = db.collection("questingGroups").doc(groupId);
+  const groupSnap = await groupRef.get();
+  if (!groupSnap.exists) {
+    throw new functions.https.HttpsError("not-found", "Questing group not found.");
+  }
+  const group = groupSnap.data() || {};
+  const members = Array.isArray(group.members) ? group.members.map(normalizeEmail) : [];
+  const memberIds = Array.isArray(group.memberIds) ? group.memberIds : [];
+
+  const isCreator = group.creatorId === inviterId;
+  const isMember = memberIds.includes(inviterId) || members.includes(inviterEmail);
+  const canInvite = isCreator || (group.memberManaged === true && isMember);
+  if (!canInvite) {
+    throw new functions.https.HttpsError("permission-denied", "Only group managers can revoke invites.");
+  }
+
+  await groupRef.update({
+    pendingInvites: admin.firestore.FieldValue.arrayRemove(inviteeEmail),
+    [`pendingInviteMeta.${inviteeEmail}`]: admin.firestore.FieldValue.delete(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  const inviteeUserId = await findUserIdByEmail(inviteeEmail);
+  if (inviteeUserId) {
+    await db
+      .collection("users")
+      .doc(inviteeUserId)
+      .collection("notifications")
+      .doc(`groupInvite:${groupId}`)
+      .delete()
+      .catch(() => undefined);
+  }
+
+  return { ok: true };
+});
+
 exports.removeGroupMemberFromPolls = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError("unauthenticated", "Login required");
@@ -1385,6 +1505,15 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
     .get();
 
   const hasPendingPollInvites = !pollSnap.empty;
+  const groupSnap = await db
+    .collection("questingGroups")
+    .where("pendingInvites", "array-contains", blockerEmail)
+    .get();
+  const groupInvites = groupSnap.docs.filter((docSnap) => {
+    const meta = docSnap.data()?.pendingInviteMeta?.[blockerEmail] || {};
+    return normalizeEmail(meta.invitedByEmail) === targetEmail;
+  });
+  const hasPendingGroupInvites = groupInvites.length > 0;
   let offenderUserId = null;
   if (hasPendingFriend) {
     offenderUserId = friendDoc.data()?.fromUserId || null;
@@ -1392,8 +1521,17 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
   if (!offenderUserId && hasPendingPollInvites) {
     offenderUserId = pollSnap.docs[0]?.data()?.creatorId || null;
   }
+  if (!offenderUserId && hasPendingGroupInvites) {
+    const meta = groupInvites[0].data()?.pendingInviteMeta?.[blockerEmail] || {};
+    offenderUserId = meta.invitedByUserId || null;
+  }
+  if (!offenderUserId && hasPendingGroupInvites) {
+    offenderUserId = await findUserIdByEmail(targetEmail);
+  }
 
-  const shouldPenalize = Boolean(offenderUserId && (hasPendingFriend || hasPendingPollInvites));
+  const shouldPenalize = Boolean(
+    offenderUserId && (hasPendingFriend || hasPendingPollInvites || hasPendingGroupInvites)
+  );
 
   const blockRef = blockedCollection.doc();
   await blockRef.set({
@@ -1436,6 +1574,29 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
         .doc(blockerId)
         .collection("notifications")
         .doc(`pollInvite:${pollDoc.id}`)
+        .delete()
+        .catch(() => undefined);
+    }
+  }
+
+  if (hasPendingGroupInvites) {
+    for (const groupDoc of groupInvites) {
+      const groupData = groupDoc.data() || {};
+      const pendingInvites = (groupData.pendingInvites || []).filter(
+        (email) => normalizeEmail(email) !== blockerEmail
+      );
+      const nextMeta = { ...(groupData.pendingInviteMeta || {}) };
+      delete nextMeta[blockerEmail];
+      await groupDoc.ref.update({
+        pendingInvites,
+        pendingInviteMeta: nextMeta,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      await db
+        .collection("users")
+        .doc(blockerId)
+        .collection("notifications")
+        .doc(`groupInvite:${groupDoc.id}`)
         .delete()
         .catch(() => undefined);
     }
