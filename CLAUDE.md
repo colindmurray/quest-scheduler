@@ -38,6 +38,13 @@ npm --prefix web run test:e2e                  # Playwright E2E (assumes emulato
 npm --prefix web run test:e2e:emulators        # One-step emulator + seed + E2E
 ```
 
+### Testing Gate (Required for Every Task)
+- Always add or update tests when behavior changes or new logic is introduced.
+- Always re-run the relevant test suite(s) locally before finishing a task.
+- Always report test commands + results in the final response.
+- If tests cannot be run, document why and what remains unverified, and log it in `docs/task-list.md`.
+- Prefer CI enforcement (required status checks / merge checks) to prevent untested changes from merging. citeturn0search2turn0search3
+
 ## Architecture
 
 ### Frontend Stack

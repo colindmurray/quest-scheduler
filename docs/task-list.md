@@ -1,9 +1,9 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-29 — Expanded functions coverage (Discord worker handlers/votes, legacy callables/helpers, scheduler triggers). Added functions coverage config to focus on `functions/src` and re-ran `npm --prefix functions run test -- --coverage` (overall 60.85%; legacy 51.05; triggers 74.3).
-- Next Step: Continue raising legacy coverage (block/unblock, poll invites edge cases, google calendar flows) and improve OAuth/discord-client coverage toward 70%+.
-- Open Issues: Vitest run still emits `punycode` deprecation warnings and firebase-functions update warning; one worker integration test remains skipped.
+- Last Completed: 2026-01-29 — Expanded functions coverage with Discord worker branch tests, error-message coverage, and legacy deleteUserAccount failure paths. Re-ran `npm --prefix functions run test -- --coverage` (overall 80.14%; worker 82.13; legacy 72.94; triggers 80.3).
+- Next Step: Continue lifting legacy.js and oauth.js coverage (still below 80%) and consider un-skipping the worker integration test by running the emulator suite.
+- Open Issues: Vitest run still emits `punycode` deprecation warnings; one worker integration test remains skipped.
 - Last Updated (YYYY-MM-DD): 2026-01-29
 
 ## Automated Testing Overhaul (Unit / Integration / E2E)
@@ -28,4 +28,18 @@
 - [x] 2026-01-28: Add RTL component tests for Settings + Auth UI surfaces (`AuthPage`, `SettingsPage`).
 
 ## Progress Notes
+- 2026-01-29: Added `docs/typescript_migraiton_plan.md` with a phased, file-by-file TypeScript migration plan.
 - 2026-01-29: Allow poll creators to update vote docs for slot removals by permitting limited creator vote updates in Firestore rules.
+- 2026-01-29: Add poll descriptions and use them to prefill calendar event details; remove default calendar title/description settings.
+- 2026-01-29: Ran `npm --prefix web run test` and `npm --prefix functions run test`; deploy of `functions:cloneSchedulerPoll` blocked with "operation in progress" error.
+- 2026-01-29: Move session poll list/calendar view toggle below participants so it sits above the list/calendar block.
+- 2026-01-29: Fix finalized dashboard attendance summary to normalize vote values and prevent feasible-only votes from being miscounted as unavailable.
+- 2026-01-29: Add questing group Discord alert settings (finalization/reschedule + vote submissions) and wire function-side notification gates.
+- 2026-01-29: Include confirmed attendance count in Discord finalization messages; tests run via `npm --prefix functions run test` (warnings: `punycode` deprecation, one integration test skipped).
+- 2026-01-29: Add Discord slot-change notifications (default on) with added/removed summaries; tests run via `npm --prefix functions run test` (warnings: `punycode` deprecation, one integration test skipped).
+- 2026-01-29: Add attendance summary unit tests and rerun web test suite (40 files, 166 tests).
+- 2026-01-29: Built and deployed hosting for attendance summary fix.
+- 2026-01-29: Add attendance summary edge-case tests (missing winner/participant map) and rerun web test suite (40 files, 168 tests).
+- 2026-01-29: Added `docs/code-health-audit.md` with prioritized code health findings.
+- 2026-01-29: Expanded `docs/code-health-audit.md` with a pass-2 core business logic checklist and added findings.
+- 2026-01-29: Expanded functions test coverage (Discord worker branches, error messages, legacy deleteUserAccount errors) and re-ran `npm --prefix functions run test -- --coverage` (overall 80.14%).

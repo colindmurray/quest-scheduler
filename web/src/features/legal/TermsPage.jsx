@@ -1,6 +1,6 @@
 import LegalLayout from "./LegalLayout";
 
-const EFFECTIVE_DATE = "January 26, 2026";
+const EFFECTIVE_DATE = "January 28, 2026";
 const CONTACT_EMAIL = "support@questscheduler.cc";
 
 export default function TermsPage() {
@@ -31,12 +31,27 @@ export default function TermsPage() {
         <li>You are responsible for maintaining the security of your account.</li>
         <li>You must provide accurate information and keep it up to date.</li>
         <li>You are responsible for activity that occurs under your account.</li>
+        <li>You must maintain at least one valid sign-in method; unlinking may be restricted to prevent account lockout.</li>
       </ul>
+
+      <h2>Usernames, identifiers, and profiles</h2>
+      <p>
+        Quest Scheduler shows a display name and a unique public identifier with your profile
+        in contexts like invites, polls, and friend requests. You can choose which identifier
+        is public (email, Discord username, or Quest Scheduler username) in Settings.
+      </p>
+      <p>
+        If you create a Quest Scheduler username, it must follow our formatting rules and be
+        unique. We may reject, reclaim, or change identifiers to enforce uniqueness, prevent
+        impersonation, or comply with legal requirements.
+      </p>
 
       <h2>Acceptable use</h2>
       <ul>
         <li>Do not misuse the Service or attempt to access it in an unauthorized way.</li>
         <li>Do not send spam, abusive content, or illegal content.</li>
+        <li>Do not impersonate others or use misleading identifiers.</li>
+        <li>Do not upload profile images that are unlawful, hateful, or infringing.</li>
         <li>Do not interfere with or disrupt the Service or its infrastructure.</li>
         <li>Do not attempt to circumvent rate limits, security controls, or access checks.</li>
       </ul>
@@ -55,15 +70,26 @@ export default function TermsPage() {
         have the rights and permissions to link a server/channel and to install the bot.
       </p>
       <p>
+        Discord login requires a verified email address. If Discord is your only sign-in
+        method, we may prevent unlinking to avoid account lockout.
+      </p>
+      <p>
         You can unlink Discord at any time in Settings or remove the bot from your server. We
         may disable Discord features if required by Discord policies or if misuse is detected.
       </p>
 
       <h2>User content</h2>
       <p>
-        You retain ownership of content you submit. By submitting content, you grant us a
-        non‑exclusive, worldwide, royalty‑free license to host, store, and display that content
-        to provide the Service.
+        You retain ownership of content you submit, including profile information, avatars,
+        and scheduling data. By submitting content, you grant us a non‑exclusive, worldwide,
+        royalty‑free license to host, store, and display that content to provide the Service.
+      </p>
+
+      <h2>Profile images</h2>
+      <p>
+        If you upload a custom avatar or choose a provider avatar, you represent that you have
+        the rights to use it. We may remove or disable avatars that violate these Terms or
+        applicable law.
       </p>
 
       <h2>Third-party services</h2>

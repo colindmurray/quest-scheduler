@@ -170,7 +170,7 @@ export async function declineGroupInvitation(groupId, userEmail, userId = null) 
   }
 }
 
-export async function revokeGroupInvite(groupId, inviteeEmail, _inviteeUserId = null) {
+export async function revokeGroupInvite(groupId, inviteeEmail) {
   const functions = getFunctions();
   const revokeInvite = httpsCallable(functions, "revokeGroupInvite");
   await revokeInvite({

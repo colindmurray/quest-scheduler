@@ -9,3 +9,8 @@
 - Decision: enforce verification at the Firestore rules layer for sensitive creates (scheduler + questing group creation).
 - Rationale: prevents unverified email/password accounts from creating polls while still allowing login + read access.
 - Implementation: check `request.auth.token.email_verified == true` or Google sign-in provider.
+
+## Calendar Event Defaults
+- Decision: remove per-user default calendar title/description in settings.
+- Rationale: calendar event details should mirror the session poll title/description (with questing group context).
+- Implementation: store poll `description` on scheduler documents; prefill calendar event title/description from poll data.

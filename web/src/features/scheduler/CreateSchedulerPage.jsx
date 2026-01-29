@@ -71,6 +71,7 @@ export default function CreateSchedulerPage() {
   const navigate = useNavigate();
   const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [invites, setInvites] = useState([]);
   const [pendingInvites, setPendingInvites] = useState([]);
   const [inviteInput, setInviteInput] = useState("");
@@ -201,6 +202,7 @@ export default function CreateSchedulerPage() {
     if (scheduler.data.creatorId && scheduler.data.creatorId !== user?.uid) return;
     if (explicitParticipantIds.length > 0 && explicitParticipantEmails.length === 0) return;
     setTitle(scheduler.data.title || "");
+    setDescription(scheduler.data.description || "");
     setAllowLinkSharing(Boolean(scheduler.data.allowLinkSharing));
     const creatorEmail = scheduler.data.creatorEmail || user?.email;
     setInvites(explicitParticipantEmails.filter((email) => email && email !== creatorEmail));
@@ -491,6 +493,7 @@ export default function CreateSchedulerPage() {
     );
     const creatorEmail = normalizeEmail(user.email);
     const pollTitle = title || "Untitled poll";
+    const pollDescription = (description || "").trim();
     const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const timezoneModeForScheduler =
       selectedTimezone === detectedTimezone ? "auto" : "manual";
@@ -499,6 +502,7 @@ export default function CreateSchedulerPage() {
       pendingList,
       creatorEmail,
       pollTitle,
+      pollDescription,
       timezoneModeForScheduler,
     };
   };
@@ -520,6 +524,7 @@ export default function CreateSchedulerPage() {
         pendingList,
         creatorEmail,
         pollTitle,
+        pollDescription,
         timezoneModeForScheduler,
       } = getPollInputs();
       const participantIdMap = await resolveParticipantIdsByEmail(explicitParticipants);
@@ -549,6 +554,7 @@ export default function CreateSchedulerPage() {
       );
       await updateDoc(schedulerRef, {
         title: pollTitle,
+        description: pollDescription,
         participantIds,
         allowLinkSharing,
         timezone: effectiveTimezone,
@@ -657,6 +663,7 @@ export default function CreateSchedulerPage() {
         pendingList,
         creatorEmail,
         pollTitle,
+        pollDescription,
         timezoneModeForScheduler,
       } = getPollInputs();
       const participantIdMap = await resolveParticipantIdsByEmail(explicitParticipants);
@@ -669,6 +676,7 @@ export default function CreateSchedulerPage() {
 
       await setDoc(newSchedulerRef, {
         title: pollTitle,
+        description: pollDescription,
         creatorId: user.uid,
         creatorEmail: user.email,
         status: "OPEN",
@@ -882,6 +890,15 @@ export default function CreateSchedulerPage() {
                 placeholder="Campaign 12 scheduling"
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
+              />
+            </label>
+            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              Session poll description
+              <textarea
+                className="mt-2 min-h-[96px] w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                placeholder="Optional details, agenda, or expectations for the session."
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
               />
             </label>
 

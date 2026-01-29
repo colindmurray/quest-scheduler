@@ -1,6 +1,6 @@
 import LegalLayout from "./LegalLayout";
 
-const EFFECTIVE_DATE = "January 26, 2026";
+const EFFECTIVE_DATE = "January 28, 2026";
 const CONTACT_EMAIL = "support@questscheduler.cc";
 
 export default function PrivacyPage() {
@@ -19,13 +19,28 @@ export default function PrivacyPage() {
       <h2>Information we collect</h2>
       <ul>
         <li>
-          <strong>Account information.</strong> When you sign in with Google, we receive your
-          name, email address, profile photo, and Google account identifier.
+          <strong>Account information.</strong> When you create an account or sign in, we
+          receive your email address, display name, profile photo, provider identifiers (such
+          as Google or Discord IDs), and an internal user ID. Authentication credentials are
+          handled by Firebase Authentication.
         </li>
         <li>
-          <strong>Discord account and server information.</strong> If you link Discord or
-          connect a server/channel, we receive your Discord user ID, username, display name,
-          avatar, and the IDs/names for the linked guild, channel, and any configured notify
+          <strong>Profile identifiers.</strong> We store your display name and any identifiers
+          you choose to use, such as a Quest Scheduler username, a Discord username, or your
+          email. We also store normalized (lowercase) versions to support lookups for invites
+          and blocking.
+        </li>
+        <li>
+          <strong>Profile photos and avatars.</strong> We store provider profile photos (such
+          as Google) and Discord avatar metadata if Discord is linked. If you upload a custom
+          avatar, we store the image in Firebase Storage and store a public URL in your
+          profile. Avatars are public so other users can see them.
+        </li>
+        <li>
+          <strong>Discord account and server information.</strong> If you sign in with or link
+          Discord, we receive your Discord user ID, username, display name, avatar metadata,
+          and (for Discord login) a verified email address. If you connect a server/channel,
+          we receive the IDs/names for the linked guild, channel, and any configured notify
           role.
         </li>
         <li>
@@ -34,14 +49,15 @@ export default function PrivacyPage() {
           at any time.
         </li>
         <li>
-          <strong>OAuth tokens.</strong> When you connect Google Calendar, we store an encrypted
-          refresh token so we can create or update events you request. We do not store your
-          Discord OAuth access token; we only store Discord identifiers needed for linking.
+          <strong>OAuth tokens and state.</strong> When you connect Google Calendar, we store an
+          encrypted refresh token so we can create or update events you request. For Discord
+          login/linking, we store short-lived OAuth state and only the Discord identifiers
+          needed for linking; we do not store Discord OAuth access tokens.
         </li>
         <li>
           <strong>User content.</strong> We store the scheduling data you create or submit,
-          including session polls, time slots, votes, invites, questing groups, friends, and
-          notifications.
+          including session polls, time slots, votes, invites, questing groups, friend
+          requests, blocked users, and notifications.
         </li>
         <li>
           <strong>Discord interactions.</strong> We record commands, button/select interactions,
@@ -57,11 +73,22 @@ export default function PrivacyPage() {
       <h2>How we use information</h2>
       <ul>
         <li>Provide the service, including scheduling, voting, and notifications.</li>
+        <li>Authenticate users, link sign-in providers, and prevent account lockout.</li>
         <li>Create calendar events you request.</li>
         <li>Link your Discord account, post poll updates, and record votes from Discord.</li>
+        <li>Resolve invites by email, Discord username, or Quest Scheduler username.</li>
+        <li>Display public identifiers and avatars to other users for coordination and safety.</li>
         <li>Send transactional emails related to invites and updates.</li>
         <li>Maintain security, prevent abuse, and improve reliability.</li>
       </ul>
+
+      <h2>Public profile and identifiers</h2>
+      <p>
+        Quest Scheduler shows a display name and a unique public identifier with your profile
+        in contexts like invites, polls, and friend requests. You can choose which identifier
+        is public (email, Discord username, or Quest Scheduler username) in Settings. Other
+        users may use this identifier to invite or block you.
+      </p>
 
       <h2>How we share information</h2>
       <ul>
@@ -78,8 +105,11 @@ export default function PrivacyPage() {
           notification emails.
         </li>
         <li>
-          <strong>With other users.</strong> Your name, email, and responses may be visible to
-          other participants in a session or group you join.
+          <strong>With other users.</strong> Your name, chosen public identifier, avatar, and
+          responses may be visible to other participants in a session or group you join. If you
+          use email invites or choose email as your public identifier, your email address may be
+          visible to those users. If you choose a Discord or Quest Scheduler username, that
+          identifier will be visible instead.
         </li>
         <li>
           <strong>Legal requirements.</strong> We may disclose information if required by law or
@@ -140,10 +170,10 @@ export default function PrivacyPage() {
       <p>
         We retain your data for as long as your account is active or as needed to provide the
         service. You can delete your account in the app, which triggers deletion of your
-        account data, including polls you created, votes you submitted, and related metadata.
-        If you unlink Discord or revoke Google access, we stop using the connection and remove
-        the stored link from your account. Residual backups may persist for a limited time
-        before permanent removal.
+        account data, including polls you created, votes you submitted, identifiers, and
+        profile details. If you unlink Discord or revoke Google access, we stop using the
+        connection and remove the stored link from your account. Residual backups may persist
+        for a limited time before permanent removal.
       </p>
 
       <h2>Your choices</h2>
@@ -151,6 +181,8 @@ export default function PrivacyPage() {
         <li>You can access and update your profile information in your Google Account.</li>
         <li>You can revoke Google Calendar access from your Google account settings.</li>
         <li>You can link or unlink Discord in Settings, or remove the bot from your server.</li>
+        <li>You can set a display name, choose your public identifier, or create a Quest Scheduler username.</li>
+        <li>You can upload a custom avatar or choose which avatar source to use.</li>
         <li>You can delete your account in Settings to erase your account data.</li>
       </ul>
 

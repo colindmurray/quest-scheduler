@@ -141,10 +141,13 @@ describe('scheduler helper functions', () => {
     groupData = { memberIds: ['user2'] };
     const schedulerRef = {
       collection: () => ({
-        get: async () => ({ size: 1 }),
+        get: async () => ({
+          size: 1,
+          docs: [{ data: () => ({ votes: { slot1: 'FEASIBLE' }, noTimesWork: false }) }],
+        }),
       }),
     };
     const stats = await getVoteStats(schedulerRef, { participantIds: ['user1'], questingGroupId: 'group1' });
-    expect(stats).toEqual({ voteCount: 1, totalParticipants: 2 });
+    expect(stats).toEqual({ voteCount: 1, totalParticipants: 2, attendingCount: 1 });
   });
 });

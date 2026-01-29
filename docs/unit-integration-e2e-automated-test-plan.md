@@ -22,7 +22,7 @@ This document outlines a comprehensive automated testing strategy for Quest Sche
 
 ### Gaps
 - ⚠️ Large feature pages (Dashboard, Friends, Scheduler) remain mostly untested; coverage is low due to UI-heavy code.
-- ⚠️ Functions coverage improved but still below target. Current functions coverage (focused on `functions/src` via Vitest coverage include) is ~60.85% overall; legacy callables remain the largest gap.
+- ⚠️ Functions coverage is now ~80.14% overall (focused on `functions/src` via Vitest coverage include). Legacy callables remain below target at ~72.94% and are the largest gap.
 
 ## Recommended Testing Stack
 

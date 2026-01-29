@@ -26,7 +26,16 @@ const db = admin.firestore();
 
 async function getVoteStats(schedulerRef, scheduler) {
   const votesSnap = await schedulerRef.collection("votes").get();
+  const voteDocs = votesSnap.docs || [];
   const voteCount = votesSnap.size;
+  const attendingCount = voteDocs.filter((doc) => {
+    const data = doc.data?.() || {};
+    if (data.noTimesWork) {
+      return false;
+    }
+    const votes = data.votes || {};
+    return Object.keys(votes).length > 0;
+  }).length;
 
   const participants = new Set(scheduler.participantIds || []);
 
@@ -38,7 +47,7 @@ async function getVoteStats(schedulerRef, scheduler) {
     }
   }
 
-  return { voteCount, totalParticipants: participants.size };
+  return { voteCount, totalParticipants: participants.size, attendingCount };
 }
 
 function hasNonDiscordChanges(beforeData, afterData) {
@@ -83,6 +92,20 @@ function computeSchedulerSyncHash(scheduler, slots, voteCount, totalParticipants
   return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
+const DISCORD_NOTIFICATION_DEFAULTS = {
+  finalizationEvents: true,
+  slotChanges: true,
+  voteSubmitted: false,
+};
+
+function getDiscordNotificationSettings(groupDiscord = {}) {
+  const notifications = groupDiscord?.notifications || {};
+  return {
+    ...DISCORD_NOTIFICATION_DEFAULTS,
+    ...notifications,
+  };
+}
+
 async function updateDiscordStatusMessage({ discord, title, status, description }) {
   if (!discord?.channelId || !discord?.messageId) return;
   const body = buildPollStatusCard({
@@ -108,6 +131,41 @@ function buildFinalizationMention(notifyRoleId) {
     mention: `<@&${notifyRoleId}> `,
     allowedMentions: { roles: [notifyRoleId] },
   };
+}
+
+function buildSlotSnapshot(slots = []) {
+  return slots
+    .filter((slot) => slot.start && slot.end)
+    .map((slot) => ({
+      id: slot.id,
+      start: slot.start,
+      end: slot.end,
+    }))
+    .sort((a, b) => {
+      const startDiff = new Date(a.start) - new Date(b.start);
+      if (startDiff !== 0) return startDiff;
+      const endDiff = new Date(a.end) - new Date(b.end);
+      if (endDiff !== 0) return endDiff;
+      return String(a.id).localeCompare(String(b.id));
+    });
+}
+
+function computeSlotSetHash(slots = []) {
+  const snapshot = buildSlotSnapshot(slots);
+  const hash = crypto.createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
+  return { hash, snapshot };
+}
+
+function formatSlotLine(slot) {
+  const startUnix = unixSeconds(slot?.start);
+  const endUnix = unixSeconds(slot?.end);
+  if (startUnix && endUnix) {
+    return `<t:${startUnix}:F> → <t:${endUnix}:t>`;
+  }
+  if (slot?.start) {
+    return slot.start;
+  }
+  return "Unknown time";
 }
 
 exports.postDiscordPollCard = onDocumentCreated(
@@ -347,7 +405,7 @@ exports.processDiscordSchedulerUpdate = onTaskDispatched(
     try {
       const slotsSnap = await schedulerRef.collection("slots").get();
       const slots = slotsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      const { voteCount, totalParticipants } = await getVoteStats(schedulerRef, scheduler);
+      const { voteCount, totalParticipants, attendingCount } = await getVoteStats(schedulerRef, scheduler);
       const syncHash = computeSchedulerSyncHash(scheduler, slots, voteCount, totalParticipants);
 
       if (scheduler.discord?.lastSyncedHash === syncHash) {
@@ -379,21 +437,28 @@ exports.processDiscordSchedulerUpdate = onTaskDispatched(
           : null;
         const groupSnap = groupRef ? await groupRef.get() : null;
         const groupDiscord = groupSnap?.exists ? groupSnap.data()?.discord || {} : {};
-        const notifyRoleId = groupDiscord?.notifyRoleId || "everyone";
-        const { mention, allowedMentions } = buildFinalizationMention(notifyRoleId);
-        const winningSlot = slots.find((slot) => slot.id === scheduler.winningSlotId);
-        const winningUnix = unixSeconds(winningSlot?.start);
-        const winningText = winningUnix ? `<t:${winningUnix}:F>` : "a winning time";
-        const pollTitle = scheduler.title || "Quest Session";
-        const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
+        const notificationSettings = getDiscordNotificationSettings(groupDiscord);
+        if (notificationSettings.finalizationEvents) {
+          const notifyRoleId = groupDiscord?.notifyRoleId || "everyone";
+          const { mention, allowedMentions } = buildFinalizationMention(notifyRoleId);
+          const winningSlot = slots.find((slot) => slot.id === scheduler.winningSlotId);
+          const winningUnix = unixSeconds(winningSlot?.start);
+          const winningText = winningUnix ? `<t:${winningUnix}:F>` : "a winning time";
+          const pollTitle = scheduler.title || "Quest Session";
+          const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
+          const attendanceLabel =
+            typeof totalParticipants === "number"
+              ? `Confirmed attendance: ${attendingCount || 0}/${totalParticipants}. `
+              : "";
 
-        await createChannelMessage({
-          channelId: scheduler.discord.channelId,
-          body: {
-            content: `${mention}Poll finalized for **${pollTitle}**. Winning time: ${winningText}. View: ${pollUrl}`,
-            allowed_mentions: allowedMentions,
-          },
-        });
+          await createChannelMessage({
+            channelId: scheduler.discord.channelId,
+            body: {
+              content: `${mention}Poll finalized for **${pollTitle}**. Winning time: ${winningText}. ${attendanceLabel}View: ${pollUrl}`,
+              allowed_mentions: allowedMentions,
+            },
+          });
+        }
         finalizedNotifiedAt = admin.firestore.FieldValue.serverTimestamp();
       }
 
@@ -403,18 +468,21 @@ exports.processDiscordSchedulerUpdate = onTaskDispatched(
           : null;
         const groupSnap = groupRef ? await groupRef.get() : null;
         const groupDiscord = groupSnap?.exists ? groupSnap.data()?.discord || {} : {};
-        const notifyRoleId = groupDiscord?.notifyRoleId || "everyone";
-        const { mention, allowedMentions } = buildFinalizationMention(notifyRoleId);
-        const pollTitle = scheduler.title || "Quest Session";
-        const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
+        const notificationSettings = getDiscordNotificationSettings(groupDiscord);
+        if (notificationSettings.finalizationEvents) {
+          const notifyRoleId = groupDiscord?.notifyRoleId || "everyone";
+          const { mention, allowedMentions } = buildFinalizationMention(notifyRoleId);
+          const pollTitle = scheduler.title || "Quest Session";
+          const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
 
-        await createChannelMessage({
-          channelId: scheduler.discord.channelId,
-          body: {
-            content: `${mention}Poll re-opened for **${pollTitle}**. The previously finalized time may no longer apply. Please vote again: ${pollUrl}`,
-            allowed_mentions: allowedMentions,
-          },
-        });
+          await createChannelMessage({
+            channelId: scheduler.discord.channelId,
+            body: {
+              content: `${mention}Poll re-opened for **${pollTitle}**. The previously finalized time may no longer apply. Please vote again: ${pollUrl}`,
+              allowed_mentions: allowedMentions,
+            },
+          });
+        }
         reopenedNotifiedAt = admin.firestore.FieldValue.serverTimestamp();
       }
 
@@ -506,18 +574,25 @@ exports.updateDiscordPollOnVote = onDocumentWritten(
   {
     document: "schedulers/{schedulerId}/votes/{voteId}",
     region: DISCORD_REGION,
+    secrets: [DISCORD_BOT_TOKEN],
   },
   async (event) => {
     const schedulerId = event.params.schedulerId;
+    const voteId = event.params.voteId;
+    const afterVote = event.data?.after?.data?.() || null;
+
+    if (!afterVote) {
+      return;
+    }
 
     const schedulerSnap = await db.collection("schedulers").doc(schedulerId).get();
     if (!schedulerSnap.exists) {
       return;
     }
     const scheduler = schedulerSnap.data() || {};
-    if (!scheduler.discord?.messageId) {
-      return;
-    }
+    const hasDiscordLink = Boolean(
+      scheduler.discord?.messageId && scheduler.discord?.channelId
+    );
 
     try {
       const queueName =
@@ -532,6 +607,36 @@ exports.updateDiscordPollOnVote = onDocumentWritten(
         }
       );
       logger.info("Enqueued Discord poll update on vote change", { schedulerId });
+
+      if (
+        hasDiscordLink &&
+        scheduler.questingGroupId &&
+        scheduler.status === "OPEN" &&
+        voteId &&
+        voteId !== scheduler.creatorId
+      ) {
+        const groupSnap = await db
+          .collection("questingGroups")
+          .doc(scheduler.questingGroupId)
+          .get();
+        const groupDiscord = groupSnap?.exists ? groupSnap.data()?.discord || {} : {};
+        const notificationSettings = getDiscordNotificationSettings(groupDiscord);
+        if (notificationSettings.voteSubmitted) {
+          const pollTitle = scheduler.title || "Quest Session";
+          const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
+          const voterLabel = afterVote.userEmail || "A participant";
+          const voteStatus = afterVote.noTimesWork
+            ? "marked as unavailable"
+            : "submitted votes";
+
+          await createChannelMessage({
+            channelId: scheduler.discord.channelId,
+            body: {
+              content: `${voterLabel} ${voteStatus} for **${pollTitle}**. View: ${pollUrl}`,
+            },
+          });
+        }
+      }
     } catch (err) {
       logger.error("Failed to enqueue Discord poll update on vote change", {
         schedulerId,
@@ -541,10 +646,147 @@ exports.updateDiscordPollOnVote = onDocumentWritten(
   }
 );
 
+exports.notifyDiscordSlotChanges = onDocumentWritten(
+  {
+    document: "schedulers/{schedulerId}/slots/{slotId}",
+    region: DISCORD_REGION,
+    secrets: [DISCORD_BOT_TOKEN],
+  },
+  async (event) => {
+    const schedulerId = event.params.schedulerId;
+    const beforeSlot = event.data?.before?.data?.() || null;
+    const afterSlot = event.data?.after?.data?.() || null;
+
+    if (!beforeSlot && !afterSlot) {
+      return;
+    }
+
+    const slotTimeChanged =
+      !beforeSlot ||
+      !afterSlot ||
+      beforeSlot.start !== afterSlot.start ||
+      beforeSlot.end !== afterSlot.end;
+    if (!slotTimeChanged) {
+      return;
+    }
+
+    const schedulerRef = db.collection("schedulers").doc(schedulerId);
+    const schedulerSnap = await schedulerRef.get();
+    if (!schedulerSnap.exists) {
+      return;
+    }
+    const scheduler = schedulerSnap.data() || {};
+    if (!scheduler.discord?.channelId || !scheduler.discord?.messageId) {
+      return;
+    }
+    if (!scheduler.questingGroupId) {
+      return;
+    }
+    if (scheduler.status && scheduler.status !== "OPEN") {
+      return;
+    }
+
+    const groupSnap = await db
+      .collection("questingGroups")
+      .doc(scheduler.questingGroupId)
+      .get();
+    if (!groupSnap.exists) {
+      return;
+    }
+    const groupDiscord = groupSnap.data()?.discord || {};
+    const notificationSettings = getDiscordNotificationSettings(groupDiscord);
+
+    const slotsSnap = await schedulerRef.collection("slots").get();
+    const slots = slotsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const { hash, snapshot } = computeSlotSetHash(slots);
+    const previousSnapshot = scheduler.discord?.slotSnapshot || null;
+
+    if (!previousSnapshot) {
+      await schedulerRef.set(
+        {
+          discord: {
+            ...scheduler.discord,
+            slotSetHash: hash,
+            slotSnapshot: snapshot,
+            slotSetUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+        },
+        { merge: true }
+      );
+      return;
+    }
+
+    if (scheduler.discord?.slotSetHash === hash) {
+      return;
+    }
+
+    const previousById = new Map(previousSnapshot.map((slot) => [slot.id, slot]));
+    const currentById = new Map(snapshot.map((slot) => [slot.id, slot]));
+
+    const added = [];
+    const removed = [];
+
+    snapshot.forEach((slot) => {
+      const previous = previousById.get(slot.id);
+      if (!previous) {
+        added.push(slot);
+        return;
+      }
+      if (previous.start !== slot.start || previous.end !== slot.end) {
+        removed.push(previous);
+        added.push(slot);
+      }
+    });
+
+    previousSnapshot.forEach((slot) => {
+      if (!currentById.has(slot.id)) {
+        removed.push(slot);
+      }
+    });
+
+    if (notificationSettings.slotChanges && (added.length || removed.length)) {
+      const pollTitle = scheduler.title || "Quest Session";
+      const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
+      let content = `**Slots updated for "${pollTitle}"**`;
+      if (added.length) {
+        content += `\n\n**Added**\n${added.map((slot) => `- ${formatSlotLine(slot)}`).join("\n")}`;
+      }
+      if (removed.length) {
+        content += `\n\n**Removed**\n${removed.map((slot) => `- ${formatSlotLine(slot)}`).join("\n")}`;
+      }
+      content += `\n\nView: ${pollUrl}`;
+
+      await createChannelMessage({
+        channelId: scheduler.discord.channelId,
+        body: {
+          content,
+          allowed_mentions: { parse: [] },
+        },
+      });
+    }
+
+    await schedulerRef.set(
+      {
+        discord: {
+          ...scheduler.discord,
+          slotSetHash: hash,
+          slotSnapshot: snapshot,
+          slotSetUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+      },
+      { merge: true }
+    );
+  }
+);
+
 exports.__test__ = {
   getVoteStats,
   hasNonDiscordChanges,
   computeSchedulerSyncHash,
   updateDiscordStatusMessage,
   buildFinalizationMention,
+  computeSlotSetHash,
+  buildSlotSnapshot,
+  formatSlotLine,
+  getDiscordNotificationSettings,
 };

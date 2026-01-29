@@ -18,6 +18,12 @@ import {
 } from "../../../components/ui/dialog";
 import { Switch } from "../../../components/ui/switch";
 
+const DEFAULT_DISCORD_ALERTS = {
+  finalizationEvents: true,
+  slotChanges: true,
+  voteSubmitted: false,
+};
+
 export function GroupCard({
   group,
   isOwner,
@@ -47,6 +53,7 @@ export function GroupCard({
   const [discordRoles, setDiscordRoles] = useState(null);
   const [discordRolesLoading, setDiscordRolesLoading] = useState(false);
   const [discordNotifyRoleId, setDiscordNotifyRoleId] = useState(null);
+  const [discordAlertSaving, setDiscordAlertSaving] = useState(false);
 
   const members = useMemo(() => group.members || [], [group.members]);
   const pendingInvites = useMemo(() => group.pendingInvites || [], [group.pendingInvites]);
@@ -151,6 +158,10 @@ export function GroupCard({
   const notifyRoleName = discordRoles?.find(
     (role) => role.id === (discordNotifyRoleId || group.discord?.notifyRoleId || "everyone")
   )?.name;
+  const discordAlertSettings = {
+    ...DEFAULT_DISCORD_ALERTS,
+    ...(group.discord?.notifications || {}),
+  };
 
   const handleNotifyRoleChange = async (roleId) => {
     setDiscordNotifyRoleId(roleId);
@@ -162,6 +173,21 @@ export function GroupCard({
     } catch (err) {
       console.error("Failed to update Discord notification role:", err);
       toast.error(err.message || "Failed to update Discord notification role");
+    }
+  };
+
+  const handleDiscordAlertChange = async (key, value) => {
+    setDiscordAlertSaving(true);
+    try {
+      await onUpdateGroup(group.id, {
+        [`discord.notifications.${key}`]: value,
+      });
+      toast.success("Discord alert settings updated");
+    } catch (err) {
+      console.error("Failed to update Discord alert settings:", err);
+      toast.error(err.message || "Failed to update Discord alert settings");
+    } finally {
+      setDiscordAlertSaving(false);
     }
   };
 
@@ -440,6 +466,69 @@ export function GroupCard({
                           </option>
                         ))}
                       </select>
+                    </div>
+                  </div>
+                )}
+                {group.discord?.channelId && (
+                  <div className="mt-4 border-t border-slate-200/70 pt-4 dark:border-slate-700">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                      Discord alerts
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      Control which poll updates post extra messages in Discord.
+                    </p>
+                    <div className="mt-3 space-y-3">
+                      <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 px-4 py-3 dark:border-slate-700">
+                        <div>
+                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                            Finalization &amp; reschedule updates
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                            Posts when a final time is chosen or the poll is re-opened.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={discordAlertSettings.finalizationEvents}
+                          onCheckedChange={(value) =>
+                            handleDiscordAlertChange("finalizationEvents", value)
+                          }
+                          disabled={discordAlertSaving}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 px-4 py-3 dark:border-slate-700">
+                        <div>
+                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                            Vote submissions
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                            Posts when someone submits or updates their votes.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={discordAlertSettings.voteSubmitted}
+                          onCheckedChange={(value) =>
+                            handleDiscordAlertChange("voteSubmitted", value)
+                          }
+                          disabled={discordAlertSaving}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 px-4 py-3 dark:border-slate-700">
+                        <div>
+                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                            Slot set changes
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                            Posts when time slots are added, removed, or updated.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={discordAlertSettings.slotChanges}
+                          onCheckedChange={(value) =>
+                            handleDiscordAlertChange("slotChanges", value)
+                          }
+                          disabled={discordAlertSaving}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}

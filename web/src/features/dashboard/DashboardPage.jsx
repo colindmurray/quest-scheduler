@@ -25,6 +25,7 @@ import { NextSessionCard } from "./components/NextSessionCard";
 import { SessionCard } from "./components/SessionCard";
 import { DashboardCalendar } from "./components/DashboardCalendar";
 import { MobileAgendaView } from "./components/MobileAgendaView";
+import { buildAttendanceSummary } from "./lib/attendance";
 
 function SectionHeader({ title, subtitle, action }) {
   return (
@@ -303,25 +304,12 @@ export default function DashboardPage() {
       );
       const respondedIds = voteDocs.map((voteDoc) => voteDoc.id).filter(Boolean);
       const respondedSet = new Set(respondedIds);
-      const confirmed = [];
-      const unavailable = [];
-      if (scheduler.status === "FINALIZED" && scheduler.winningSlotId) {
-        voteDocs.forEach((voteDoc) => {
-          const email =
-            voteDoc.userEmail?.toLowerCase() || participantEmailById.get(voteDoc.id);
-          if (!email) return;
-          if (voteDoc.noTimesWork) {
-            unavailable.push(email);
-            return;
-          }
-          const voteValue = voteDoc.votes?.[scheduler.winningSlotId];
-          if (voteValue === "PREFERRED" || voteValue === "FEASIBLE") {
-            confirmed.push(email);
-          } else {
-            unavailable.push(email);
-          }
-        });
-      }
+      const { confirmed, unavailable } = buildAttendanceSummary({
+        status: scheduler.status,
+        winningSlotId: scheduler.winningSlotId,
+        voteDocs,
+        participantEmailById,
+      });
       const unresponded = participantIds
         .filter((id) => !respondedSet.has(id))
         .map((id) => participantEmailById.get(id))

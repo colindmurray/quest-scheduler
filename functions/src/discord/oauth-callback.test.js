@@ -235,4 +235,54 @@ describe('discord oauth callback', () => {
     expect(stateDeleteMock).toHaveBeenCalled();
     expect(res.redirect).toHaveBeenCalledWith('https://app.example.com/settings?discord=linked');
   });
+
+  test('login intent creates custom token and redirects', async () => {
+    stateGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        provider: 'discord',
+        intent: 'login',
+        returnTo: '/dashboard',
+        expiresAt: { toDate: () => new Date(Date.now() + 1000) },
+      }),
+    });
+    linkGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ qsUserId: 'user1' }),
+    });
+    userGetMock.mockResolvedValue({
+      exists: true,
+      data: () => ({ email: 'user@example.com', avatarSource: 'discord' }),
+    });
+    authGetUserMock.mockResolvedValueOnce({ email: 'user@example.com' });
+    authCreateCustomTokenMock.mockResolvedValueOnce('token123');
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: 'token' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 'discord1',
+          username: 'user',
+          global_name: 'User',
+          avatar: 'hash',
+          verified: true,
+          email: 'user@example.com',
+        }),
+      });
+
+    const res = makeRes();
+    await oauth.discordOAuthCallback({ query: { code: 'code', state: 'state1' } }, res);
+
+    expect(linkSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({ qsUserId: 'user1' })
+    );
+    expect(userSetMock).toHaveBeenCalled();
+    expect(publicSetMock).toHaveBeenCalled();
+    expect(res.redirect).toHaveBeenCalledWith(
+      'https://app.example.com/auth/discord/finish?token=token123&returnTo=%2Fdashboard'
+    );
+  });
 });

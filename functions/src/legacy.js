@@ -886,6 +886,7 @@ exports.cloneSchedulerPoll = functions.https.onCall(async (data, context) => {
 
   await newRef.set({
     title: title || `${scheduler.title || "Untitled poll"} (copy)`,
+    description: scheduler.description || "",
     creatorId: context.auth.uid,
     creatorEmail,
     status: "OPEN",

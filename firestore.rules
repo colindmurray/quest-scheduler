@@ -312,9 +312,21 @@ service cloud.firestore {
 
       match /votes/{userId} {
         allow read: if canReadScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data);
+        function creatorVoteUpdateAllowed(voteData) {
+          return voteData != null
+            && isCreator(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data)
+            && request.resource.data.diff(voteData).affectedKeys().hasOnly(["votes", "updatedAt"])
+            && voteData.votes != null
+            && request.resource.data.votes != null
+            && request.resource.data.votes.keys().hasOnly(voteData.votes.keys());
+        }
+
         allow create, update: if isSignedIn()
-          && request.auth.uid == userId
-          && canVoteScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data);
+          && (
+            (request.auth.uid == userId
+              && canVoteScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data))
+            || creatorVoteUpdateAllowed(resource.data)
+          );
         allow delete: if isSignedIn() && (
           (request.auth.uid == userId
             && canVoteScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data))

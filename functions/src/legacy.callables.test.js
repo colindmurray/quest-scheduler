@@ -41,6 +41,11 @@ let userSecretsDeleteMock;
 let groupDeleteMock;
 let batchDeleteDocMock;
 let batchCommitMock;
+let blockedDocsByEmail;
+let blockedDocsByUid;
+let blockedDocsByDiscord;
+let blockedDocsByQs;
+let blockedLegacyExists;
 
 let usersPublicDocs;
 
@@ -58,6 +63,7 @@ const buildFirestoreMock = () => {
     get: async () => {
       let docs = schedulerDocs;
       if (field === 'creatorId') docs = createdPollDocs;
+      if (field === 'creatorEmail') docs = pendingPollDocs;
       if (field === 'participantIds') docs = participantPollDocs;
       if (field === 'pendingInvites') docs = pendingPollDocs;
       return {
@@ -116,10 +122,30 @@ const buildFirestoreMock = () => {
               }
               if (sub === 'blockedUsers') {
                 return {
-                  doc: () => ({ get: async () => ({ exists: false }) }),
-                  where: () => ({
-                    limit: () => ({ get: async () => ({ empty: true }) }),
-                    get: async () => ({ empty: true }),
+                  doc: () => ({
+                    get: async () => ({ exists: blockedLegacyExists, data: () => ({}) }),
+                    delete: vi.fn().mockResolvedValue(undefined),
+                    set: vi.fn().mockResolvedValue(undefined),
+                  }),
+                  where: (field) => ({
+                    limit: () => ({
+                      get: async () => {
+                        let docs = [];
+                        if (field === 'email') docs = blockedDocsByEmail;
+                        if (field === 'blockedUserId') docs = blockedDocsByUid;
+                        if (field === 'discordUsernameLower') docs = blockedDocsByDiscord;
+                        if (field === 'qsUsernameLower') docs = blockedDocsByQs;
+                        return { empty: docs.length === 0, docs };
+                      },
+                    }),
+                    get: async () => {
+                      let docs = [];
+                      if (field === 'email') docs = blockedDocsByEmail;
+                      if (field === 'blockedUserId') docs = blockedDocsByUid;
+                      if (field === 'discordUsernameLower') docs = blockedDocsByDiscord;
+                      if (field === 'qsUsernameLower') docs = blockedDocsByQs;
+                      return { empty: docs.length === 0, docs };
+                    },
                   }),
                 };
               }
@@ -239,6 +265,11 @@ describe('legacy callables success paths', () => {
     groupDeleteMock = vi.fn().mockResolvedValue(undefined);
     batchDeleteDocMock = vi.fn();
     batchCommitMock = vi.fn().mockResolvedValue(undefined);
+    blockedDocsByEmail = [];
+    blockedDocsByUid = [];
+    blockedDocsByDiscord = [];
+    blockedDocsByQs = [];
+    blockedLegacyExists = false;
 
     const adminMock = {
       apps: [],
@@ -504,6 +535,29 @@ describe('legacy callables success paths', () => {
     expect(authDeleteMock).toHaveBeenCalledWith('user1');
   });
 
+  test('deleteUserAccount continues when notification cleanup fails', async () => {
+    notificationDocsFromEmail = null;
+
+    const result = await legacy.deleteUserAccount.run(
+      {},
+      { auth: { uid: 'user1', token: { email: 'user@example.com' } } }
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(authDeleteMock).toHaveBeenCalledWith('user1');
+  });
+
+  test('deleteUserAccount throws internal error when auth deletion fails', async () => {
+    authDeleteMock.mockRejectedValueOnce(new Error('boom'));
+
+    await expect(
+      legacy.deleteUserAccount.run(
+        {},
+        { auth: { uid: 'user1', token: { email: 'user@example.com' } } }
+      )
+    ).rejects.toMatchObject({ code: 'internal' });
+  });
+
   test('sendPollInvites updates scheduler and notifies invitees', async () => {
     userDocExists = true;
     userDocData = { inviteAllowance: 5, suspended: false };
@@ -534,5 +588,55 @@ describe('legacy callables success paths', () => {
       })
     );
     expect(notificationSetMock).toHaveBeenCalled();
+  });
+
+  test('blockUser removes pending friend request and penalizes offender', async () => {
+    usersPublicByIdDoc = { discordUsernameLower: 'inviter', qsUsernameLower: 'inviter' };
+    usersPublicDocs = [{ id: 'targetId', data: () => ({ email: 'target@example.com' }) }];
+    friendRequestDocs = [
+      {
+        id: 'req1',
+        data: () => ({ status: 'pending', fromUserId: 'offender1' }),
+        ref: { delete: friendRequestDeleteMock },
+      },
+    ];
+    txGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ inviteAllowance: 5, suspended: false }),
+    });
+
+    const result = await legacy.blockUser.run(
+      { identifier: 'target@example.com' },
+      { auth: { uid: 'blocker1', token: { email: 'blocker@example.com' } } }
+    );
+
+    expect(result).toEqual({ ok: true, penalized: true });
+    expect(friendRequestDeleteMock).toHaveBeenCalled();
+    expect(notificationDeleteMock).toHaveBeenCalled();
+    expect(txSetMock).toHaveBeenCalled();
+  });
+
+  test('unblockUser deletes blocks and restores allowance when penalized', async () => {
+    const deleteMock = vi.fn().mockResolvedValue(undefined);
+    blockedDocsByEmail = [
+      {
+        id: 'block1',
+        ref: { delete: deleteMock },
+        data: () => ({ penalized: true, blockedUserId: 'offender1' }),
+      },
+    ];
+    txGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ inviteAllowance: 0, suspended: true }),
+    });
+
+    const result = await legacy.unblockUser.run(
+      { identifier: 'target@example.com' },
+      { auth: { uid: 'blocker1', token: { email: 'blocker@example.com' } } }
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(deleteMock).toHaveBeenCalled();
+    expect(txSetMock).toHaveBeenCalled();
   });
 });

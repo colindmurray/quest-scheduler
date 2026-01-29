@@ -934,11 +934,14 @@ export default function SchedulerPage() {
       return;
     }
     const linkedCalendarId = linkedCalendars[0]?.id || "";
+    const baseTitle = scheduler.data?.title || "Quest Session";
+    const groupName = questingGroupName;
+    const calendarTitle = groupName ? `[${groupName}] ${baseTitle}` : baseTitle;
     const slot = slots.data.find((item) => item.id === slotId);
     const duration = slot?.start && slot?.end ? Math.round((new Date(slot.end) - new Date(slot.start)) / 60000) : 240;
     setFinalizeSlotId(slotId);
-    setEventTitle(settings?.defaultTitle || scheduler.data?.title || "Quest Session");
-    setEventDescription(settings?.defaultDescription || "");
+    setEventTitle(calendarTitle);
+    setEventDescription(scheduler.data?.description || "");
     setEventDuration(duration || settings?.defaultDurationMinutes || 240);
     setEventAttendees(participantEmails.join(", "));
     setSelectedCalendarId(linkedCalendarId);
@@ -1292,6 +1295,7 @@ export default function SchedulerPage() {
       const newRef = doc(db, "schedulers", newId);
       await setDoc(newRef, {
         title: cloneTitle || `${scheduler.data.title || "Untitled poll"} (copy)`,
+        description: scheduler.data?.description || "",
         creatorId: newCreatorId,
         creatorEmail: newCreatorEmail,
         status: "OPEN",
@@ -1490,6 +1494,7 @@ export default function SchedulerPage() {
   const inviterLabel = pendingInviteMeta.invitedByEmail || scheduler.data.creatorEmail || "someone";
   const inviterProfile =
     participantMapByEmail.get(normalizeEmail(inviterLabel)) || { email: inviterLabel };
+  const pollDescription = (scheduler.data.description || "").trim();
   const canAccess =
     isCreator ||
     scheduler.data.allowLinkSharing ||
@@ -1526,6 +1531,11 @@ export default function SchedulerPage() {
                 Session Poll
               </p>
               <h2 className="text-2xl font-semibold dark:text-slate-100">{scheduler.data.title}</h2>
+              {pollDescription && (
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
+                  {pollDescription}
+                </p>
+              )}
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   {participantCount} participants
@@ -1665,35 +1675,6 @@ export default function SchedulerPage() {
             </DropdownMenu>
           </div>
 
-          {/* View toggle - moved here */}
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex gap-2 rounded-full border border-slate-200 bg-white px-2 py-1 dark:border-slate-600 dark:bg-slate-700">
-              <button
-                type="button"
-                onClick={() => setView("list")}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                  view === "list" ? "bg-brand-primary text-white" : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-600"
-                }`}
-              >
-                List View
-              </button>
-              <button
-                type="button"
-                onClick={() => setView("calendar")}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                  view === "calendar" ? "bg-brand-primary text-white" : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-600"
-                }`}
-              >
-                Calendar View
-              </button>
-            </div>
-            {!isLocked && (
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Select a winning slot from Results when ready to finalize.
-              </p>
-            )}
-          </div>
-
           <div className="mt-6 rounded-3xl border border-slate-200/70 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -1830,6 +1811,35 @@ export default function SchedulerPage() {
                   ))}
                 </div>
               </div>
+            )}
+          </div>
+
+          {/* View toggle - moved below participants */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex gap-2 rounded-full border border-slate-200 bg-white px-2 py-1 dark:border-slate-600 dark:bg-slate-700">
+              <button
+                type="button"
+                onClick={() => setView("list")}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                  view === "list" ? "bg-brand-primary text-white" : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-600"
+                }`}
+              >
+                List View
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("calendar")}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                  view === "calendar" ? "bg-brand-primary text-white" : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-600"
+                }`}
+              >
+                Calendar View
+              </button>
+            </div>
+            {!isLocked && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Select a winning slot from Results when ready to finalize.
+              </p>
             )}
           </div>
 

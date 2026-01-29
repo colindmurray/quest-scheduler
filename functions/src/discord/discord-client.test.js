@@ -104,4 +104,10 @@ describe('discord client', () => {
     expect(restGetMock).toHaveBeenCalledWith('/channels/chan1');
     expect(result).toEqual({ id: 'chan1' });
   });
+
+  test('createDiscordRestClient sets bot token', async () => {
+    const client = discordClient.createDiscordRestClient();
+    expect(client).toBe(restInstance);
+    expect(restInstance.setToken).toHaveBeenCalledWith('token');
+  });
 });

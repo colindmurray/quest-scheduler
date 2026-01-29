@@ -101,8 +101,6 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [defaultDuration, setDefaultDuration] = useState(240);
-  const [defaultTitle, setDefaultTitle] = useState("Quest Session");
-  const [defaultDescription, setDefaultDescription] = useState("");
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [qsUsernameInput, setQsUsernameInput] = useState("");
   const [qsUsernameCurrent, setQsUsernameCurrent] = useState("");
@@ -180,8 +178,6 @@ export default function SettingsPage() {
           const data = snap.data();
           setDisplayName(data.displayName || user?.displayName || "");
           setDefaultDuration(data.settings?.defaultDurationMinutes ?? 240);
-          setDefaultTitle(data.settings?.defaultTitle ?? "Quest Session");
-          setDefaultDescription(data.settings?.defaultDescription ?? "");
           setEmailNotifications(data.settings?.emailNotifications ?? true);
           setTimezoneMode(data.settings?.timezoneMode ?? "auto");
 
@@ -576,8 +572,6 @@ export default function SettingsPage() {
           publicIdentifierType,
           settings: {
             defaultDurationMinutes: Number(defaultDuration || 0),
-            defaultTitle,
-            defaultDescription,
             emailNotifications,
             sessionDefaultsMode,
             defaultStartTime: simpleStartTime,
@@ -673,25 +667,24 @@ export default function SettingsPage() {
   }
 
   return (
-        <div className="rounded-3xl bg-white p-8 shadow-xl shadow-slate-200 dark:bg-slate-900 dark:shadow-slate-900/50">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-semibold">User Settings</h2>
-              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                Defaults and notification preferences.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate("/dashboard")}
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
-            >
-              Back
-            </button>
-          </div>
+    <div className="rounded-3xl bg-white p-8 shadow-xl shadow-slate-200 dark:bg-slate-900 dark:shadow-slate-900/50">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">User Settings</h2>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            Defaults and notification preferences.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => navigate("/dashboard")}
+          className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
+        >
+          Back
+        </button>
+      </div>
 
-          <>
-          <div className="mt-6 grid gap-6">
+      <div className="mt-6 grid gap-6">
             <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Account</h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -1142,28 +1135,6 @@ export default function SettingsPage() {
               </div>
             </section>
             <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
-              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Default calendar entry</h3>
-              <div className="mt-4 grid gap-4">
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  Default title
-                  <input
-                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                    value={defaultTitle}
-                    onChange={(event) => setDefaultTitle(event.target.value)}
-                  />
-                </label>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  Default description
-                  <textarea
-                    className="mt-2 min-h-[80px] w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                    value={defaultDescription}
-                    onChange={(event) => setDefaultDescription(event.target.value)}
-                  />
-                </label>
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                 Default session settings
               </h3>
@@ -1209,41 +1180,43 @@ export default function SettingsPage() {
                       onChange={(event) => setSimpleStartTime(event.target.value)}
                     />
                   </label>
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                     Default duration
                     <div className="mt-2 flex gap-2">
                       <div className="flex-1">
-                        <input
-                          type="number"
-                          min="0"
+                        <select
                           className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                           value={Math.floor(defaultDuration / 60)}
                           onChange={(event) => {
-                            const hours = Number(event.target.value) || 0;
+                            const hours = Number(event.target.value);
                             const mins = defaultDuration % 60;
                             setDefaultDuration(hours * 60 + mins);
                           }}
-                        />
+                        >
+                          {[...Array(13)].map((_, i) => (
+                            <option key={i} value={i}>{i}</option>
+                          ))}
+                        </select>
                         <span className="mt-1 block text-[10px] text-slate-400">hours</span>
                       </div>
                       <div className="flex-1">
-                        <input
-                          type="number"
-                          min="0"
-                          max="59"
-                          step="15"
+                        <select
                           className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                           value={defaultDuration % 60}
                           onChange={(event) => {
                             const hours = Math.floor(defaultDuration / 60);
-                            const mins = Number(event.target.value) || 0;
+                            const mins = Number(event.target.value);
                             setDefaultDuration(hours * 60 + mins);
                           }}
-                        />
+                        >
+                          {[0, 15, 30, 45].map((m) => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
                         <span className="mt-1 block text-[10px] text-slate-400">minutes</span>
                       </div>
                     </div>
-                  </label>
+                  </div>
                   <p className="text-xs text-slate-400 dark:text-slate-500 sm:col-span-2">
                     This time and duration will apply to all days of the week.
                   </p>
@@ -1274,37 +1247,39 @@ export default function SettingsPage() {
                           }
                         />
                         <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            min="0"
-                            className="w-14 rounded-lg border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                          <select
+                            className="w-14 rounded-lg border border-slate-200 px-1 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                             value={Math.floor((perDayDefaults[dayKey]?.durationMinutes || 240) / 60)}
                             onChange={(event) => {
-                              const hours = Number(event.target.value) || 0;
+                              const hours = Number(event.target.value);
                               const mins = (perDayDefaults[dayKey]?.durationMinutes || 240) % 60;
                               setPerDayDefaults((prev) => ({
                                 ...prev,
                                 [dayKey]: { ...prev[dayKey], durationMinutes: hours * 60 + mins },
                               }));
                             }}
-                          />
+                          >
+                            {[...Array(13)].map((_, i) => (
+                              <option key={i} value={i}>{i}</option>
+                            ))}
+                          </select>
                           <span className="text-[10px] text-slate-400">h</span>
-                          <input
-                            type="number"
-                            min="0"
-                            max="59"
-                            step="15"
-                            className="w-14 rounded-lg border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                          <select
+                            className="w-14 rounded-lg border border-slate-200 px-1 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                             value={(perDayDefaults[dayKey]?.durationMinutes || 240) % 60}
                             onChange={(event) => {
                               const hours = Math.floor((perDayDefaults[dayKey]?.durationMinutes || 240) / 60);
-                              const mins = Number(event.target.value) || 0;
+                              const mins = Number(event.target.value);
                               setPerDayDefaults((prev) => ({
                                 ...prev,
                                 [dayKey]: { ...prev[dayKey], durationMinutes: hours * 60 + mins },
                               }));
                             }}
-                          />
+                          >
+                            {[0, 15, 30, 45].map((m) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
                           <span className="text-[10px] text-slate-400">m</span>
                         </div>
                       </div>
@@ -1488,10 +1463,9 @@ export default function SettingsPage() {
                 >
                   {deleteBusy ? "Deleting..." : "Delete permanently"}
                 </button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          </>
-        </div>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+    </div>
   );
 }

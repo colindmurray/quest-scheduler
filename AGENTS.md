@@ -73,6 +73,13 @@ This file is the working contract for all agents (including Codex) contributing 
   - `npm --prefix web run test:e2e:emulators`
   - `npm --prefix web run test:coverage`
 
+### Testing Gate (Required for Every Task)
+- **Always update or add tests** when behavior changes or new logic is introduced.
+- **Always re-run relevant tests locally** before finishing a task. This includes any tests you modified or the closest applicable suite.
+- **Record test commands + results** in your final response and (for multi-step work) in `docs/task-list.md`.
+- **If tests cannot be run**, explicitly state why, what was attempted, and what coverage remains unverified. Note this in `docs/task-list.md` and mark the task as partially validated.
+- **Prefer CI enforcement** (required status checks / merge checks) so merges are blocked unless tests pass. citeturn0search2turn0search3
+
 ## 5) Implementation Workflow (for Codex)
 - Work in small, reviewable steps.
 - After each compact step, update `docs/task-list.md` with progress notes.

@@ -264,4 +264,160 @@ describe('scheduler triggers', () => {
     expect(createChannelMessageMock).toHaveBeenCalled();
     expect(schedulerSetMock).toHaveBeenCalled();
   });
+
+  test('processDiscordSchedulerUpdate skips finalization note when disabled', async () => {
+    schedulerData = {
+      status: 'FINALIZED',
+      title: 'Quest',
+      questingGroupId: 'group2',
+      winningSlotId: 'slot1',
+      discord: { messageId: 'msg1', channelId: 'chan1', lastStatus: 'OPEN' },
+    };
+    groupExists = true;
+    groupData = {
+      discord: { notifyRoleId: 'everyone', notifications: { finalizationEvents: false } },
+      memberIds: [],
+    };
+    slotsDocs = [{ id: 'slot1', data: () => ({ start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }) }];
+    votesSize = 1;
+
+    await schedulerTriggers.processDiscordSchedulerUpdate.run({ data: { schedulerId: 'sched1' } });
+
+    expect(editChannelMessageMock).toHaveBeenCalled();
+    expect(createChannelMessageMock).not.toHaveBeenCalled();
+    expect(schedulerSetMock).toHaveBeenCalled();
+  });
+
+  test('updateDiscordPollOnVote posts vote notification when enabled', async () => {
+    schedulerData = {
+      status: 'OPEN',
+      title: 'Quest',
+      questingGroupId: 'group1',
+      creatorId: 'creator',
+      discord: { messageId: 'msg1', channelId: 'chan1' },
+    };
+    groupExists = true;
+    groupData = { discord: { notifications: { voteSubmitted: true } } };
+
+    await schedulerTriggers.updateDiscordPollOnVote.run({
+      params: { schedulerId: 'sched1', voteId: 'voter1' },
+      data: {
+        after: { data: () => ({ userEmail: 'voter@example.com', noTimesWork: false }) },
+      },
+    });
+
+    expect(createChannelMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: 'chan1',
+        body: expect.objectContaining({
+          content: expect.stringContaining('voter@example.com'),
+        }),
+      })
+    );
+  });
+
+  test('updateDiscordPollOnVote skips vote notification when disabled', async () => {
+    schedulerData = {
+      status: 'OPEN',
+      title: 'Quest',
+      questingGroupId: 'group1',
+      creatorId: 'creator',
+      discord: { messageId: 'msg1', channelId: 'chan1' },
+    };
+    groupExists = true;
+    groupData = { discord: { notifications: { voteSubmitted: false } } };
+
+    await schedulerTriggers.updateDiscordPollOnVote.run({
+      params: { schedulerId: 'sched1', voteId: 'voter1' },
+      data: {
+        after: { data: () => ({ userEmail: 'voter@example.com', noTimesWork: false }) },
+      },
+    });
+
+    expect(createChannelMessageMock).not.toHaveBeenCalled();
+  });
+
+  test('notifyDiscordSlotChanges initializes snapshot without messaging', async () => {
+    schedulerData = {
+      status: 'OPEN',
+      title: 'Quest',
+      questingGroupId: 'group1',
+      discord: { messageId: 'msg1', channelId: 'chan1' },
+    };
+    groupExists = true;
+    groupData = { discord: { notifications: { slotChanges: true } }, memberIds: [] };
+    slotsDocs = [{ id: 'slot1', data: () => ({ start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }) }];
+
+    await schedulerTriggers.notifyDiscordSlotChanges.run({
+      params: { schedulerId: 'sched1', slotId: 'slot1' },
+      data: {
+        before: { data: () => null },
+        after: { data: () => ({ start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }) },
+      },
+    });
+
+    expect(createChannelMessageMock).not.toHaveBeenCalled();
+    expect(schedulerSetMock).toHaveBeenCalled();
+  });
+
+  test('notifyDiscordSlotChanges posts added/removed summary when enabled', async () => {
+    schedulerData = {
+      status: 'OPEN',
+      title: 'Quest',
+      questingGroupId: 'group1',
+      discord: {
+        messageId: 'msg1',
+        channelId: 'chan1',
+        slotSetHash: 'oldhash',
+        slotSnapshot: [{ id: 'slot1', start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }],
+      },
+    };
+    groupExists = true;
+    groupData = { discord: { notifications: { slotChanges: true } }, memberIds: [] };
+    slotsDocs = [{ id: 'slot2', data: () => ({ start: '2025-01-02T10:00:00Z', end: '2025-01-02T11:00:00Z' }) }];
+
+    await schedulerTriggers.notifyDiscordSlotChanges.run({
+      params: { schedulerId: 'sched1', slotId: 'slot1' },
+      data: {
+        before: { data: () => ({ start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }) },
+        after: { data: () => null },
+      },
+    });
+
+    expect(createChannelMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: 'chan1',
+        body: expect.objectContaining({
+          content: expect.stringContaining('Slots updated'),
+        }),
+      })
+    );
+  });
+
+  test('notifyDiscordSlotChanges respects toggle', async () => {
+    schedulerData = {
+      status: 'OPEN',
+      title: 'Quest',
+      questingGroupId: 'group1',
+      discord: {
+        messageId: 'msg1',
+        channelId: 'chan1',
+        slotSetHash: 'oldhash',
+        slotSnapshot: [{ id: 'slot1', start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }],
+      },
+    };
+    groupExists = true;
+    groupData = { discord: { notifications: { slotChanges: false } }, memberIds: [] };
+    slotsDocs = [{ id: 'slot2', data: () => ({ start: '2025-01-02T10:00:00Z', end: '2025-01-02T11:00:00Z' }) }];
+
+    await schedulerTriggers.notifyDiscordSlotChanges.run({
+      params: { schedulerId: 'sched1', slotId: 'slot1' },
+      data: {
+        before: { data: () => ({ start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }) },
+        after: { data: () => null },
+      },
+    });
+
+    expect(createChannelMessageMock).not.toHaveBeenCalled();
+  });
 });
