@@ -2693,7 +2693,7 @@ export async function clearTestData() {
 - [x] Documentation and maintenance guide
 
 ## BLOCKED TASKS
-- Discord role mapping test remains skipped. Requires a real Discord bot token + role payloads or explicit approval to mock REST responses.
+- None currently. Discord role mapping is covered via mocked REST responses; secret warnings still appear in function tests.
 
 ## References
 

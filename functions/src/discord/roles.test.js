@@ -1,11 +1,7 @@
-import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { createRequire } from 'module';
 
 const fetchGuildRoles = vi.fn();
-
-vi.mock('./discord-client', () => ({
-  fetchGuildRoles,
-}));
-
 let roles;
 
 let groupSnap = { exists: true, data: () => ({ creatorId: 'user1' }) };
@@ -24,8 +20,27 @@ const firestoreNamespace = {
 };
 
 describe('discord roles listing', () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
     vi.resetModules();
+    groupSnap = { exists: true, data: () => ({ creatorId: 'user1' }) };
+
+    const require = createRequire(import.meta.url);
+    require.cache[require.resolve('./config')] = {
+      exports: {
+        DISCORD_REGION: 'us-central1',
+        DISCORD_BOT_TOKEN: { value: () => 'token' },
+        default: {
+          DISCORD_REGION: 'us-central1',
+          DISCORD_BOT_TOKEN: { value: () => 'token' },
+        },
+      },
+    };
+    require.cache[require.resolve('./discord-client')] = {
+      exports: {
+        fetchGuildRoles,
+      },
+    };
     const adminModule = await import('firebase-admin');
     const admin = adminModule.default || adminModule;
     vi.spyOn(admin, 'initializeApp').mockImplementation(() => ({}));
@@ -33,17 +48,7 @@ describe('discord roles listing', () => {
     vi.spyOn(admin, 'firestore').mockReturnValue(firestoreDb);
     admin.firestore.FieldValue = firestoreNamespace.FieldValue;
 
-    const configModule = await import('./config');
-    const config = configModule.default || configModule;
-    config.DISCORD_REGION = 'us-central1';
-    vi.spyOn(config.DISCORD_BOT_TOKEN, 'value').mockReturnValue('token');
-
     roles = await import('./roles');
-  });
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    groupSnap = { exists: true, data: () => ({ creatorId: 'user1' }) };
   });
 
   test('requires authentication', async () => {
@@ -90,7 +95,7 @@ describe('discord roles listing', () => {
     expect(result).toEqual({ roles: [], notifyRoleId: 'role1' });
   });
 
-  test.skip('maps and dedupes guild roles', async () => {
+  test('maps and dedupes guild roles', async () => {
     groupSnap = {
       exists: true,
       data: () => ({ creatorId: 'user1', discord: { guildId: 'guild1' } }),
@@ -105,6 +110,7 @@ describe('discord roles listing', () => {
       auth: { uid: 'user1' },
     });
 
+    expect(fetchGuildRoles).toHaveBeenCalledWith({ guildId: 'guild1' });
     expect(result.roles).toEqual([
       { id: 'none', name: 'No ping' },
       { id: 'everyone', name: '@everyone' },

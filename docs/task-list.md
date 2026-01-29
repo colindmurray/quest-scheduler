@@ -1,10 +1,10 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-28 — Expanded hook coverage (useNotifications/useQuestingGroups), re-ran `npm --prefix web run test:coverage` (163 tests), and refreshed test plan Current State/Gaps.
+- Last Completed: 2026-01-29 — Enabled Discord roles mapping unit test with mocked REST and re-ran `npm --prefix functions run test` (22 passed, 1 skipped).
 - Next Step: Decide whether to add coverage for large feature pages (Dashboard/Friends/Scheduler) or leave as UI-heavy/low-risk.
-- Open Issues: Roles mapping test still skipped (needs Discord bot token/REST stubbing). Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning. Overall coverage remains low because feature pages are untested.
-- Last Updated (YYYY-MM-DD): 2026-01-28
+- Open Issues: Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning. Overall coverage remains low because feature pages are untested.
+- Last Updated (YYYY-MM-DD): 2026-01-29
 
 ## Automated Testing Overhaul (Unit / Integration / E2E)
 ### P0 — Foundations + Critical Coverage
