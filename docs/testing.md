@@ -50,6 +50,11 @@ npm --prefix functions run test
 npm --prefix web run test:coverage
 ```
 
+## Coverage (Functions)
+```bash
+npm --prefix functions run test -- --coverage
+```
+
 ## Rules Tests (Firestore + Storage)
 ```bash
 npm --prefix web run test:rules

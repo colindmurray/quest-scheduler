@@ -32,6 +32,7 @@ See `docs/testing.md` for full setup and emulator steps.
 npm --prefix web run test                      # Web unit tests (Vitest)
 npm --prefix web run test:coverage             # Web coverage report
 npm --prefix functions run test                # Functions unit tests (Vitest)
+npm --prefix functions run test -- --coverage  # Functions coverage report
 npm --prefix web run test:rules                # Firestore/Storage rules (emulator)
 npm --prefix web run test:e2e                  # Playwright E2E (assumes emulators + seed)
 npm --prefix web run test:e2e:emulators        # One-step emulator + seed + E2E
