@@ -22,7 +22,7 @@ This document outlines a comprehensive automated testing strategy for Quest Sche
 
 ### Gaps
 - ⚠️ Large feature pages (Dashboard, Friends, Scheduler) remain mostly untested; coverage is low due to UI-heavy code.
-- ⚠️ Discord roles mapping test skipped (needs bot token/REST stub).
+- ⚠️ Functions coverage still low for legacy callables, Discord worker, and scheduler triggers.
 
 ## Recommended Testing Stack
 

@@ -1,9 +1,9 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-29 — Added functions coverage tooling (`@vitest/coverage-v8`) and ran `npm --prefix functions run test -- --coverage` for a full report.
-- Next Step: Decide whether to add coverage for large feature pages (Dashboard/Friends/Scheduler) or leave as UI-heavy/low-risk.
-- Open Issues: Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning. Overall coverage remains low because feature pages are untested.
+- Last Completed: 2026-01-29 — Added function unit tests for auth + Discord ingress/poll-card/unlink and re-ran `npm --prefix functions run test -- --coverage` (overall 16.28%).
+- Next Step: Increase backend coverage for Discord worker + legacy callables + scheduler triggers.
+- Open Issues: Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning. Functions coverage remains low due to large worker/trigger modules.
 - Last Updated (YYYY-MM-DD): 2026-01-29
 
 ## Automated Testing Overhaul (Unit / Integration / E2E)
