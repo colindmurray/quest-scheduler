@@ -1103,3 +1103,32 @@ exports.processDiscordInteraction = onTaskDispatched(
     }
   }
 );
+
+exports.__test__ = {
+  parseSnowflakeTimestamp,
+  isTokenExpired,
+  getDiscordUserId,
+  hasLinkPermissions,
+  clampPageIndex,
+  getVotePage,
+  formatVoteContent,
+  buildSessionId,
+  formatSlotLabel,
+  buildVoteComponents,
+  normalizeEmail,
+  acquireInteractionLock,
+  markInteractionDone,
+  releaseInteractionLock,
+  respondWithMessage,
+  respondWithError,
+  respondWithClosedPoll,
+  getLinkedUser,
+  getParticipationDecision,
+  handleLinkGroup,
+  handleUnlinkGroup,
+  handleVoteButton,
+  handleVoteSelect,
+  handleVotePage,
+  handleClearVotes,
+  handleSubmitVote,
+};

@@ -198,6 +198,33 @@ async function countPendingFriendRequests(uid) {
   return snap.size;
 }
 
+exports.__test__ = {
+  normalizeEmail,
+  encodeEmailId,
+  isDiscordUsername,
+  isValidQsUsername,
+  parseIdentifier,
+  friendRequestIdForEmails,
+  findUserIdByEmail,
+  findUserByDiscordUsername,
+  findUserByQsUsername,
+  getUserIdentifierHints,
+  findUserIdsByEmails,
+  ensureUserStatus,
+  countPendingFriendRequests,
+  countPendingPollInvites,
+  countOutstandingInvites,
+  isBlockedByUser,
+  adjustInviteAllowance,
+  getUserIdsByEmail,
+  countPendingPollInvitesForRecipient,
+  extractOAuthConfig,
+  getConfig,
+  getEncKey,
+  encrypt,
+  decrypt,
+};
+
 async function countPendingPollInvites(uid) {
   const snap = await admin
     .firestore()

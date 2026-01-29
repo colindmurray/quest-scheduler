@@ -1,9 +1,9 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-29 — Added function unit tests for auth + Discord ingress/poll-card/unlink and re-ran `npm --prefix functions run test -- --coverage` (overall 16.28%).
-- Next Step: Increase backend coverage for Discord worker + legacy callables + scheduler triggers.
-- Open Issues: Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning. Functions coverage remains low due to large worker/trigger modules.
+- Last Completed: 2026-01-29 — Expanded functions coverage (Discord worker handlers/votes, legacy callables/helpers, scheduler triggers). Added functions coverage config to focus on `functions/src` and re-ran `npm --prefix functions run test -- --coverage` (overall 60.85%; legacy 51.05; triggers 74.3).
+- Next Step: Continue raising legacy coverage (block/unblock, poll invites edge cases, google calendar flows) and improve OAuth/discord-client coverage toward 70%+.
+- Open Issues: Vitest run still emits `punycode` deprecation warnings and firebase-functions update warning; one worker integration test remains skipped.
 - Last Updated (YYYY-MM-DD): 2026-01-29
 
 ## Automated Testing Overhaul (Unit / Integration / E2E)
@@ -26,3 +26,6 @@
 
 ### P2 — UI Components
 - [x] 2026-01-28: Add RTL component tests for Settings + Auth UI surfaces (`AuthPage`, `SettingsPage`).
+
+## Progress Notes
+- 2026-01-29: Allow poll creators to update vote docs for slot removals by permitting limited creator vote updates in Firestore rules.

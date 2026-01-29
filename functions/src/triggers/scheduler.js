@@ -540,3 +540,11 @@ exports.updateDiscordPollOnVote = onDocumentWritten(
     }
   }
 );
+
+exports.__test__ = {
+  getVoteStats,
+  hasNonDiscordChanges,
+  computeSchedulerSyncHash,
+  updateDiscordStatusMessage,
+  buildFinalizationMention,
+};
