@@ -1,7 +1,7 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-29 — Enabled Discord roles mapping unit test with mocked REST and re-ran `npm --prefix functions run test` (22 passed, 1 skipped).
+- Last Completed: 2026-01-29 — Added functions test setup to stub Discord secret env vars (silences secret warnings) and re-ran `npm --prefix functions run test` (22 passed, 1 skipped).
 - Next Step: Decide whether to add coverage for large feature pages (Dashboard/Friends/Scheduler) or leave as UI-heavy/low-risk.
 - Open Issues: Emulator runs still emit `punycode` deprecation warnings and firebase-functions update warning. Overall coverage remains low because feature pages are untested.
 - Last Updated (YYYY-MM-DD): 2026-01-29
