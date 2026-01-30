@@ -1,20 +1,9 @@
-import {
-  collection,
-  documentId,
-  doc,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  getDocs,
-  query,
-  where,
-} from "firebase/firestore";
+import { serverTimestamp } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
-import { format, parse, startOfWeek, getDay, isSameDay } from "date-fns";
+import { format, parse, startOfWeek, getDay, isSameDay, isBefore, startOfDay, startOfHour } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { enUS } from "date-fns/locale";
 import { toast } from "sonner";
@@ -23,28 +12,22 @@ import { useAuth } from "../../app/useAuth";
 import { useUserSettings } from "../../hooks/useUserSettings";
 import { useFriends } from "../../hooks/useFriends";
 import { useQuestingGroups } from "../../hooks/useQuestingGroups";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { useFirestoreDoc } from "../../hooks/useFirestoreDoc";
+import { useCalendarNavigation } from "../../hooks/useCalendarNavigation";
+import { useSchedulerData } from "./hooks/useSchedulerData";
 import { useNotifications } from "../../hooks/useNotifications";
 import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfiles";
-import { db } from "../../lib/firebase";
-import { schedulerSlotsRef, schedulerVotesRef } from "../../lib/data/schedulers";
+import {
+  deleteScheduler,
+  deleteSchedulerSlot,
+  deleteSchedulerVote,
+  fetchSchedulerSlots,
+  fetchSchedulerVotes,
+  setScheduler,
+  updateScheduler,
+  upsertSchedulerSlot,
+  upsertSchedulerVote,
+} from "../../lib/data/schedulers";
 import { Switch } from "../../components/ui/switch";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../../components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,19 +35,36 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
-import { AvatarBubble, AvatarStack } from "../../components/ui/voter-avatars";
+import { AvatarBubble, AvatarStack, VotingAvatarStack } from "../../components/ui/voter-avatars";
 import { buildColorMap, uniqueUsers } from "../../components/ui/voter-avatar-utils";
 import { UserAvatar } from "../../components/ui/avatar";
 import { UserIdentity } from "../../components/UserIdentity";
 import { LoadingState } from "../../components/ui/spinner";
-import { isValidEmail } from "../../lib/utils";
+import { CalendarJumpControls } from "../../components/ui/calendar-jump-controls";
+import { buildEmailSet, isValidEmail, normalizeEmail, normalizeEmailList } from "../../lib/utils";
 import { resolveIdentifier } from "../../lib/identifiers";
 import { createVoteSubmittedNotification, pollInviteNotificationId } from "../../lib/data/notifications";
 import { createSessionFinalizedNotification } from "../../lib/data/notifications";
-import { findUserIdByEmail, findUserIdsByEmails } from "../../lib/data/users";
+import { fetchPublicProfilesByIds, findUserIdByEmail, findUserIdsByEmails } from "../../lib/data/users";
 import { acceptPollInvite, declinePollInvite, removeParticipantFromPoll, revokePollInvite } from "../../lib/data/pollInvites";
 import { createEmailMessage } from "../../lib/emailTemplates";
+import { queueMail } from "../../lib/data/mail";
+import { validateInviteCandidate } from "./utils/invite-utils";
+import { CloneDialog } from "./components/clone-dialog";
+import { FinalizeDialog } from "./components/finalize-dialog";
+import { PendingVotesDialog } from "./components/pending-votes-dialog";
+import { VoteDialog } from "./components/vote-dialog";
+import { VoteToggle } from "./components/vote-toggle";
+import { ReopenDialog } from "./components/reopen-dialog";
+import { DeleteDialog } from "./components/delete-dialog";
+import { CancelDialog } from "./components/cancel-dialog";
+import { InvitePromptDialog } from "./components/invite-prompt-dialog";
+import { LeaveDialog } from "./components/leave-dialog";
+import { RemoveParticipantDialog } from "./components/remove-participant-dialog";
+import { RevokeInviteDialog } from "./components/revoke-invite-dialog";
+import { CalendarToolbar } from "./components/CalendarToolbar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
+import "./calendar-styles.css";
 
 const localizer = dateFnsLocalizer({
   format,
@@ -74,49 +74,23 @@ const localizer = dateFnsLocalizer({
   locales: { "en-US": enUS },
 });
 
-function VoteToggle({ checked, disabled, onChange }) {
-  return <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} />;
-}
-
 export default function SchedulerPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const schedulerRef = useMemo(
-    () => (id ? doc(db, "schedulers", id) : null),
-    [id]
-  );
   const { settings, archivePoll, unarchivePoll, isArchived } = useUserSettings();
   const { friends } = useFriends();
   const { getGroupColor, groups } = useQuestingGroups();
   const { removeLocal: removeNotification } = useNotifications();
-  const scheduler = useFirestoreDoc(schedulerRef);
-  const creatorRef = useMemo(
-    () =>
-      scheduler.data?.creatorId ? doc(db, "users", scheduler.data.creatorId) : null,
-    [scheduler.data?.creatorId]
-  );
-  const creator = useFirestoreDoc(creatorRef);
-  const questingGroupRef = useMemo(
-    () => (scheduler.data?.questingGroupId ? doc(db, "questingGroups", scheduler.data.questingGroupId) : null),
-    [scheduler.data?.questingGroupId]
-  );
-  const questingGroup = useFirestoreDoc(questingGroupRef);
-  const slotsRef = useMemo(
-    () => (id ? schedulerSlotsRef(id) : null),
-    [id]
-  );
-  const votesRef = useMemo(
-    () => (id ? schedulerVotesRef(id) : null),
-    [id]
-  );
-  const userVoteRef = useMemo(
-    () => (id && user ? doc(db, "schedulers", id, "votes", user.uid) : null),
-    [id, user]
-  );
-  const slots = useFirestoreCollection(slotsRef);
-  const allVotes = useFirestoreCollection(votesRef);
-  const userVote = useFirestoreDoc(userVoteRef);
+  const {
+    scheduler,
+    schedulerDocRef,
+    creator,
+    questingGroup,
+    slots,
+    allVotes,
+    userVote,
+  } = useSchedulerData({ schedulerId: id, user });
   const [view, setView] = useState("list");
   const [draftVotes, setDraftVotes] = useState({});
   const [saving, setSaving] = useState(false);
@@ -144,6 +118,8 @@ export default function SchedulerPage() {
   const [cloneClearVotes, setCloneClearVotes] = useState(false);
   const [cloneGroupId, setCloneGroupId] = useState(null);
   const [archiveSaving, setArchiveSaving] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelSaving, setCancelSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [deleteUpdateCalendar, setDeleteUpdateCalendar] = useState(false);
@@ -161,8 +137,7 @@ export default function SchedulerPage() {
   const isLocked = scheduler.data?.status !== "OPEN";
   const isPollArchived = isArchived(id);
   const isCreator = scheduler.data?.creatorId === user?.uid;
-  const normalizeEmail = (value) => value.trim().toLowerCase();
-  const normalizedUserEmail = user?.email?.toLowerCase() || null;
+  const normalizedUserEmail = normalizeEmail(user?.email) || null;
   const isGroupMember = Boolean(
     scheduler.data?.questingGroupId &&
       user?.uid &&
@@ -173,6 +148,7 @@ export default function SchedulerPage() {
   }, [scheduler.data?.participantIds, user?.uid]);
   const isEffectiveParticipant = isExplicitParticipant || isGroupMember;
   const [calendarView, setCalendarView] = useState("month");
+  const [calendarDate, setCalendarDate] = useState(new Date());
   const [expandedSlots, setExpandedSlots] = useState({});
   const questingGroupMemberIds = useMemo(
     () => questingGroup.data?.memberIds || [],
@@ -191,7 +167,7 @@ export default function SchedulerPage() {
     [questingGroupMemberIds]
   );
   const questingGroupMemberEmailSet = useMemo(
-    () => new Set(questingGroupMembers),
+    () => buildEmailSet(questingGroupMembers),
     [questingGroupMembers]
   );
   const questingGroupName =
@@ -246,21 +222,18 @@ export default function SchedulerPage() {
     [cloneSelectedGroup]
   );
   const cloneGroupMemberEmails = useMemo(
-    () => cloneGroupMembers.map((email) => normalizeEmail(email)),
+    () => normalizeEmailList(cloneGroupMembers),
     [cloneGroupMembers]
   );
   const cloneGroupMemberSet = useMemo(
-    () => new Set(cloneGroupMemberEmails),
+    () => buildEmailSet(cloneGroupMemberEmails),
     [cloneGroupMemberEmails]
   );
   const cloneGroupColor = useMemo(
     () => (cloneSelectedGroup?.id ? getGroupColor(cloneSelectedGroup.id) : null),
     [cloneSelectedGroup?.id, getGroupColor]
   );
-  const cloneInviteSet = useMemo(
-    () => new Set(cloneInvites.map((email) => normalizeEmail(email))),
-    [cloneInvites]
-  );
+  const cloneInviteSet = useMemo(() => buildEmailSet(cloneInvites), [cloneInvites]);
   const cloneRecommendedEmails = useMemo(() => {
     const userEmail = user?.email ? normalizeEmail(user.email) : null;
     return friends
@@ -271,12 +244,12 @@ export default function SchedulerPage() {
       .filter((email) => !cloneGroupMemberSet.has(email));
   }, [friends, cloneInviteSet, cloneGroupMemberSet, user?.email]);
   const profileEmails = useMemo(() => {
-    const combined = new Set(
-      [...questingGroupMembers, ...cloneGroupMemberEmails, ...cloneInvites, ...cloneRecommendedEmails]
-        .filter(Boolean)
-        .map((email) => normalizeEmail(email))
-    );
-    return Array.from(combined);
+    return normalizeEmailList([
+      ...questingGroupMembers,
+      ...cloneGroupMemberEmails,
+      ...cloneInvites,
+      ...cloneRecommendedEmails,
+    ]);
   }, [questingGroupMembers, cloneGroupMemberEmails, cloneInvites, cloneRecommendedEmails]);
   const { enrichUsers } = useUserProfiles(profileEmails);
   const groupUsers = useMemo(() => {
@@ -330,10 +303,10 @@ export default function SchedulerPage() {
   useEffect(() => {
     if (!scheduler.data || !user?.email || !id) return;
     if (isCreator) return;
-    const normalizedEmail = user.email.toLowerCase();
+    const normalizedEmail = normalizeEmail(user.email);
     const participantMatch = scheduler.data.participantIds?.includes(user?.uid);
     const isPendingInvite = scheduler.data.pendingInvites?.some(
-      (email) => email?.toLowerCase() === normalizedEmail
+      (email) => normalizeEmail(email) === normalizedEmail
     );
     if (participantMatch || isGroupMember) {
       setInvitePromptOpen(false);
@@ -585,6 +558,29 @@ export default function SchedulerPage() {
       };
     });
   }, [slots.data, tallies, slotVoters]);
+
+  const {
+    scrollToTime,
+    selectedEventId,
+    setSelectedEventId,
+    hasEvents,
+    hasEventsInView,
+    jumpNext,
+    jumpPrev,
+    jumpNextWindow,
+    jumpPrevWindow,
+  } = useCalendarNavigation({
+    events: calendarEvents,
+    view: calendarView,
+    date: calendarDate,
+    height: 520,
+    onNavigate: setCalendarDate,
+  });
+
+  const calendarKey =
+    calendarView === "month"
+      ? `month-${calendarDate.toDateString()}`
+      : `${calendarView}-${calendarDate.toDateString()}-${scrollToTime?.getTime?.() || 0}`;
 
   const slotsForModal = useMemo(() => {
     if (!modalDate) return [];
@@ -845,19 +841,17 @@ export default function SchedulerPage() {
       setCloneInviteError(err.message || "Enter a valid email or Discord username.");
       return;
     }
-    const normalized = normalizeEmail(resolved.email);
-    if (scheduler.data?.creatorEmail && normalized === normalizeEmail(scheduler.data.creatorEmail)) {
-      setCloneInviteError("You are already included as a participant.");
+    const validation = validateInviteCandidate({
+      email: resolved.email,
+      selfEmail: scheduler.data?.creatorEmail,
+      groupMemberSet: cloneGroupMemberSet,
+      existingInvites: cloneInvites,
+    });
+    if (!validation.ok) {
+      setCloneInviteError(validation.error);
       return;
     }
-    if (cloneGroupMemberSet.has(normalized)) {
-      setCloneInviteError("That email is already included via the questing group.");
-      return;
-    }
-    if (cloneInvites.includes(normalized)) {
-      setCloneInviteError("That email is already invited.");
-      return;
-    }
+    const normalized = validation.normalized;
     setCloneInvites((prev) => (prev.includes(normalized) ? prev : [...prev, normalized]));
     setCloneInviteInput("");
     setCloneInviteError(null);
@@ -876,25 +870,21 @@ export default function SchedulerPage() {
     setSaving(true);
     let success = false;
     try {
-      await setDoc(
-        userVoteRef,
-        {
-          voterId: user.uid,
-          userEmail: user.email,
-          userAvatar: user.photoURL,
-          votes: noTimesWork ? {} : draftVotes,
-          noTimesWork,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      await upsertSchedulerVote(id, user.uid, {
+        voterId: user.uid,
+        userEmail: user.email,
+        userAvatar: user.photoURL,
+        votes: noTimesWork ? {} : draftVotes,
+        noTimesWork,
+        updatedAt: serverTimestamp(),
+      });
 
       const notifyCreator = creator.data?.settings?.emailNotifications;
       const recipient = scheduler.data?.creatorEmail;
-      if (recipient && user.email?.toLowerCase() !== recipient.toLowerCase()) {
+      if (recipient && normalizeEmail(user.email) !== normalizeEmail(recipient)) {
         try {
           if (notifyCreator) {
-            await setDoc(doc(collection(db, "mail")), {
+            await queueMail({
               to: recipient,
               message: createEmailMessage({
                 subject: "New vote submitted",
@@ -990,17 +980,13 @@ export default function SchedulerPage() {
     if (!pendingFinalizeSlotId || !userVoteRef) return;
     setPendingFinalizeBusy(true);
     try {
-      await setDoc(
-        userVoteRef,
-        {
-          voterId: user.uid,
-          userEmail: user.email,
-          userAvatar: user.photoURL,
-          votes: {},
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      await upsertSchedulerVote(id, user.uid, {
+        voterId: user.uid,
+        userEmail: user.email,
+        userAvatar: user.photoURL,
+        votes: {},
+        updatedAt: serverTimestamp(),
+      });
       setDraftVotes({});
       setPendingVotesOpen(false);
       openFinalize(pendingFinalizeSlotId);
@@ -1020,7 +1006,7 @@ export default function SchedulerPage() {
   };
 
   const handleFinalize = async () => {
-    if (!finalizeSlotId || !schedulerRef) return;
+    if (!finalizeSlotId || !schedulerDocRef) return;
     setSaving(true);
     try {
       const slot = slots.data.find((item) => item.id === finalizeSlotId);
@@ -1043,8 +1029,8 @@ export default function SchedulerPage() {
         .filter(Boolean);
 
       const creatorEmail = scheduler.data?.creatorEmail;
-      const uniqueEmails = new Set(parsedEmails.map((email) => email.toLowerCase()));
-      if (creatorEmail && !uniqueEmails.has(creatorEmail.toLowerCase())) {
+      const uniqueEmails = new Set(normalizeEmailList(parsedEmails));
+      if (creatorEmail && !uniqueEmails.has(normalizeEmail(creatorEmail))) {
         parsedEmails.push(creatorEmail);
       }
 
@@ -1063,7 +1049,7 @@ export default function SchedulerPage() {
         title: eventTitle,
         description: eventDescription,
         durationMinutes,
-        attendees: Array.from(new Set(parsedEmails.map((email) => email.toLowerCase()))),
+        attendees: normalizeEmailList(parsedEmails),
         deleteOldEvent,
         createCalendarEvent: shouldCreateEvent,
       });
@@ -1078,30 +1064,18 @@ export default function SchedulerPage() {
       );
       if (participantIds.length > 0) {
         try {
-          const normalizedCreatorEmail = creatorEmail?.toLowerCase() || null;
-          const chunks = [];
-          for (let i = 0; i < participantIds.length; i += 10) {
-            chunks.push(participantIds.slice(i, i + 10));
-          }
+          const normalizedCreatorEmail = normalizeEmail(creatorEmail) || null;
           const optOuts = new Set();
           const emails = new Set();
-          const userIdsByEmail = new Map();
-          for (const chunk of chunks) {
-            const snapshot = await getDocs(
-              query(collection(db, "usersPublic"), where(documentId(), "in", chunk))
-            );
-            snapshot.forEach((docSnap) => {
-              const data = docSnap.data();
-              if (data?.email) {
-                const normalized = data.email.toLowerCase();
-                emails.add(normalized);
-                userIdsByEmail.set(normalized, docSnap.id);
-                if (data?.emailNotifications === false) {
-                  optOuts.add(normalized);
-                }
-              }
-            });
-          }
+          const profilesById = await fetchPublicProfilesByIds(participantIds);
+          Object.values(profilesById).forEach((profile) => {
+            if (!profile?.email) return;
+            const normalized = normalizeEmail(profile.email);
+            emails.add(normalized);
+            if (profile.emailNotifications === false) {
+              optOuts.add(normalized);
+            }
+          });
           const timezone =
             scheduler.data?.timezone ||
             Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -1128,7 +1102,7 @@ export default function SchedulerPage() {
           );
           await Promise.all(
             recipients.map((email) =>
-              setDoc(doc(collection(db, "mail")), {
+              queueMail({
                 to: email,
                 message: createEmailMessage({
                   subject: `Session poll finalized: ${scheduler.data?.title || "Session Poll"}`,
@@ -1160,14 +1134,14 @@ export default function SchedulerPage() {
   };
 
   const handleReopen = async ({ updateCalendar } = {}) => {
-    if (!schedulerRef) return;
+    if (!schedulerDocRef) return;
     setSaving(true);
     let success = false;
     try {
       if (updateCalendar && scheduler.data?.googleEventId) {
         await deleteCalendarEntry();
       }
-      await updateDoc(schedulerRef, {
+      await updateScheduler(id, {
         status: "OPEN",
         winningSlotId: null,
       });
@@ -1243,7 +1217,11 @@ export default function SchedulerPage() {
 
       // Participants: new creator + all invites
       const inviteEmails = Array.from(
-        new Set([newCreatorEmail, ...cloneInvites].filter(Boolean).map((e) => e.toLowerCase()))
+        new Set(
+          [newCreatorEmail, ...cloneInvites]
+            .map((email) => normalizeEmail(email))
+            .filter(Boolean)
+        )
       );
       const participantIdsByEmail = await findUserIdsByEmails(inviteEmails);
       participantIdsByEmail[normalizeEmail(newCreatorEmail)] = newCreatorId;
@@ -1292,8 +1270,7 @@ export default function SchedulerPage() {
       }
 
       const newId = crypto.randomUUID();
-      const newRef = doc(db, "schedulers", newId);
-      await setDoc(newRef, {
+      await setScheduler(newId, {
         title: cloneTitle || `${scheduler.data.title || "Untitled poll"} (copy)`,
         description: scheduler.data?.description || "",
         creatorId: newCreatorId,
@@ -1312,7 +1289,7 @@ export default function SchedulerPage() {
       });
 
       const slotWrites = futureSlots.map((slot) =>
-        setDoc(doc(db, "schedulers", newId, "slots", slot.id), {
+        upsertSchedulerSlot(newId, slot.id, {
           start: slot.start,
           end: slot.end,
           stats: { feasible: 0, preferred: 0 },
@@ -1337,18 +1314,14 @@ export default function SchedulerPage() {
             if (Object.keys(nextVotes).length === 0 && !voteDoc.noTimesWork) {
               return Promise.resolve();
             }
-            return setDoc(
-              doc(db, "schedulers", newId, "votes", voteDoc.id),
-              {
-                voterId: voteDoc.id,
-                userEmail: voteDoc.userEmail,
-                userAvatar: voteDoc.userAvatar,
-                votes: nextVotes,
-                noTimesWork: Boolean(voteDoc.noTimesWork),
-                updatedAt: serverTimestamp(),
-              },
-              { merge: true }
-            );
+            return upsertSchedulerVote(newId, voteDoc.id, {
+              voterId: voteDoc.id,
+              userEmail: voteDoc.userEmail,
+              userAvatar: voteDoc.userAvatar,
+              votes: nextVotes,
+              noTimesWork: Boolean(voteDoc.noTimesWork),
+              updatedAt: serverTimestamp(),
+            });
           })
         );
       }
@@ -1392,6 +1365,24 @@ export default function SchedulerPage() {
     }
   };
 
+  const handleCancelSession = async () => {
+    if (!id) return;
+    setCancelSaving(true);
+    try {
+      await updateScheduler(id, {
+        status: "CANCELLED",
+        updatedAt: serverTimestamp(),
+      });
+      toast.success("Session cancelled");
+      setCancelOpen(false);
+    } catch (err) {
+      console.error("Failed to cancel session:", err);
+      toast.error(err.message || "Failed to cancel session");
+    } finally {
+      setCancelSaving(false);
+    }
+  };
+
   const handleNudge = async () => {
     if (!id) return;
     setNudgeSending(true);
@@ -1418,22 +1409,22 @@ export default function SchedulerPage() {
   };
 
   const handleDelete = async () => {
-    if (!schedulerRef || !id) return;
+    if (!schedulerDocRef || !id) return;
     setDeleteSaving(true);
     try {
       if (deleteUpdateCalendar && scheduler.data?.googleEventId) {
         await deleteCalendarEntry();
       }
       // Delete all slots
-      const slotsSnap = await getDocs(collection(db, "schedulers", id, "slots"));
-      await Promise.all(slotsSnap.docs.map((docSnap) => deleteDoc(docSnap.ref)));
+      const slots = await fetchSchedulerSlots(id);
+      await Promise.all(slots.map((slot) => deleteSchedulerSlot(id, slot.id)));
 
       // Delete all votes
-      const votesSnap = await getDocs(collection(db, "schedulers", id, "votes"));
-      await Promise.all(votesSnap.docs.map((docSnap) => deleteDoc(docSnap.ref)));
+      const votes = await fetchSchedulerVotes(id);
+      await Promise.all(votes.map((vote) => deleteSchedulerVote(id, vote.id)));
 
       // Delete the scheduler document
-      await deleteDoc(schedulerRef);
+      await deleteScheduler(id);
 
       toast.success("Session poll deleted");
       navigate("/dashboard");
@@ -1486,7 +1477,7 @@ export default function SchedulerPage() {
 
   const isParticipant = isEffectiveParticipant;
   const isPendingInvite = scheduler.data.pendingInvites?.some(
-    (email) => normalizedUserEmail && email?.toLowerCase() === normalizedUserEmail
+    (email) => normalizedUserEmail && normalizeEmail(email) === normalizedUserEmail
   );
   const canVote = Boolean(isParticipant && !isLocked);
   const pendingInviteMeta =
@@ -1548,6 +1539,11 @@ export default function SchedulerPage() {
                 {scheduler.data.status === "FINALIZED" && (
                   <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
                     Finalized
+                  </span>
+                )}
+                {scheduler.data.status === "CANCELLED" && (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-200">
+                    Cancelled
                   </span>
                 )}
                 {isPollArchived && (
@@ -1655,6 +1651,17 @@ export default function SchedulerPage() {
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={requestReopen} disabled={saving}>
                       Re-open poll
+                    </DropdownMenuItem>
+                  </>
+                )}
+                {isCreator && scheduler.data?.status !== "CANCELLED" && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => setCancelOpen(true)}
+                      className="text-amber-700 focus:text-amber-700 dark:text-amber-200 dark:focus:text-amber-200"
+                    >
+                      Cancel session
                     </DropdownMenuItem>
                   </>
                 )}
@@ -1766,7 +1773,8 @@ export default function SchedulerPage() {
                     {participant.hasVoted ? "Voted" : "Pending"}
                   </span>
                   {isCreator &&
-                    participant.email?.toLowerCase() !== scheduler.data.creatorEmail?.toLowerCase() &&
+                    normalizeEmail(participant.email) !==
+                      normalizeEmail(scheduler.data.creatorEmail) &&
                     !participant.isGroupMember && (
                     <button
                       type="button"
@@ -1845,19 +1853,61 @@ export default function SchedulerPage() {
 
           {view === "calendar" && (
             <div className="mt-6 rounded-3xl border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+              <div className="mb-3 flex justify-end">
+                <CalendarJumpControls
+                  hasEvents={hasEvents}
+                  hasEventsInView={hasEventsInView}
+                  onPrev={jumpPrev}
+                  onNext={jumpNext}
+                  onPrevWindow={jumpPrevWindow}
+                  onNextWindow={jumpNextWindow}
+                  label="Jump to slot"
+                />
+              </div>
               <Calendar
+                key={calendarKey}
                 localizer={localizer}
                 events={calendarEvents}
                 startAccessor="start"
                 endAccessor="end"
                 selectable
-                scrollToTime={new Date(1970, 0, 1, 8, 0)}
+                scrollToTime={scrollToTime}
+                enableAutoScroll={calendarView !== "month"}
+                date={calendarDate}
+                onNavigate={setCalendarDate}
                 views={["month", "week", "day"]}
                 view={calendarView}
                 onView={(nextView) => setCalendarView(nextView)}
                 onSelectSlot={(slotInfo) => setModalDate(slotInfo.start)}
-                onSelectEvent={(event) => setModalDate(event.start)}
-                components={{ event: EventCell }}
+                onSelectEvent={(event) => {
+                  setSelectedEventId(event.id);
+                  setModalDate(event.start);
+                }}
+                dayPropGetter={(date) => {
+                  if (isBefore(date, startOfDay(new Date()))) {
+                    return { className: "rbc-past-day" };
+                  }
+                  return {};
+                }}
+                slotPropGetter={(date) => {
+                  if (isBefore(date, startOfHour(new Date()))) {
+                    return { className: "rbc-past-slot" };
+                  }
+                  return {};
+                }}
+                components={{
+                  event: EventCell,
+                  toolbar: CalendarToolbar,
+                }}
+                eventPropGetter={(event) => {
+                  if (selectedEventId !== event.id) return {};
+                  return {
+                    style: {
+                      boxShadow:
+                        "0 0 0 2px rgba(59, 130, 246, 0.7), 0 0 12px rgba(59, 130, 246, 0.35)",
+                    },
+                  };
+                }}
                 style={{ height: 520 }}
               />
             </div>
@@ -1905,14 +1955,14 @@ export default function SchedulerPage() {
                       <div className="mt-2 flex flex-col gap-2">
                         <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                           <span className="font-semibold">Preferred</span>
-                          <AvatarStackWithColors users={voters.preferred} max={4} size={20} />
+                          <VotingAvatarStack users={voters.preferred} size={20} colorMap={colorMap} />
                           <span className="text-slate-400 dark:text-slate-500">
                             {counts.preferred}
                           </span>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                           <span className="font-semibold">Feasible</span>
-                          <AvatarStackWithColors users={voters.feasible} max={4} size={20} />
+                          <VotingAvatarStack users={voters.feasible} size={20} colorMap={colorMap} />
                           <span className="text-slate-400 dark:text-slate-500">
                             {counts.feasible}
                           </span>
@@ -2173,429 +2223,87 @@ export default function SchedulerPage() {
           </div>
         </div>
 
-      <Dialog open={!!modalDate} onOpenChange={(open) => !open && setModalDate(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Vote for {modalDate ? format(modalDate, "MMM d") : ""}</DialogTitle>
-            <DialogDescription>
-              Toggle Feasible or Preferred for each slot.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white px-4 py-3 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-            <span>No times work for me</span>
-            <Switch
-              checked={noTimesWork}
-              disabled={!canVote}
-              onCheckedChange={toggleNoTimesWork}
-            />
-          </div>
-          <div className="mt-4 space-y-3">
-            {slotsForModal.length === 0 && (
-              <p className="text-sm text-slate-500 dark:text-slate-400">No slots on this day.</p>
-            )}
-              {slotsForModal.map((slot) => {
-                const vote = draftVotes[slot.id];
-                const isPast = pastSlotIds.has(slot.id);
-                return (
-                  <div
-                    key={slot.id}
-                    className={`grid gap-2 rounded-2xl border px-4 py-3 dark:border-slate-700 ${
-                      isPast
-                        ? "border-red-300 bg-red-50/60 dark:border-red-700 dark:bg-red-900/20"
-                        : "border-slate-200/70"
-                    }`}
-                  >
-                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                      {format(new Date(slot.start), "h:mm a")}
-                    </p>
-                    <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                      <span>Feasible</span>
-                      <VoteToggle
-                        checked={vote === "FEASIBLE" || vote === "PREFERRED"}
-                        disabled={!canVote || noTimesWork || vote === "PREFERRED" || isPast}
-                        onChange={(checked) =>
-                          setVote(slot.id, checked ? "FEASIBLE" : null)
-                        }
-                      />
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                      <span>Preferred</span>
-                      <VoteToggle
-                        checked={vote === "PREFERRED"}
-                        disabled={!canVote || noTimesWork || isPast}
-                        onChange={(checked) =>
-                          setVote(slot.id, checked ? "PREFERRED" : null)
-                        }
-                      />
-                    </div>
-                    {isPast && (
-                      <p className="text-xs font-semibold text-red-500 dark:text-red-400">
-                        This slot is in the past.
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-          </div>
-          <DialogFooter>
-            <button
-              type="button"
-              onClick={() => setModalDate(null)}
-              className="rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90"
-            >
-              Done
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <VoteDialog
+        open={Boolean(modalDate)}
+        onOpenChange={(open) => {
+          if (!open) setModalDate(null);
+        }}
+        modalDate={modalDate}
+        slots={slotsForModal}
+        noTimesWork={noTimesWork}
+        canVote={canVote}
+        onToggleNoTimesWork={toggleNoTimesWork}
+        draftVotes={draftVotes}
+        pastSlotIds={pastSlotIds}
+        onSetVote={setVote}
+      />
 
-      <Dialog open={pendingVotesOpen} onOpenChange={setPendingVotesOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Submit your votes first?</DialogTitle>
-            <DialogDescription>
-              You have unsaved votes. Submit them before finalizing, or discard them.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex flex-wrap justify-end gap-2">
-            <button
-              type="button"
-              onClick={discardVotesThenFinalize}
-              disabled={pendingFinalizeBusy}
-              className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
-            >
-              Discard my votes
-            </button>
-            <button
-              type="button"
-              onClick={submitVotesThenFinalize}
-              disabled={pendingFinalizeBusy}
-              className="rounded-full bg-brand-primary px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:opacity-50"
-            >
-              {pendingFinalizeBusy ? "Submitting..." : "Submit votes & continue"}
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PendingVotesDialog
+        open={pendingVotesOpen}
+        onOpenChange={setPendingVotesOpen}
+        busy={pendingFinalizeBusy}
+        onDiscard={discardVotesThenFinalize}
+        onSubmit={submitVotesThenFinalize}
+      />
 
-      <Dialog open={finalizeOpen} onOpenChange={setFinalizeOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Finalize session</DialogTitle>
-            <DialogDescription>
-              Confirm the calendar details before locking votes.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="mt-4 grid gap-3">
-            <label className="flex items-center justify-between gap-2 rounded-2xl border border-slate-200/70 px-4 py-3 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300">
-              <span>Create Google Calendar event</span>
-              <Switch
-                checked={createCalendarEvent}
-                disabled={!linkedCalendars.length}
-                onCheckedChange={setCreateCalendarEvent}
-              />
-            </label>
-            {!linkedCalendars.length && (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300">
-                Link a Google Calendar in Settings to enable event creation.
-                <button
-                  type="button"
-                  onClick={() => navigate("/settings")}
-                  className="ml-2 underline underline-offset-2"
-                >
-                  Open settings
-                </button>
-              </div>
-            )}
-            {createCalendarEvent && linkedCalendars.length > 0 && (
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Calendar:{" "}
-                {linkedCalendars.find((item) => item.id === selectedCalendarId)?.name ||
-                  linkedCalendars[0]?.name}
-              </p>
-            )}
-            {createCalendarEvent && linkedCalendars.length > 0 && (
-              <div className="grid gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                <span>Select calendar</span>
-                <Select value={selectedCalendarId} onValueChange={setSelectedCalendarId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose a calendar" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {linkedCalendars.map((calendar) => (
-                      <SelectItem key={calendar.id} value={calendar.id}>
-                        {calendar.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {createCalendarEvent && (
-            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              Event title
-              <input
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                value={eventTitle}
-                onChange={(event) => setEventTitle(event.target.value)}
-              />
-            </label>
-            )}
-            {createCalendarEvent && (
-            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              Description
-              <textarea
-                className="mt-1 min-h-[80px] w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                value={eventDescription}
-                onChange={(event) => setEventDescription(event.target.value)}
-              />
-            </label>
-            )}
-            {createCalendarEvent && (
-            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              Duration (min)
-              <input
-                type="number"
-                min="30"
-                step="30"
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                value={eventDuration}
-                onChange={(event) => setEventDuration(event.target.value)}
-              />
-            </label>
-            )}
-            {createCalendarEvent && (
-            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              Attendees (comma or newline separated)
-              <textarea
-                className="mt-1 min-h-[80px] w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                value={eventAttendees}
-                onChange={(event) => setEventAttendees(event.target.value)}
-              />
-            </label>
-            )}
-            {createCalendarEvent && scheduler.data?.googleEventId && (
-              <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                <input
-                  type="checkbox"
-                  checked={deleteOldEvent}
-                  onChange={(event) => setDeleteOldEvent(event.target.checked)}
-                />
-                Delete previous calendar event on finalize
-              </label>
-            )}
-          </div>
-          <DialogFooter>
-            <button
-              type="button"
-              onClick={() => setFinalizeOpen(false)}
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleFinalize}
-              disabled={saving}
-              className="rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:opacity-50"
-            >
-              {saving ? "Finalizing..." : "Finalize"}
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <FinalizeDialog
+        open={finalizeOpen}
+        onOpenChange={setFinalizeOpen}
+        saving={saving}
+        createCalendarEvent={createCalendarEvent}
+        onToggleCreateCalendarEvent={setCreateCalendarEvent}
+        linkedCalendars={linkedCalendars}
+        selectedCalendarId={selectedCalendarId}
+        onSelectCalendarId={setSelectedCalendarId}
+        eventTitle={eventTitle}
+        onChangeEventTitle={setEventTitle}
+        eventDescription={eventDescription}
+        onChangeEventDescription={setEventDescription}
+        eventDuration={eventDuration}
+        onChangeEventDuration={setEventDuration}
+        eventAttendees={eventAttendees}
+        onChangeEventAttendees={setEventAttendees}
+        deleteOldEvent={deleteOldEvent}
+        onToggleDeleteOldEvent={setDeleteOldEvent}
+        hasExistingEvent={Boolean(scheduler.data?.googleEventId)}
+        onOpenSettings={() => navigate("/settings")}
+        onFinalize={handleFinalize}
+      />
 
-      <Dialog open={cloneOpen} onOpenChange={setCloneOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Clone session poll</DialogTitle>
-            <DialogDescription>
-              Duplicate this poll with a fresh link and optional vote reset.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="mt-4 grid gap-4">
-            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              New poll name
-              <input
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                value={cloneTitle}
-                onChange={(event) => setCloneTitle(event.target.value)}
-              />
-            </label>
-            {cloneGroupOptions.length > 0 && (
-              <div className="grid gap-2">
-                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  Questing Group (optional)
-                </span>
-                <Select
-                  value={cloneGroupId || "none"}
-                  onValueChange={(value) =>
-                    setCloneGroupId(value === "none" ? null : value)
-                  }
-                >
-                  <SelectTrigger className="h-10 rounded-xl px-3 text-xs">
-                    <SelectValue placeholder="Select a group" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No group</SelectItem>
-                    {cloneGroupOptions.map((group) => (
-                      <SelectItem key={group.id} value={group.id}>
-                        {group.name}
-                        {group.members ? ` (${group.members} members)` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {cloneGroupId && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Group members will be auto-added as invitees.
-                  </p>
-                )}
-              </div>
-            )}
+      <CloneDialog
+        open={cloneOpen}
+        onOpenChange={setCloneOpen}
+        cloneTitle={cloneTitle}
+        onChangeCloneTitle={setCloneTitle}
+        cloneGroupId={cloneGroupId}
+        onChangeGroupId={(value) => setCloneGroupId(value === "none" ? null : value)}
+        groupOptions={cloneGroupOptions}
+        includedUser={
+          scheduler.data?.creatorEmail
+            ? participantMapByEmail.get(normalizeEmail(scheduler.data.creatorEmail)) || {
+                email: scheduler.data.creatorEmail,
+              }
+            : null
+        }
+        groupName={cloneSelectedGroup?.name || null}
+        groupColor={cloneGroupColor || null}
+        groupMembers={cloneGroupUsers}
+        inviteUsers={cloneInviteUsers}
+        onRemoveInvite={removeCloneInvite}
+        inviteEmptyLabel="No additional invitees yet."
+        recommendedUsers={cloneRecommendedUsers}
+        onAddInvite={addCloneInvite}
+        inputValue={cloneInviteInput}
+        onInputChange={setCloneInviteInput}
+        onAddInput={() => addCloneInvite(cloneInviteInput)}
+        inviteError={cloneInviteError}
+        cloneClearVotes={cloneClearVotes}
+        onToggleClearVotes={setCloneClearVotes}
+        onClone={handleClone}
+        saving={cloneSaving}
+      />
 
-            <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Invitees</p>
-              {scheduler.data?.creatorEmail && (
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  You are included as{" "}
-                  <UserIdentity
-                    user={
-                      participantMapByEmail.get(normalizeEmail(scheduler.data.creatorEmail)) || {
-                        email: scheduler.data.creatorEmail,
-                      }
-                    }
-                    showIdentifier={false}
-                  />
-                  .
-                </p>
-              )}
-              {cloneSelectedGroup && (
-                <div
-                  className="mt-3 rounded-2xl border px-3 py-3 text-xs"
-                  style={{
-                    borderColor: cloneGroupColor || "#10b981",
-                    backgroundColor: `${cloneGroupColor || "#10b981"}22`,
-                  }}
-                >
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-100">
-                    Members from {cloneSelectedGroup.name}
-                  </p>
-                  <div className="mt-2 grid gap-2">
-                    {cloneGroupUsers.length === 0 && (
-                      <span className="text-xs text-slate-500 dark:text-slate-400">
-                        No members listed for this group.
-                      </span>
-                    )}
-                    {cloneGroupUsers.map((member) => (
-                      <div
-                        key={member.email}
-                        className="flex items-center gap-2 rounded-xl border border-transparent bg-white/70 px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-slate-900/70 dark:text-slate-200"
-                      >
-                        <UserAvatar email={member.email} src={member.avatar} size={22} />
-                        <UserIdentity user={member} showIdentifier={false} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="mt-3 flex flex-wrap gap-2">
-                {cloneInvites.length === 0 && (
-                  <span className="text-xs text-slate-400 dark:text-slate-500">
-                    No additional invitees yet.
-                  </span>
-                )}
-                {cloneInviteUsers.map((invitee) => (
-                  <button
-                    key={invitee.email}
-                    type="button"
-                    onClick={() => removeCloneInvite(invitee.email)}
-                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-red-50 hover:border-red-200 hover:text-red-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-red-900/30 dark:hover:border-red-800 dark:hover:text-red-300"
-                    title="Remove"
-                  >
-                    <UserIdentity user={invitee} /> ✕
-                  </button>
-                ))}
-              </div>
-
-                {cloneRecommendedEmails.length > 0 && (
-                  <>
-                    <p className="mt-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                      Recommended (from friends)
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                    {cloneRecommendedUsers.map((entry) => (
-                      <button
-                        key={entry.email}
-                        type="button"
-                        className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-700"
-                        onClick={() => addCloneInvite(entry.email)}
-                      >
-                        + <UserIdentity user={entry} showIdentifier={false} />
-                      </button>
-                    ))}
-                    </div>
-                  </>
-                )}
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <input
-                  className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                  placeholder="Add email, Discord username, or @username"
-                  value={cloneInviteInput}
-                  onChange={(event) => setCloneInviteInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addCloneInvite(cloneInviteInput);
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => addCloneInvite(cloneInviteInput)}
-                  className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
-                >
-                  Add
-                </button>
-              </div>
-              {cloneInviteError && (
-                <p className="mt-2 text-xs text-red-500 dark:text-red-400">
-                  {cloneInviteError}
-                </p>
-              )}
-            </div>
-
-            <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-              <input
-                type="checkbox"
-                checked={cloneClearVotes}
-                onChange={(event) => setCloneClearVotes(event.target.checked)}
-              />
-              Clear votes in the cloned poll
-            </label>
-          </div>
-          <DialogFooter>
-            <button
-              type="button"
-              onClick={() => setCloneOpen(false)}
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleClone}
-              disabled={cloneSaving}
-              className="rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:opacity-50"
-            >
-              {cloneSaving ? "Cloning..." : "Clone poll"}
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
+      <ReopenDialog
         open={reopenOpen}
         onOpenChange={(open) => {
           setReopenOpen(open);
@@ -2603,50 +2311,22 @@ export default function SchedulerPage() {
             setReopenUpdateCalendar(false);
           }
         }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Re-open session poll</DialogTitle>
-            <DialogDescription>
-              Re-opening clears the winning slot and allows voting again.
-            </DialogDescription>
-          </DialogHeader>
-          {scheduler.data?.googleEventId && (
-            <div className="mt-4 rounded-2xl border border-slate-200/70 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={reopenUpdateCalendar}
-                  onChange={(event) => setReopenUpdateCalendar(event.target.checked)}
-                />
-                Update Google Calendar entry
-              </label>
-              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Delete the existing calendar event so the poll can be rescheduled.
-              </p>
-            </div>
-          )}
-          <DialogFooter>
-            <button
-              type="button"
-              onClick={() => setReopenOpen(false)}
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={confirmReopen}
-              disabled={saving}
-              className="rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:opacity-50"
-            >
-              {saving ? "Re-opening..." : "Re-open poll"}
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        saving={saving}
+        hasExistingEvent={Boolean(scheduler.data?.googleEventId)}
+        updateCalendar={reopenUpdateCalendar}
+        onToggleUpdateCalendar={setReopenUpdateCalendar}
+        onConfirm={confirmReopen}
+      />
 
-      <Dialog
+      <CancelDialog
+        open={cancelOpen}
+        onOpenChange={setCancelOpen}
+        title={scheduler.data?.title || "Untitled poll"}
+        saving={cancelSaving}
+        onCancelSession={handleCancelSession}
+      />
+
+      <DeleteDialog
         open={deleteOpen}
         onOpenChange={(open) => {
           setDeleteOpen(open);
@@ -2654,186 +2334,60 @@ export default function SchedulerPage() {
             setDeleteUpdateCalendar(false);
           }
         }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete session poll</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this poll? This action cannot be undone and will remove the poll for all participants.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
-            <p className="text-sm font-semibold text-red-700 dark:text-red-300">
-              {scheduler.data?.title || "Untitled poll"}
-            </p>
-            <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-              {participantCount} participants · {slots.data?.length || 0} slots · {allVotes.data?.length || 0} votes
-            </p>
-          </div>
-          {scheduler.data?.googleEventId && (
-            <label className="mt-4 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-              <input
-                type="checkbox"
-                checked={deleteUpdateCalendar}
-                onChange={(event) => setDeleteUpdateCalendar(event.target.checked)}
-              />
-              Update Google Calendar entry (delete the linked event)
-            </label>
-          )}
-          <DialogFooter>
-            <button
-              type="button"
-              onClick={() => setDeleteOpen(false)}
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={deleteSaving}
-              className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
-            >
-              {deleteSaving ? "Deleting..." : "Delete poll"}
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        title={scheduler.data?.title || "Untitled poll"}
+        participantCount={participantCount}
+        slotCount={slots.data?.length || 0}
+        voteCount={allVotes.data?.length || 0}
+        hasExistingEvent={Boolean(scheduler.data?.googleEventId)}
+        updateCalendar={deleteUpdateCalendar}
+        onToggleUpdateCalendar={setDeleteUpdateCalendar}
+        onDelete={handleDelete}
+        saving={deleteSaving}
+      />
 
-      <Dialog open={invitePromptOpen} onOpenChange={setInvitePromptOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Join this session poll?</DialogTitle>
-            <DialogDescription>
-              {isPendingInvite ? (
-                <>
-                  <UserIdentity user={inviterProfile} /> invited you to join this poll.
-                </>
-              ) : (
-                "This poll is open to anyone with the link."
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
-            Accepting will add you as a participant so you can vote on times.
-          </div>
-          <DialogFooter className="mt-6">
-            <button
-              type="button"
-              onClick={handleDeclineInvite}
-              disabled={invitePromptBusy}
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
-            >
-              Decline
-            </button>
-            <button
-              type="button"
-              onClick={handleAcceptInvite}
-              disabled={invitePromptBusy}
-              className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
-            >
-              {invitePromptBusy ? "Joining..." : "Accept & join"}
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <InvitePromptDialog
+        open={invitePromptOpen}
+        onOpenChange={setInvitePromptOpen}
+        isPendingInvite={isPendingInvite}
+        inviterProfile={inviterProfile}
+        busy={invitePromptBusy}
+        onDecline={handleDeclineInvite}
+        onAccept={handleAcceptInvite}
+      />
 
-      <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Leave session poll</DialogTitle>
-            <DialogDescription>
-              Leaving will remove you from the participant list and delete your votes.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mt-6">
-            <button
-              type="button"
-              onClick={() => setLeaveOpen(false)}
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleLeavePoll}
-              disabled={leaveSaving}
-              className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
-            >
-              {leaveSaving ? "Leaving..." : "Leave poll"}
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <LeaveDialog
+        open={leaveOpen}
+        onOpenChange={setLeaveOpen}
+        onLeave={handleLeavePoll}
+        saving={leaveSaving}
+      />
 
-      <Dialog open={removeMemberOpen} onOpenChange={setRemoveMemberOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Remove participant</DialogTitle>
-            <DialogDescription>
-              Remove{" "}
-              {memberToRemove ? (
-                <UserIdentity
-                  user={
-                    memberToRemove.email
-                      ? participantMapByEmail.get(normalizeEmail(memberToRemove.email)) ||
-                        memberToRemove
-                      : memberToRemove
-                  }
-                />
-              ) : (
-                "this participant"
-              )}{" "}
-              from this poll? Their votes will be cleared.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mt-6">
-            <button
-              type="button"
-              onClick={() => setRemoveMemberOpen(false)}
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleRemoveParticipant}
-              disabled={!memberToRemove}
-              className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
-            >
-              Remove
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RemoveParticipantDialog
+        open={removeMemberOpen}
+        onOpenChange={setRemoveMemberOpen}
+        memberLabel={
+          memberToRemove ? (
+            <UserIdentity
+              user={
+                memberToRemove.email
+                  ? participantMapByEmail.get(normalizeEmail(memberToRemove.email)) ||
+                    memberToRemove
+                  : memberToRemove
+              }
+            />
+          ) : null
+        }
+        onRemove={handleRemoveParticipant}
+        disabled={!memberToRemove}
+      />
 
-      <Dialog open={revokeInviteOpen} onOpenChange={setRevokeInviteOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Revoke pending invite</DialogTitle>
-            <DialogDescription>
-              Remove the pending invite for {inviteToRevoke}?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mt-6">
-            <button
-              type="button"
-              onClick={() => setRevokeInviteOpen(false)}
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleRevokeInvite}
-              disabled={!inviteToRevoke}
-              className="rounded-full bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:opacity-50"
-            >
-              Revoke invite
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RevokeInviteDialog
+        open={revokeInviteOpen}
+        onOpenChange={setRevokeInviteOpen}
+        inviteeEmail={inviteToRevoke}
+        onRevoke={handleRevokeInvite}
+        disabled={!inviteToRevoke}
+      />
     </>
   );
 }

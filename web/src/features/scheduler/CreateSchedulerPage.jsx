@@ -1,9 +1,9 @@
-import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc, deleteDoc, getDocs, query, where, deleteField } from "firebase/firestore";
+import { serverTimestamp } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
-import { format, parse, startOfWeek, getDay, startOfDay, isBefore } from "date-fns";
+import { format, parse, startOfWeek, getDay, startOfDay, isBefore, startOfHour } from "date-fns";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { enUS } from "date-fns/locale";
 import { toast } from "sonner";
@@ -11,17 +11,32 @@ import { useAuth } from "../../app/useAuth";
 import { useUserSettings } from "../../hooks/useUserSettings";
 import { useFriends } from "../../hooks/useFriends";
 import { useQuestingGroups } from "../../hooks/useQuestingGroups";
+import { useCalendarNavigation } from "../../hooks/useCalendarNavigation";
+import { CalendarJumpControls } from "../../components/ui/calendar-jump-controls";
 import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfiles";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { useFirestoreDoc } from "../../hooks/useFirestoreDoc";
-import { db } from "../../lib/firebase";
+import { useSchedulerEditorData } from "./hooks/useSchedulerEditorData";
 import { APP_URL } from "../../lib/config";
-import { schedulerSlotsRef, schedulerVotesRef } from "../../lib/data/schedulers";
+import {
+  addSchedulerSlot,
+  deleteField,
+  deleteSchedulerSlot,
+  deleteSchedulerVote,
+  setScheduler,
+  updateScheduler,
+  upsertSchedulerSlot,
+  upsertSchedulerVote,
+} from "../../lib/data/schedulers";
 import { resolveIdentifier } from "../../lib/identifiers";
 import { createSessionInviteNotification } from "../../lib/data/notifications";
 import { createEmailMessage } from "../../lib/emailTemplates";
 import { sendPendingPollInvites, revokePollInvite } from "../../lib/data/pollInvites";
 import { findUserIdsByEmails } from "../../lib/data/users";
+import { buildEmailSet, normalizeEmail, normalizeEmailList } from "../../lib/utils";
+import { queueMail } from "../../lib/data/mail";
+import { validateInviteCandidate } from "./utils/invite-utils";
+import { InvitePanel } from "./components/invite-panel";
+import { QuestingGroupSelect } from "./components/questing-group-select";
+import { SchedulerFormHeader } from "./components/scheduler-form-header";
 import {
   Select,
   SelectContent,
@@ -39,13 +54,13 @@ import {
 } from "../../components/ui/dialog";
 import { AvatarStack } from "../../components/ui/voter-avatars";
 import { buildColorMap, uniqueUsers } from "../../components/ui/voter-avatar-utils";
-import { UserAvatar } from "../../components/ui/avatar";
-import { UserIdentity } from "../../components/UserIdentity";
 import { DatePicker } from "../../components/ui/date-picker";
 import { Switch } from "../../components/ui/switch";
 import "react-big-calendar/lib/css/react-big-calendar.css";
+import "./calendar-styles.css";
 import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
+import { CalendarToolbar } from "./components/CalendarToolbar";
 
 const localizer = dateFnsLocalizer({
   format,
@@ -56,10 +71,6 @@ const localizer = dateFnsLocalizer({
 });
 
 const DragAndDropCalendar = withDragAndDrop(Calendar);
-
-function normalizeEmail(value) {
-  return value.trim().toLowerCase();
-}
 
 export default function CreateSchedulerPage() {
   const { id: editId } = useParams();
@@ -95,21 +106,10 @@ export default function CreateSchedulerPage() {
   const [calendarUpdateOpen, setCalendarUpdateOpen] = useState(false);
   const [calendarUpdateChecked, setCalendarUpdateChecked] = useState(false);
 
-  const schedulerRef = useMemo(
-    () => (isEditing ? doc(db, "schedulers", editId) : null),
-    [editId, isEditing]
-  );
-  const scheduler = useFirestoreDoc(schedulerRef);
-  const slotsRef = useMemo(
-    () => (isEditing ? schedulerSlotsRef(editId) : null),
-    [editId, isEditing]
-  );
-  const votesRef = useMemo(
-    () => (isEditing ? schedulerVotesRef(editId) : null),
-    [editId, isEditing]
-  );
-  const slotsSnapshot = useFirestoreCollection(slotsRef);
-  const votesSnapshot = useFirestoreCollection(votesRef);
+  const { schedulerDocRef, scheduler, slotsSnapshot, votesSnapshot } = useSchedulerEditorData({
+    schedulerId: editId,
+    isEditing,
+  });
 
   const inviteEmails = useMemo(() => invites, [invites]);
   const explicitParticipantIds = useMemo(
@@ -140,12 +140,9 @@ export default function CreateSchedulerPage() {
       .filter(Boolean)
       .map((email) => normalizeEmail(email));
   }, [groupMemberIds, groupMemberProfiles]);
-  const groupMemberSet = useMemo(() => new Set(groupMemberEmails), [groupMemberEmails]);
+  const groupMemberSet = useMemo(() => buildEmailSet(groupMemberEmails), [groupMemberEmails]);
   const profileEmails = useMemo(() => {
-    const combined = new Set(
-      [...invites, ...pendingInvites, ...groupMemberEmails].filter(Boolean).map(normalizeEmail)
-    );
-    return Array.from(combined);
+    return normalizeEmailList([...invites, ...pendingInvites, ...groupMemberEmails]);
   }, [invites, pendingInvites, groupMemberEmails]);
   const { enrichUsers } = useUserProfiles(profileEmails);
   const groupUsers = useMemo(() => {
@@ -159,10 +156,7 @@ export default function CreateSchedulerPage() {
     () => enrichUsers(pendingInvites),
     [enrichUsers, pendingInvites]
   );
-  const friendSet = useMemo(
-    () => new Set(friends.map((email) => normalizeEmail(email)).filter(Boolean)),
-    [friends]
-  );
+  const friendSet = useMemo(() => buildEmailSet(friends), [friends]);
   const recommendedEmails = useMemo(() => {
     const userEmail = user?.email ? normalizeEmail(user.email) : null;
     return friends
@@ -176,6 +170,38 @@ export default function CreateSchedulerPage() {
   const recommendedUsers = useMemo(() => enrichUsers(recommendedEmails), [enrichUsers, recommendedEmails]);
   const defaultDuration = settings?.defaultDurationMinutes ?? 60;
   const effectiveTimezone = selectedTimezone;
+  const calendarEvents = useMemo(
+    () =>
+      slots.map((slot) => ({
+        ...slot,
+        start: slot.start instanceof Date ? slot.start : new Date(slot.start),
+        end: slot.end instanceof Date ? slot.end : new Date(slot.end),
+        title: formatInTimeZone(slot.start, effectiveTimezone, "h:mm a"),
+      })),
+    [slots, effectiveTimezone]
+  );
+  const {
+    scrollToTime,
+    selectedEventId,
+    setSelectedEventId,
+    hasEvents,
+    hasEventsInView,
+    jumpNext,
+    jumpPrev,
+    jumpNextWindow,
+    jumpPrevWindow,
+  } = useCalendarNavigation({
+    events: calendarEvents,
+    view: calendarView,
+    date: calendarDate,
+    height: 420,
+    onNavigate: setCalendarDate,
+  });
+
+  const calendarKey =
+    calendarView === "month"
+      ? `month-${calendarDate.toDateString()}`
+      : `${calendarView}-${calendarDate.toDateString()}-${scrollToTime?.getTime?.() || 0}`;
   const invalidSlotIds = useMemo(() => {
     if (!isEditing) return new Set();
     const now = Date.now();
@@ -384,26 +410,12 @@ export default function CreateSchedulerPage() {
     const accepted = acceptedRecipients || [];
     if (accepted.length === 0) return;
     const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
-    const chunks = [];
-    for (let i = 0; i < accepted.length; i += 10) {
-      chunks.push(accepted.slice(i, i + 10));
-    }
-    const userIdsByEmail = new Map();
-    for (const chunk of chunks) {
-      const snapshot = await getDocs(
-        query(collection(db, "usersPublic"), where("email", "in", chunk))
-      );
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        if (data?.email) {
-          userIdsByEmail.set(data.email.toLowerCase(), docSnap.id);
-        }
-      });
-    }
+    const resolvedIds = await findUserIdsByEmails(accepted);
+    const userIdsByEmail = new Map(Object.entries(resolvedIds));
 
     await Promise.all(
       accepted.map((email) =>
-        setDoc(doc(collection(db, "mail")), {
+        queueMail({
           to: email,
           message: createEmailMessage({
             subject: `You're invited to vote on "${pollTitle}"`,
@@ -442,7 +454,7 @@ export default function CreateSchedulerPage() {
     if (added.length > 0) {
       await Promise.all(
         added.map((email) =>
-          setDoc(doc(collection(db, "mail")), {
+          queueMail({
             to: email,
             message: createEmailMessage({
               subject: `You're invited to join "${pollTitle}"`,
@@ -472,9 +484,7 @@ export default function CreateSchedulerPage() {
   };
 
   const resolveParticipantIdsByEmail = async (emails) => {
-    const normalized = Array.from(
-      new Set((emails || []).filter(Boolean).map(normalizeEmail))
-    );
+    const normalized = normalizeEmailList(emails);
     const resolved = await findUserIdsByEmails(normalized);
     if (user?.uid && user?.email) {
       resolved[normalizeEmail(user.email)] = user.uid;
@@ -515,7 +525,7 @@ export default function CreateSchedulerPage() {
   };
 
   const saveEdits = async ({ updateCalendar } = {}) => {
-    if (!schedulerRef || !editId) return false;
+    if (!schedulerDocRef || !editId) return false;
     setSubmitting(true);
     let success = false;
     try {
@@ -552,7 +562,7 @@ export default function CreateSchedulerPage() {
       const removedPendingRecipients = Array.from(previousPending).filter(
         (email) => !pendingList.includes(email)
       );
-      await updateDoc(schedulerRef, {
+      await updateScheduler(editId, {
         title: pollTitle,
         description: pollDescription,
         participantIds,
@@ -572,7 +582,6 @@ export default function CreateSchedulerPage() {
 
       await Promise.all(
         slots.map((slot) => {
-          const slotRef = doc(db, "schedulers", editId, "slots", slot.id);
           const data = {
             start: slot.start.toISOString(),
             end: slot.end.toISOString(),
@@ -580,7 +589,7 @@ export default function CreateSchedulerPage() {
           if (!initialSlotIds.has(slot.id)) {
             data.stats = { feasible: 0, preferred: 0 };
           }
-          return setDoc(slotRef, data, { merge: true });
+          return upsertSchedulerSlot(editId, slot.id, data);
         })
       );
 
@@ -591,9 +600,7 @@ export default function CreateSchedulerPage() {
 
       if (removedIds.length > 0) {
         await Promise.all(
-          removedIds.map((slotId) =>
-            deleteDoc(doc(db, "schedulers", editId, "slots", slotId))
-          )
+          removedIds.map((slotId) => deleteSchedulerSlot(editId, slotId))
         );
       }
 
@@ -601,7 +608,7 @@ export default function CreateSchedulerPage() {
         votesSnapshot.data.map((voteDoc) => {
           const voterId = voteDoc.id;
           if (voterId && !allowedParticipantIds.has(voterId)) {
-            return deleteDoc(doc(db, "schedulers", editId, "votes", voteDoc.id));
+            return deleteSchedulerVote(editId, voteDoc.id);
           }
           const votes = voteDoc.votes || {};
           let changed = false;
@@ -613,11 +620,10 @@ export default function CreateSchedulerPage() {
             }
           });
           if (!changed) return Promise.resolve();
-          return setDoc(
-            doc(db, "schedulers", editId, "votes", voteDoc.id),
-            { votes: nextVotes, updatedAt: serverTimestamp() },
-            { merge: true }
-          );
+          return upsertSchedulerVote(editId, voteDoc.id, {
+            votes: nextVotes,
+            updatedAt: serverTimestamp(),
+          });
         })
       );
 
@@ -672,9 +678,8 @@ export default function CreateSchedulerPage() {
       );
 
       const schedulerId = crypto.randomUUID();
-      const newSchedulerRef = doc(db, "schedulers", schedulerId);
 
-      await setDoc(newSchedulerRef, {
+      await setScheduler(schedulerId, {
         title: pollTitle,
         description: pollDescription,
         creatorId: user.uid,
@@ -692,10 +697,9 @@ export default function CreateSchedulerPage() {
         createdAt: serverTimestamp(),
       });
 
-      const slotCollection = collection(db, "schedulers", schedulerId, "slots");
       await Promise.all(
         slots.map((slot) => {
-          return addDoc(slotCollection, {
+          return addSchedulerSlot(schedulerId, {
             start: slot.start.toISOString(),
             end: slot.end.toISOString(),
             stats: { feasible: 0, preferred: 0 },
@@ -784,19 +788,18 @@ export default function CreateSchedulerPage() {
       setInviteError(err.message || "Enter a valid email or Discord username.");
       return;
     }
-    const normalized = normalizeEmail(resolved.email);
-    if (user?.email && normalized === normalizeEmail(user.email)) {
-      setInviteError("You are already included as a participant.");
+    const validation = validateInviteCandidate({
+      email: resolved.email,
+      selfEmail: user?.email,
+      groupMemberSet,
+      existingInvites: invites,
+      pendingInvites,
+    });
+    if (!validation.ok) {
+      setInviteError(validation.error);
       return;
     }
-    if (groupMemberSet.has(normalized)) {
-      setInviteError("That email is already included via the questing group.");
-      return;
-    }
-    if (invites.includes(normalized) || pendingInvites.includes(normalized)) {
-      setInviteError("That email is already invited.");
-      return;
-    }
+    const normalized = validation.normalized;
     if (friendSet.has(normalized)) {
       setInvites((prev) => [...prev, normalized]);
     } else {
@@ -855,6 +858,13 @@ export default function CreateSchedulerPage() {
       </div>
     );
   }
+  if (isEditing && scheduler.data?.status === "CANCELLED") {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-slate-600 dark:text-slate-400">
+        This poll is cancelled. Clone it to propose new times.
+      </div>
+    );
+  }
 
   return (
     <>
@@ -862,25 +872,15 @@ export default function CreateSchedulerPage() {
         onSubmit={handleCreate}
         className="rounded-3xl bg-white p-8 shadow-xl shadow-slate-200 dark:bg-slate-900 dark:shadow-slate-900/50"
       >
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-semibold">
-                {isEditing ? "Edit Session Poll" : "Create Session Poll"}
-              </h2>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                {isEditing
-                  ? "Update slots and invitees without losing existing votes."
-                  : "Add a few proposed session slots to kick off voting."}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate(isEditing ? `/scheduler/${editId}` : "/dashboard")}
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
-            >
-              Back
-            </button>
-          </div>
+          <SchedulerFormHeader
+            title={isEditing ? "Edit Session Poll" : "Create Session Poll"}
+            subtitle={
+              isEditing
+                ? "Update slots and invitees without losing existing votes."
+                : "Add a few proposed session slots to kick off voting."
+            }
+            onBack={() => navigate(isEditing ? `/scheduler/${editId}` : "/dashboard")}
+          />
 
           <div className="mt-6 grid gap-4">
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -931,169 +931,33 @@ export default function CreateSchedulerPage() {
             </div>
 
             {/* Questing Group Selector */}
-            {groups.length > 0 && (
-              <div className="grid gap-2">
-                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  Questing Group (optional)
-                </span>
-                <Select value={selectedGroupId || "none"} onValueChange={handleGroupChange}>
-                  <SelectTrigger className="h-12 rounded-2xl px-4">
-                    <SelectValue placeholder="Select a group" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No group</SelectItem>
-                    {groups.map((group) => (
-                      <SelectItem key={group.id} value={group.id}>
-                        {group.name} ({group.members?.length || 0} members)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedGroup && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Group members will be auto-added as invitees.
-                  </p>
-                )}
-              </div>
-            )}
+            <QuestingGroupSelect
+              groups={groups}
+              selectedId={selectedGroupId}
+              onChange={(value) => handleGroupChange(value)}
+            />
 
-            <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Invitees</p>
-              {user?.email && (
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  You are included as{" "}
-                  <UserIdentity
-                    user={{ displayName: user.displayName || null, email: user.email }}
-                    showIdentifier={false}
-                  />
-                  .
-                </p>
-              )}
-              {selectedGroup && (
-                <div
-                  className="mt-3 rounded-2xl border px-3 py-3 text-xs"
-                  style={{
-                    borderColor: getGroupColor(selectedGroup.id),
-                    backgroundColor: `${getGroupColor(selectedGroup.id)}22`,
-                  }}
-                >
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-100">
-                    Members from {selectedGroup.name}
-                  </p>
-                  <div className="mt-2 grid gap-2">
-                    {groupUsers.length === 0 && (
-                      <span className="text-xs text-slate-500 dark:text-slate-400">
-                        No members listed for this group.
-                      </span>
-                    )}
-                    {groupUsers.map((member) => (
-                      <div
-                        key={member.email}
-                        className="flex items-center gap-2 rounded-xl border border-transparent bg-white/70 px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-slate-900/70 dark:text-slate-200"
-                      >
-                        <UserAvatar email={member.email} src={member.avatar} size={24} />
-                        <UserIdentity user={member} showIdentifier={false} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                {inviteUsers.length === 0 && (
-                  <span className="text-xs text-slate-400 dark:text-slate-500">
-                    No individual invitees yet.
-                  </span>
-                )}
-                {inviteUsers.map((invitee) => (
-                  <button
-                    key={invitee.email}
-                    type="button"
-                    onClick={() => removeInvite(invitee.email)}
-                    className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-red-50 hover:border-red-200 hover:text-red-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-red-900/30 dark:hover:border-red-800 dark:hover:text-red-300"
-                    title="Remove"
-                  >
-                    <UserAvatar email={invitee.email} src={invitee.avatar} size={20} />
-                    <UserIdentity user={invitee} />
-                    <span className="text-xs">✕</span>
-                  </button>
-                ))}
-              </div>
-
-              <div className="mt-4">
-                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  Pending invites (non-friends)
-                </p>
-                {pendingInviteUsers.length === 0 && (
-                  <span className="mt-2 block text-xs text-slate-400 dark:text-slate-500">
-                    No pending invites.
-                  </span>
-                )}
-                {pendingInviteUsers.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {pendingInviteUsers.map((invitee) => (
-                      <button
-                        key={invitee.email}
-                        type="button"
-                        onClick={() => removePendingInvite(invitee.email)}
-                        className="flex items-center gap-2 rounded-full border border-dashed border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 transition-colors hover:border-amber-400 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
-                        title="Remove pending invite"
-                      >
-                        <UserAvatar email={invitee.email} src={invitee.avatar} size={20} />
-                        <UserIdentity user={invitee} />
-                        <span className="text-xs">✕</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {recommendedEmails.length > 0 && (
-                <>
-                  <p className="mt-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    Recommended (from friends)
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {recommendedUsers.map((entry) => (
-                      <button
-                        key={entry.email}
-                        type="button"
-                        className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-700"
-                        onClick={() => addInvite(entry.email)}
-                      >
-                        <UserAvatar email={entry.email} src={entry.avatar} size={18} />
-                        + <UserIdentity user={entry} showIdentifier={false} />
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <input
-                  className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                  placeholder="Add email, Discord username, or @username"
-                  value={inviteInput}
-                  onChange={(event) => setInviteInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addInvite(inviteInput);
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => addInvite(inviteInput)}
-                  className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
-                >
-                  Add
-                </button>
-              </div>
-              {inviteError && (
-                <p className="mt-2 text-xs text-red-500 dark:text-red-400">{inviteError}</p>
-              )}
-            </div>
+            <InvitePanel
+              includedUser={
+                user?.email
+                  ? { displayName: user.displayName || null, email: user.email }
+                  : null
+              }
+              groupName={selectedGroup?.name || null}
+              groupColor={selectedGroup ? getGroupColor(selectedGroup.id) : null}
+              groupMembers={groupUsers}
+              groupAvatarSize={24}
+              inviteUsers={inviteUsers}
+              onRemoveInvite={removeInvite}
+              pendingInviteUsers={pendingInviteUsers}
+              onRemovePendingInvite={removePendingInvite}
+              recommendedUsers={recommendedUsers}
+              onAddInvite={addInvite}
+              inputValue={inviteInput}
+              onInputChange={setInviteInput}
+              onAddInput={() => addInvite(inviteInput)}
+              error={inviteError}
+            />
 
             <div className="rounded-2xl border border-slate-200/70 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/60">
               <div className="flex items-center justify-between gap-4">
@@ -1139,20 +1003,23 @@ export default function CreateSchedulerPage() {
             </div>
             <div className="mt-4 rounded-3xl border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
               <DragAndDropCalendar
+                key={calendarKey}
                 localizer={localizer}
-                events={slots.map((slot) => ({
-                  ...slot,
-                  title: formatInTimeZone(slot.start, effectiveTimezone, "h:mm a"),
-                }))}
+                events={calendarEvents}
                 startAccessor="start"
                 endAccessor="end"
                 selectable="ignoreEvents"
-                scrollToTime={new Date(1970, 0, 1, 8, 0)}
+                scrollToTime={scrollToTime}
+                enableAutoScroll={calendarView !== "month"}
                 date={calendarDate}
                 onNavigate={(nextDate) => setCalendarDate(nextDate)}
                 view={calendarView}
                 onView={(nextView) => setCalendarView(nextView)}
                 views={["month", "week", "day"]}
+                components={{
+                  toolbar: CalendarToolbar,
+                }}
+                onSelectEvent={(event) => setSelectedEventId(event.id)}
                 onDrillDown={(date) => {
                   if (calendarView === "month") {
                     openModalForDate(date);
@@ -1197,45 +1064,48 @@ export default function CreateSchedulerPage() {
                   updateSlotTimes(event.id, start, end);
                 }}
                 dayPropGetter={(date) => {
-                  const today = startOfDay(new Date());
-                  const dayStart = startOfDay(date);
-                  if (isBefore(dayStart, today)) {
-                    return {
-                      className: "rbc-past-day",
-                      style: {
-                        backgroundColor: "var(--past-day-bg)",
-                        cursor: "not-allowed",
-                      },
-                    };
+                  if (isBefore(date, startOfDay(new Date()))) {
+                    return { className: "rbc-past-day" };
                   }
                   return {};
                 }}
                 slotPropGetter={(date) => {
-                  const now = new Date();
-                  if (date < now) {
-                    return {
-                      className: "rbc-past-slot",
-                      style: {
-                        backgroundColor: "var(--past-slot-bg)",
-                        cursor: "not-allowed",
-                      },
-                    };
+                  if (isBefore(date, startOfHour(new Date()))) {
+                    return { className: "rbc-past-slot" };
                   }
                   return {};
                 }}
                 eventPropGetter={(event) => {
-                  if (!isEditing) return {};
                   const isInvalid = invalidSlotIds.has(event.id);
-                  if (!isInvalid) return {};
+                  const isSelected = selectedEventId === event.id;
+                  if (!isInvalid && !isSelected) return {};
                   return {
                     style: {
-                      backgroundColor: "#dc2626",
-                      borderColor: "#b91c1c",
+                      ...(isInvalid
+                        ? { backgroundColor: "#dc2626", borderColor: "#b91c1c" }
+                        : {}),
+                      ...(isSelected
+                        ? {
+                            boxShadow:
+                              "0 0 0 2px rgba(59, 130, 246, 0.7), 0 0 12px rgba(59, 130, 246, 0.35)",
+                          }
+                        : {}),
                     },
                   };
                 }}
                 style={{ height: 420 }}
               />
+              <div className="mt-3 flex justify-end">
+                <CalendarJumpControls
+                  hasEvents={hasEvents}
+                  hasEventsInView={hasEventsInView}
+                  onPrev={jumpPrev}
+                  onNext={jumpNext}
+                  onPrevWindow={jumpPrevWindow}
+                  onNextWindow={jumpNextWindow}
+                  label="Jump to slot"
+                />
+              </div>
             </div>
             <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
               Month view opens a modal. Week/day views add slots instantly and support drag/resize.

@@ -1,10 +1,14 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
-import { format, parse, startOfWeek, getDay, isBefore, startOfDay } from "date-fns";
+import { format, parse, startOfWeek, getDay, isBefore, startOfDay, startOfHour } from "date-fns";
 import { enUS } from "date-fns/locale";
 import { AlertTriangle } from "lucide-react";
 import "react-big-calendar/lib/css/react-big-calendar.css";
+import "../../scheduler/calendar-styles.css";
+import { useCalendarNavigation } from "../../../hooks/useCalendarNavigation";
+import { CalendarJumpControls } from "../../../components/ui/calendar-jump-controls";
+import { CalendarToolbar } from "../../scheduler/components/CalendarToolbar";
 
 function doEventsOverlap(event1, event2) {
   if (event1.id === event2.id) return false;
@@ -73,6 +77,7 @@ export function DashboardCalendar({
   height = 500,
 }) {
   const [view, setView] = useState("month");
+  const [date, setDate] = useState(new Date());
   const navigate = useNavigate();
 
   const events = useMemo(() => {
@@ -128,6 +133,29 @@ export function DashboardCalendar({
     }, 50);
   };
 
+  const {
+    scrollToTime,
+    selectedEventId,
+    setSelectedEventId,
+    hasEvents,
+    hasEventsInView,
+    jumpNext,
+    jumpPrev,
+    jumpNextWindow,
+    jumpPrevWindow,
+  } = useCalendarNavigation({
+    events,
+    view,
+    date,
+    height,
+    onNavigate: setDate,
+  });
+
+  const calendarKey =
+    view === "month"
+      ? `month-${date.toDateString()}`
+      : `${view}-${date.toDateString()}-${scrollToTime?.getTime?.() || 0}`;
+
   const eventStyleGetter = (event) => {
     const hasConflict = event.conflictsWith?.length > 0;
     const style = {
@@ -139,6 +167,10 @@ export function DashboardCalendar({
       fontSize: "11px",
       padding: "2px 6px",
     };
+
+    if (selectedEventId === event.id) {
+      style.boxShadow = "0 0 0 2px rgba(59, 130, 246, 0.7), 0 0 12px rgba(59, 130, 246, 0.35)";
+    }
 
     if (event.status === "OPEN") {
       style.backgroundColor = event.groupColor || "hsl(210 70% 60%)";
@@ -158,6 +190,13 @@ export function DashboardCalendar({
     return {};
   };
 
+  const slotPropGetter = (date) => {
+    if (isBefore(date, startOfHour(new Date()))) {
+      return { className: "rbc-past-slot" };
+    }
+    return {};
+  };
+
   return (
     <div className="rounded-2xl border border-slate-200/70 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
       {/* View toggle */}
@@ -165,44 +204,42 @@ export function DashboardCalendar({
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
           Session Calendar
         </h3>
-        <div className="flex gap-1 rounded-full border border-slate-200 bg-slate-50 p-1 dark:border-slate-600 dark:bg-slate-700">
-          <button
-            type="button"
-            onClick={() => setView("week")}
-            className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-              view === "week"
-                ? "bg-brand-primary text-white"
-                : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-600"
-            }`}
-          >
-            Week
-          </button>
-          <button
-            type="button"
-            onClick={() => setView("month")}
-            className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-              view === "month"
-                ? "bg-brand-primary text-white"
-                : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-600"
-            }`}
-          >
-            Month
-          </button>
+        <div className="flex items-center gap-3">
+          <CalendarJumpControls
+            hasEvents={hasEvents}
+            hasEventsInView={hasEventsInView}
+            onPrev={jumpPrev}
+            onNext={jumpNext}
+            onPrevWindow={jumpPrevWindow}
+            onNextWindow={jumpNextWindow}
+          />
         </div>
       </div>
 
       <Calendar
+        key={calendarKey}
         localizer={localizer}
         events={events}
         startAccessor="start"
         endAccessor="end"
         view={view}
         onView={setView}
-        views={["month", "week"]}
-        onSelectEvent={handleSelectEvent}
+        views={["month", "week", "day"]}
+        date={date}
+        onNavigate={setDate}
+        scrollToTime={scrollToTime}
+        enableAutoScroll={view !== "month"}
+        onSelectEvent={(event) => {
+          setSelectedEventId(event.id);
+          handleSelectEvent(event);
+        }}
         eventPropGetter={eventStyleGetter}
         dayPropGetter={dayPropGetter}
-        components={{ event: EventCell }}
+        slotPropGetter={slotPropGetter}
+        components={{
+          event: EventCell,
+          toolbar: CalendarToolbar,
+        }}
         style={{ height }}
         popup
       />
