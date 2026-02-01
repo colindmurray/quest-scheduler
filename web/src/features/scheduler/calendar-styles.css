@@ -1,0 +1,132 @@
+/* Modern React Big Calendar Overrides */
+
+/* General Container */
+.rbc-calendar {
+  @apply font-sans text-slate-600 dark:text-slate-300;
+}
+
+/* Header (Day Names) */
+.rbc-header {
+  @apply py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 border-b border-slate-200 dark:border-slate-700 dark:text-slate-400 !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-top: none !important;
+}
+
+/* Month View Cells */
+.rbc-month-view {
+  @apply rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 overflow-hidden shadow-sm;
+  border-left: 1px solid theme('colors.slate.200');
+  border-top: 1px solid theme('colors.slate.200');
+}
+
+.dark .rbc-month-view {
+  border-color: theme('colors.slate.700');
+}
+
+.rbc-month-row {
+  @apply border-b border-slate-100 dark:border-slate-700/50;
+  overflow: visible !important; /* Allow events to pop out if needed */
+}
+
+.rbc-day-bg {
+  @apply border-l border-slate-100 dark:border-slate-700/50 !important;
+}
+
+/* Off-Range (Previous/Next Month) */
+.rbc-off-range-bg {
+  @apply bg-slate-50/50 dark:bg-slate-900/30 !important;
+}
+
+/* Today Cell */
+.rbc-today {
+  @apply bg-transparent !important; /* We handle today highlighting via date cell */
+}
+
+/* Date Number Styling */
+.rbc-date-cell {
+  @apply p-2 text-right text-xs font-medium text-slate-500 dark:text-slate-400;
+}
+
+.rbc-now .rbc-button-link {
+  @apply bg-brand-primary text-white rounded-full w-7 h-7 flex items-center justify-center ml-auto shadow-md shadow-brand-primary/20;
+}
+
+/* Events */
+.rbc-event {
+  @apply bg-brand-primary rounded-md shadow-sm border-0 px-2 py-1 text-xs font-medium transition-all hover:brightness-95;
+}
+
+.rbc-event:focus {
+  @apply outline-none ring-2 ring-brand-primary ring-offset-1;
+}
+
+.rbc-event-content {
+  @apply text-xs truncate;
+}
+
+/* Time View / Week View */
+.rbc-time-view {
+  @apply rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 overflow-hidden shadow-sm mt-4;
+}
+
+.rbc-time-header {
+  @apply border-b border-slate-200 dark:border-slate-700;
+}
+
+.rbc-time-header-content {
+  @apply border-l border-slate-200 dark:border-slate-700;
+}
+
+.rbc-time-gutter {
+  @apply text-xs text-slate-400 bg-white dark:bg-slate-800 dark:text-slate-500 border-r border-slate-100 dark:border-slate-700/50;
+}
+
+.rbc-timeslot-group {
+  @apply border-b border-slate-100 dark:border-slate-700/50;
+}
+
+.rbc-day-slot .rbc-time-slot {
+  @apply border-t border-slate-50 dark:border-slate-700/30;
+}
+
+.rbc-time-column {
+  @apply border-l border-slate-100 dark:border-slate-700/50;
+}
+
+/* Current Time Indicator */
+.rbc-current-time-indicator {
+  @apply bg-red-500 h-[2px] !important;
+}
+
+.rbc-current-time-indicator::before {
+  content: '';
+  @apply absolute -left-1.5 -top-1.5 w-3 h-3 bg-red-500 rounded-full;
+}
+
+/* Selected Slot */
+.rbc-slot-selection {
+  @apply bg-brand-primary/20 border border-brand-primary/30 rounded-md;
+}
+
+/* Clean up borders */
+.rbc-header + .rbc-header {
+  border-left: none !important;
+}
+
+.rbc-time-header > .rbc-row:first-child {
+  border-bottom: 1px solid theme('colors.slate.200');
+}
+.dark .rbc-time-header > .rbc-row:first-child {
+  border-bottom: 1px solid theme('colors.slate.700');
+}
+
+/* "Show more" link */
+.rbc-show-more {
+  @apply text-xs font-medium text-slate-500 hover:text-brand-primary bg-slate-100 hover:bg-slate-200 rounded px-2 py-0.5 mt-1 transition-colors dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600;
+}
+
+/* Past Days overlay handled in index.css but refined here */
+.rbc-past-day {
+  @apply bg-slate-50/30 dark:bg-slate-900/20 !important;
+}

@@ -46,4 +46,26 @@ describe('firebase module', () => {
     expect(functions.connectFunctionsEmulator).toHaveBeenCalled();
     expect(globalThis.__QS_EMULATORS_CONNECTED__).toBe(true);
   });
+
+  test('uses env overrides for firebase config', async () => {
+    vi.stubEnv('VITE_FIREBASE_API_KEY', 'staging-key');
+    vi.stubEnv('VITE_FIREBASE_AUTH_DOMAIN', 'quest-scheduler-stg.firebaseapp.com');
+    vi.stubEnv('VITE_FIREBASE_PROJECT_ID', 'quest-scheduler-stg');
+    vi.stubEnv('VITE_FIREBASE_STORAGE_BUCKET', 'quest-scheduler-stg.firebasestorage.app');
+    vi.stubEnv('VITE_FIREBASE_MESSAGING_SENDER_ID', '942287764898');
+    vi.stubEnv('VITE_FIREBASE_APP_ID', '1:942287764898:web:staging-app');
+
+    const firebaseApp = await import('firebase/app');
+
+    await import('./firebase');
+
+    expect(firebaseApp.initializeApp).toHaveBeenCalledWith({
+      apiKey: 'staging-key',
+      authDomain: 'quest-scheduler-stg.firebaseapp.com',
+      projectId: 'quest-scheduler-stg',
+      storageBucket: 'quest-scheduler-stg.firebasestorage.app',
+      messagingSenderId: '942287764898',
+      appId: '1:942287764898:web:staging-app',
+    });
+  });
 });

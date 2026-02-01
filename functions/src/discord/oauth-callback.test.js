@@ -36,6 +36,9 @@ describe('discord oauth callback', () => {
 
     fetchMock = vi.fn();
     global.fetch = fetchMock;
+    const discordClientId = process.env.DISCORD_CLIENT_ID || 'test-client-id';
+    const discordClientSecret =
+      process.env.DISCORD_CLIENT_SECRET || 'test-client-secret';
 
     const firestoreDb = {
       collection: vi.fn((name) => {
@@ -106,9 +109,14 @@ describe('discord oauth callback', () => {
     require.cache[require.resolve('./config')] = {
       exports: {
         DISCORD_REGION: 'us-central1',
-        DISCORD_CLIENT_ID: { value: () => 'client-id' },
-        DISCORD_CLIENT_SECRET: { value: () => 'client-secret' },
+        DISCORD_CLIENT_ID: { value: () => discordClientId },
+        DISCORD_CLIENT_SECRET: { value: () => discordClientSecret },
         APP_URL: 'https://app.example.com',
+        DISCORD_NOTIFICATION_DEFAULTS: {
+          finalizationEvents: true,
+          slotChanges: true,
+          voteSubmitted: false,
+        },
       },
     };
 

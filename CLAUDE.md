@@ -6,6 +6,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Quest Scheduler is a Firebase-backed scheduling application for tabletop sessions. Users create schedulers with time slots, invite participants via email or shareable links, collect votes (Feasible/Preferred), and finalize sessions by creating Google Calendar events.
 
+## Research & Reasoning Workflow (Expert Mode)
+- Start with repo docs: `AGENTS.md`, `docs/decisions.md`, `docs/task-list.md`, `docs/testing.md`, and any feature-specific design docs under `docs/`.
+- If external research is required, prioritize official docs and primary sources first.
+- Summarize findings as actionable steps, note assumptions, and update `docs/decisions.md` if you introduce new conventions.
+- Prefer small, verifiable changes with explicit acceptance criteria and tests.
+
+## Pragmatic Delivery Priorities
+- **Ship robust features first.** This is a small project (~10 users) with limited budget; keep scope lean.
+- **Avoid YAGNI and over‑engineering.** Only add complexity when it solves a current, real need.
+- **Cost‑aware by default.** Avoid recommendations that introduce paid services, heavy infra, or ongoing ops burden.
+- **Forward‑looking, not premature scaling.** Prefer designs that can grow later without forcing it now.
+- **Actionable > informative.** Prioritize changes that unblock user actions and reduce confusion.
+
 ## Commands
 
 ### Development
@@ -102,3 +115,9 @@ web/src/
 ### UX Rules
 - Calendar view and list view must stay in sync
 - Creator actions are always visually distinct from participant actions
+ - Voting: "Preferred" vote implies "Feasible"
+ 
+## Durable State (Long Tasks)
+- Progress + checkpoints: `docs/task-list.md`
+- Decisions + conventions: `docs/decisions.md`
+- Test setup + emulator: `docs/testing.md`

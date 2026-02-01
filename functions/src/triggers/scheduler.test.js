@@ -91,6 +91,11 @@ describe('scheduler triggers', () => {
         DISCORD_BOT_TOKEN: { value: () => 'token' },
         DISCORD_SCHEDULER_TASK_QUEUE: 'processDiscordSchedulerUpdate',
         APP_URL: 'https://app.example.com',
+        DISCORD_NOTIFICATION_DEFAULTS: {
+          finalizationEvents: true,
+          slotChanges: true,
+          voteSubmitted: false,
+        },
       },
     };
     require.cache[require.resolve('../discord/discord-client')] = {
@@ -245,7 +250,7 @@ describe('scheduler triggers', () => {
     );
   });
 
-  test('processDiscordSchedulerUpdate edits message and posts finalization note', async () => {
+  test('processDiscordSchedulerUpdate edits message without finalization note', async () => {
     schedulerData = {
       status: 'FINALIZED',
       title: 'Quest',
@@ -261,7 +266,7 @@ describe('scheduler triggers', () => {
     await schedulerTriggers.processDiscordSchedulerUpdate.run({ data: { schedulerId: 'sched1' } });
 
     expect(editChannelMessageMock).toHaveBeenCalled();
-    expect(createChannelMessageMock).toHaveBeenCalled();
+    expect(createChannelMessageMock).not.toHaveBeenCalled();
     expect(schedulerSetMock).toHaveBeenCalled();
   });
 
@@ -288,7 +293,7 @@ describe('scheduler triggers', () => {
     expect(schedulerSetMock).toHaveBeenCalled();
   });
 
-  test('updateDiscordPollOnVote posts vote notification when enabled', async () => {
+  test('updateDiscordPollOnVote enqueues poll update when enabled', async () => {
     schedulerData = {
       status: 'OPEN',
       title: 'Quest',
@@ -306,17 +311,11 @@ describe('scheduler triggers', () => {
       },
     });
 
-    expect(createChannelMessageMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        channelId: 'chan1',
-        body: expect.objectContaining({
-          content: expect.stringContaining('voter@example.com'),
-        }),
-      })
-    );
+    expect(enqueueMock).toHaveBeenCalled();
+    expect(createChannelMessageMock).not.toHaveBeenCalled();
   });
 
-  test('updateDiscordPollOnVote skips vote notification when disabled', async () => {
+  test('updateDiscordPollOnVote still enqueues poll update when disabled', async () => {
     schedulerData = {
       status: 'OPEN',
       title: 'Quest',
@@ -334,6 +333,7 @@ describe('scheduler triggers', () => {
       },
     });
 
+    expect(enqueueMock).toHaveBeenCalled();
     expect(createChannelMessageMock).not.toHaveBeenCalled();
   });
 
@@ -360,7 +360,7 @@ describe('scheduler triggers', () => {
     expect(schedulerSetMock).toHaveBeenCalled();
   });
 
-  test('notifyDiscordSlotChanges posts added/removed summary when enabled', async () => {
+  test('notifyDiscordSlotChanges updates snapshot without messaging when enabled', async () => {
     schedulerData = {
       status: 'OPEN',
       title: 'Quest',
@@ -384,14 +384,8 @@ describe('scheduler triggers', () => {
       },
     });
 
-    expect(createChannelMessageMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        channelId: 'chan1',
-        body: expect.objectContaining({
-          content: expect.stringContaining('Slots updated'),
-        }),
-      })
-    );
+    expect(createChannelMessageMock).not.toHaveBeenCalled();
+    expect(schedulerSetMock).toHaveBeenCalled();
   });
 
   test('notifyDiscordSlotChanges respects toggle', async () => {

@@ -8,19 +8,21 @@ import {
   updateDoc,
   deleteDoc,
   getDoc,
+  waitForPendingWrites,
 } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "../firebase";
+import { findUserIdByEmail } from "./users";
+import { resolveIdentifier } from "../identifiers";
+import { normalizeEmail } from "../utils";
+import { buildNotificationActor, emitNotificationEvent } from "./notification-events";
 import {
-  createFriendAcceptedNotification,
-  ensureFriendRequestNotification,
+  dismissNotification,
+  dismissNotificationsByResource,
   deleteNotification,
   friendRequestNotificationId,
+  friendRequestLegacyNotificationId,
 } from "./notifications";
-import { findUserIdByEmail } from "./users";
-import { APP_URL } from "../config";
-import { createEmailMessage } from "../emailTemplates";
-import { resolveIdentifier } from "../identifiers";
 
 export const friendRequestsRef = () => collection(db, "friendRequests");
 export const friendRequestRef = (requestId) =>
@@ -72,9 +74,9 @@ export async function createFriendRequest(
   { fromEmail, toEmail, toIdentifier, fromDisplayName },
   { sendEmail = true } = {}
 ) {
-  const normalizedFrom = (fromEmail || "").trim().toLowerCase();
+  const normalizedFrom = normalizeEmail(fromEmail);
   const resolved = await resolveIdentifier(toIdentifier || toEmail);
-  const normalizedTo = (resolved.email || "").trim().toLowerCase();
+  const normalizedTo = normalizeEmail(resolved.email);
   if (!normalizedFrom || !normalizedTo) {
     throw new Error("Missing email for friend request.");
   }
@@ -87,27 +89,14 @@ export async function createFriendRequest(
   const response = await sendFriendRequest({
     toEmail: normalizedTo,
     fromDisplayName: fromDisplayName || null,
+    sendEmail,
   });
-  const requestId =
-    response.data?.requestId || friendRequestIdForEmails(normalizedFrom, normalizedTo);
-
-  if (sendEmail) {
-    try {
-      await setDoc(doc(collection(db, "mail")), {
-        to: normalizedTo,
-        message: createEmailMessage({
-          subject: `${fromDisplayName || normalizedFrom} sent you a friend request`,
-          title: "Friend Request",
-          intro: `${fromDisplayName || normalizedFrom} wants to add you as a friend on Quest Scheduler.`,
-          ctaLabel: "Review request",
-        ctaUrl: `${APP_URL}/friends?request=${requestId}`,
-          extraLines: ["If you don't have an account yet, you'll be prompted to create one first."],
-        }),
-      });
-    } catch (err) {
-      console.warn("Failed to queue friend request email:", err);
-    }
+  const payload = response.data || {};
+  if (payload.suppressed) {
+    return null;
   }
+  const requestId =
+    payload.requestId || friendRequestIdForEmails(normalizedFrom, normalizedTo);
 
   return requestId;
 }
@@ -119,8 +108,8 @@ export async function acceptFriendRequest(requestId, { userId, userEmail }) {
     throw new Error("Friend request not found.");
   }
   const data = snap.data();
-  const normalizedEmail = userEmail.toLowerCase();
-  if (data.toEmail?.toLowerCase() !== normalizedEmail) {
+  const normalizedEmail = normalizeEmail(userEmail);
+  if (normalizeEmail(data.toEmail) !== normalizedEmail) {
     throw new Error("You are not authorized to accept this request.");
   }
   if (data.status !== "pending") {
@@ -132,18 +121,42 @@ export async function acceptFriendRequest(requestId, { userId, userEmail }) {
     toUserId: userId,
     respondedAt: serverTimestamp(),
   });
+  await waitForPendingWrites(db);
 
   const senderUserId = data.fromUserId || (await findUserIdByEmail(data.fromEmail));
   if (senderUserId) {
-    await createFriendAcceptedNotification(senderUserId, {
-      requestId,
-      friendEmail: normalizedEmail,
-      friendUserId: userId,
+    await emitNotificationEvent({
+      eventType: "FRIEND_REQUEST_ACCEPTED",
+      resource: { type: "friend", id: requestId, title: "Friend Request" },
+      actor: buildNotificationActor({ uid: userId, email: normalizedEmail }),
+      payload: {
+        requestId,
+        friendEmail: normalizedEmail,
+        friendUserId: userId,
+      },
+      recipients: {
+        userIds: [senderUserId],
+        emails: [],
+      },
     });
   }
 
   if (userId) {
-    await deleteNotification(userId, friendRequestNotificationId(requestId));
+    try {
+      const ids = [
+        friendRequestNotificationId(requestId),
+        friendRequestLegacyNotificationId(requestId),
+      ].filter(Boolean);
+      await Promise.allSettled(ids.map((id) => dismissNotification(userId, id)));
+      await dismissNotificationsByResource(userId, requestId, [
+        "FRIEND_REQUEST_SENT",
+        "FRIEND_REQUEST",
+      ]);
+      await Promise.allSettled(ids.map((id) => deleteNotification(userId, id)));
+      await waitForPendingWrites(db);
+    } catch (err) {
+      console.warn("Failed to dismiss friend request notification:", err);
+    }
   }
 }
 
@@ -154,8 +167,8 @@ export async function declineFriendRequest(requestId, { userId, userEmail }) {
     throw new Error("Friend request not found.");
   }
   const data = snap.data();
-  const normalizedEmail = userEmail.toLowerCase();
-  if (data.toEmail?.toLowerCase() !== normalizedEmail) {
+  const normalizedEmail = normalizeEmail(userEmail);
+  if (normalizeEmail(data.toEmail) !== normalizedEmail) {
     throw new Error("You are not authorized to decline this request.");
   }
   if (data.status !== "pending") {
@@ -166,9 +179,40 @@ export async function declineFriendRequest(requestId, { userId, userEmail }) {
     status: "declined",
     respondedAt: serverTimestamp(),
   });
+  await waitForPendingWrites(db);
+  if (userId) {
+    await emitNotificationEvent({
+      eventType: "FRIEND_REQUEST_DECLINED",
+      resource: { type: "friend", id: requestId, title: "Friend Request" },
+      actor: buildNotificationActor({ uid: userId, email: normalizedEmail }),
+      payload: {
+        requestId,
+        friendEmail: normalizedEmail,
+        friendUserId: userId,
+      },
+      recipients: {
+        userIds: [],
+        emails: [],
+      },
+    });
+  }
 
   if (userId) {
-    await deleteNotification(userId, friendRequestNotificationId(requestId));
+    try {
+      const ids = [
+        friendRequestNotificationId(requestId),
+        friendRequestLegacyNotificationId(requestId),
+      ].filter(Boolean);
+      await Promise.allSettled(ids.map((id) => dismissNotification(userId, id)));
+      await dismissNotificationsByResource(userId, requestId, [
+        "FRIEND_REQUEST_SENT",
+        "FRIEND_REQUEST",
+      ]);
+      await Promise.allSettled(ids.map((id) => deleteNotification(userId, id)));
+      await waitForPendingWrites(db);
+    } catch (err) {
+      console.warn("Failed to dismiss friend request notification:", err);
+    }
   }
 }
 
@@ -179,13 +223,13 @@ export async function removeFriend(requestId, { userEmail }) {
     throw new Error("Friend request not found.");
   }
   const data = snap.data();
-  const normalizedEmail = userEmail.toLowerCase();
+  const normalizedEmail = normalizeEmail(userEmail);
   if (data.status !== "accepted") {
     throw new Error("Friendship is no longer active.");
   }
   if (
-    data.toEmail?.toLowerCase() !== normalizedEmail &&
-    data.fromEmail?.toLowerCase() !== normalizedEmail
+    normalizeEmail(data.toEmail) !== normalizedEmail &&
+    normalizeEmail(data.fromEmail) !== normalizedEmail
   ) {
     throw new Error("You are not authorized to remove this friend.");
   }
@@ -202,20 +246,6 @@ export async function removeFriend(requestId, { userEmail }) {
     deleteDoc(ref),
     ...Array.from(legacyIds).map((id) => deleteDoc(friendRequestRef(id))),
   ]);
-}
-
-export async function syncFriendRequestNotifications(userId, pendingRequests) {
-  const requests = pendingRequests || [];
-  await Promise.all(
-    requests.map((request) => {
-      if (!request?.id) return null;
-      return ensureFriendRequestNotification(userId, {
-        requestId: request.id,
-        fromEmail: request.fromEmail || "Unknown",
-        fromUserId: request.fromUserId || null,
-      });
-    })
-  );
 }
 
 export async function ensureFriendInviteCode({ userId, email, displayName, photoURL }) {
@@ -237,7 +267,7 @@ export async function ensureFriendInviteCode({ userId, email, displayName, photo
   await setDoc(
     publicRef,
     {
-      email: email?.toLowerCase() || null,
+      email: normalizeEmail(email) || null,
       displayName: displayName || null,
       photoURL: photoURL || null,
       friendInviteCode: inviteCode,
@@ -258,4 +288,10 @@ export async function acceptFriendInviteLink(inviteCode, { userId, userEmail }) 
   const acceptInvite = httpsCallable(functions, "acceptFriendInviteLink");
   const response = await acceptInvite({ inviteCode: normalizedCode, userId, userEmail });
   return response.data;
+}
+
+export async function revokeFriendRequest(requestId) {
+  const functions = getFunctions();
+  const revokeRequest = httpsCallable(functions, "revokeFriendRequest");
+  await revokeRequest({ requestId });
 }

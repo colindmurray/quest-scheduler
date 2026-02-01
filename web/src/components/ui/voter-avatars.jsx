@@ -54,3 +54,9 @@ export function AvatarStack({ users, max = 4, size = 20, colorMap }) {
     </div>
   );
 }
+
+export const VOTING_AVATAR_MAX = 10;
+
+export function VotingAvatarStack({ users, max = VOTING_AVATAR_MAX, size = 20, colorMap }) {
+  return <AvatarStack users={users} max={max} size={size} colorMap={colorMap} />;
+}

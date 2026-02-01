@@ -134,6 +134,11 @@ describe('discord nudge', () => {
         DISCORD_REGION: 'us-central1',
         DISCORD_BOT_TOKEN: { value: () => 'token' },
         APP_URL: 'https://app.example.com',
+        DISCORD_NOTIFICATION_DEFAULTS: {
+          finalizationEvents: true,
+          slotChanges: true,
+          voteSubmitted: false,
+        },
       },
     };
     require.cache[require.resolve('./discord-client')] = {

@@ -13,7 +13,7 @@ const {
   DISCORD_REGION,
   DISCORD_BOT_TOKEN,
   DISCORD_SCHEDULER_TASK_QUEUE,
-  APP_URL,
+  DISCORD_NOTIFICATION_DEFAULTS,
 } = require("../discord/config");
 const { createChannelMessage, editChannelMessage } = require("../discord/discord-client");
 const { buildPollCard, buildPollStatusCard } = require("../discord/poll-card");
@@ -91,12 +91,6 @@ function computeSchedulerSyncHash(scheduler, slots, voteCount, totalParticipants
 
   return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
-
-const DISCORD_NOTIFICATION_DEFAULTS = {
-  finalizationEvents: true,
-  slotChanges: true,
-  voteSubmitted: false,
-};
 
 function getDiscordNotificationSettings(groupDiscord = {}) {
   const notifications = groupDiscord?.notifications || {};
@@ -429,63 +423,6 @@ exports.processDiscordSchedulerUpdate = onTaskDispatched(
         body: messageBody,
       });
 
-      let finalizedNotifiedAt = null;
-      let reopenedNotifiedAt = null;
-      if (scheduler.status === "FINALIZED" && !scheduler.discord?.finalizedNotifiedAt) {
-        const groupRef = scheduler.questingGroupId
-          ? db.collection("questingGroups").doc(scheduler.questingGroupId)
-          : null;
-        const groupSnap = groupRef ? await groupRef.get() : null;
-        const groupDiscord = groupSnap?.exists ? groupSnap.data()?.discord || {} : {};
-        const notificationSettings = getDiscordNotificationSettings(groupDiscord);
-        if (notificationSettings.finalizationEvents) {
-          const notifyRoleId = groupDiscord?.notifyRoleId || "everyone";
-          const { mention, allowedMentions } = buildFinalizationMention(notifyRoleId);
-          const winningSlot = slots.find((slot) => slot.id === scheduler.winningSlotId);
-          const winningUnix = unixSeconds(winningSlot?.start);
-          const winningText = winningUnix ? `<t:${winningUnix}:F>` : "a winning time";
-          const pollTitle = scheduler.title || "Quest Session";
-          const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
-          const attendanceLabel =
-            typeof totalParticipants === "number"
-              ? `Confirmed attendance: ${attendingCount || 0}/${totalParticipants}. `
-              : "";
-
-          await createChannelMessage({
-            channelId: scheduler.discord.channelId,
-            body: {
-              content: `${mention}Poll finalized for **${pollTitle}**. Winning time: ${winningText}. ${attendanceLabel}View: ${pollUrl}`,
-              allowed_mentions: allowedMentions,
-            },
-          });
-        }
-        finalizedNotifiedAt = admin.firestore.FieldValue.serverTimestamp();
-      }
-
-      if (scheduler.status === "OPEN" && scheduler.discord?.lastStatus === "FINALIZED") {
-        const groupRef = scheduler.questingGroupId
-          ? db.collection("questingGroups").doc(scheduler.questingGroupId)
-          : null;
-        const groupSnap = groupRef ? await groupRef.get() : null;
-        const groupDiscord = groupSnap?.exists ? groupSnap.data()?.discord || {} : {};
-        const notificationSettings = getDiscordNotificationSettings(groupDiscord);
-        if (notificationSettings.finalizationEvents) {
-          const notifyRoleId = groupDiscord?.notifyRoleId || "everyone";
-          const { mention, allowedMentions } = buildFinalizationMention(notifyRoleId);
-          const pollTitle = scheduler.title || "Quest Session";
-          const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
-
-          await createChannelMessage({
-            channelId: scheduler.discord.channelId,
-            body: {
-              content: `${mention}Poll re-opened for **${pollTitle}**. The previously finalized time may no longer apply. Please vote again: ${pollUrl}`,
-              allowed_mentions: allowedMentions,
-            },
-          });
-        }
-        reopenedNotifiedAt = admin.firestore.FieldValue.serverTimestamp();
-      }
-
       const discordUpdates = {
         ...scheduler.discord,
         lastUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -495,20 +432,6 @@ exports.processDiscordSchedulerUpdate = onTaskDispatched(
         pendingSyncAt: admin.firestore.FieldValue.delete(),
         pendingSyncError: admin.firestore.FieldValue.delete(),
       };
-
-      if (scheduler.status === "FINALIZED") {
-        if (finalizedNotifiedAt) {
-          discordUpdates.finalizedNotifiedAt = finalizedNotifiedAt;
-        }
-        discordUpdates.reopenedNotifiedAt = admin.firestore.FieldValue.delete();
-      } else {
-        discordUpdates.finalizedNotifiedAt = admin.firestore.FieldValue.delete();
-        if (reopenedNotifiedAt) {
-          discordUpdates.reopenedNotifiedAt = reopenedNotifiedAt;
-        } else {
-          discordUpdates.reopenedNotifiedAt = admin.firestore.FieldValue.delete();
-        }
-      }
 
       await schedulerRef.set(
         {
@@ -608,35 +531,6 @@ exports.updateDiscordPollOnVote = onDocumentWritten(
       );
       logger.info("Enqueued Discord poll update on vote change", { schedulerId });
 
-      if (
-        hasDiscordLink &&
-        scheduler.questingGroupId &&
-        scheduler.status === "OPEN" &&
-        voteId &&
-        voteId !== scheduler.creatorId
-      ) {
-        const groupSnap = await db
-          .collection("questingGroups")
-          .doc(scheduler.questingGroupId)
-          .get();
-        const groupDiscord = groupSnap?.exists ? groupSnap.data()?.discord || {} : {};
-        const notificationSettings = getDiscordNotificationSettings(groupDiscord);
-        if (notificationSettings.voteSubmitted) {
-          const pollTitle = scheduler.title || "Quest Session";
-          const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
-          const voterLabel = afterVote.userEmail || "A participant";
-          const voteStatus = afterVote.noTimesWork
-            ? "marked as unavailable"
-            : "submitted votes";
-
-          await createChannelMessage({
-            channelId: scheduler.discord.channelId,
-            body: {
-              content: `${voterLabel} ${voteStatus} for **${pollTitle}**. View: ${pollUrl}`,
-            },
-          });
-        }
-      }
     } catch (err) {
       logger.error("Failed to enqueue Discord poll update on vote change", {
         schedulerId,
@@ -686,16 +580,6 @@ exports.notifyDiscordSlotChanges = onDocumentWritten(
       return;
     }
 
-    const groupSnap = await db
-      .collection("questingGroups")
-      .doc(scheduler.questingGroupId)
-      .get();
-    if (!groupSnap.exists) {
-      return;
-    }
-    const groupDiscord = groupSnap.data()?.discord || {};
-    const notificationSettings = getDiscordNotificationSettings(groupDiscord);
-
     const slotsSnap = await schedulerRef.collection("slots").get();
     const slots = slotsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     const { hash, snapshot } = computeSlotSetHash(slots);
@@ -718,51 +602,6 @@ exports.notifyDiscordSlotChanges = onDocumentWritten(
 
     if (scheduler.discord?.slotSetHash === hash) {
       return;
-    }
-
-    const previousById = new Map(previousSnapshot.map((slot) => [slot.id, slot]));
-    const currentById = new Map(snapshot.map((slot) => [slot.id, slot]));
-
-    const added = [];
-    const removed = [];
-
-    snapshot.forEach((slot) => {
-      const previous = previousById.get(slot.id);
-      if (!previous) {
-        added.push(slot);
-        return;
-      }
-      if (previous.start !== slot.start || previous.end !== slot.end) {
-        removed.push(previous);
-        added.push(slot);
-      }
-    });
-
-    previousSnapshot.forEach((slot) => {
-      if (!currentById.has(slot.id)) {
-        removed.push(slot);
-      }
-    });
-
-    if (notificationSettings.slotChanges && (added.length || removed.length)) {
-      const pollTitle = scheduler.title || "Quest Session";
-      const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
-      let content = `**Slots updated for "${pollTitle}"**`;
-      if (added.length) {
-        content += `\n\n**Added**\n${added.map((slot) => `- ${formatSlotLine(slot)}`).join("\n")}`;
-      }
-      if (removed.length) {
-        content += `\n\n**Removed**\n${removed.map((slot) => `- ${formatSlotLine(slot)}`).join("\n")}`;
-      }
-      content += `\n\nView: ${pollUrl}`;
-
-      await createChannelMessage({
-        channelId: scheduler.discord.channelId,
-        body: {
-          content,
-          allowed_mentions: { parse: [] },
-        },
-      });
     }
 
     await schedulerRef.set(

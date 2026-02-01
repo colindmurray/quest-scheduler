@@ -5,6 +5,7 @@ const adminMock = {
   initializeApp: vi.fn(),
   firestore: vi.fn(() => ({ collection: vi.fn() })),
 };
+adminMock.firestore.Timestamp = { fromDate: vi.fn(() => 'expires-at') };
 
 vi.mock('firebase-admin', () => ({ default: adminMock, ...adminMock }));
 

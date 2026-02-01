@@ -1,0 +1,78 @@
+const { NOTIFICATION_EVENTS } = require("./constants");
+
+const NOTIFICATION_PREFERENCES = Object.freeze({
+  MUTED: "muted",
+  IN_APP: "inApp",
+  IN_APP_EMAIL: "inApp+Email",
+});
+
+const EMAIL_ELIGIBLE_EVENTS = new Set([
+  NOTIFICATION_EVENTS.POLL_INVITE_SENT,
+  NOTIFICATION_EVENTS.POLL_INVITE_ACCEPTED,
+  NOTIFICATION_EVENTS.POLL_INVITE_DECLINED,
+  NOTIFICATION_EVENTS.VOTE_SUBMITTED,
+  NOTIFICATION_EVENTS.POLL_FINALIZED,
+  NOTIFICATION_EVENTS.POLL_REOPENED,
+  NOTIFICATION_EVENTS.SLOT_CHANGED,
+  NOTIFICATION_EVENTS.FRIEND_REQUEST_SENT,
+  NOTIFICATION_EVENTS.FRIEND_REQUEST_ACCEPTED,
+  NOTIFICATION_EVENTS.FRIEND_REQUEST_DECLINED,
+  NOTIFICATION_EVENTS.GROUP_INVITE_SENT,
+  NOTIFICATION_EVENTS.GROUP_INVITE_ACCEPTED,
+  NOTIFICATION_EVENTS.GROUP_INVITE_DECLINED,
+]);
+
+const SIMPLE_DEFAULT_EVENTS = new Set([
+  NOTIFICATION_EVENTS.POLL_INVITE_SENT,
+  NOTIFICATION_EVENTS.GROUP_INVITE_SENT,
+  NOTIFICATION_EVENTS.FRIEND_REQUEST_SENT,
+  NOTIFICATION_EVENTS.POLL_READY_TO_FINALIZE,
+  NOTIFICATION_EVENTS.POLL_REOPENED,
+  NOTIFICATION_EVENTS.SLOT_CHANGED,
+  NOTIFICATION_EVENTS.VOTE_REMINDER,
+  NOTIFICATION_EVENTS.POLL_FINALIZED,
+  NOTIFICATION_EVENTS.POLL_CANCELLED,
+  NOTIFICATION_EVENTS.POLL_DELETED,
+  NOTIFICATION_EVENTS.GROUP_MEMBER_REMOVED,
+  NOTIFICATION_EVENTS.GROUP_DELETED,
+]);
+
+const VALID_PREFERENCES = new Set(Object.values(NOTIFICATION_PREFERENCES));
+
+const getDefaultPreference = (eventType, { emailNotifications = true } = {}) => {
+  if (!SIMPLE_DEFAULT_EVENTS.has(eventType)) return NOTIFICATION_PREFERENCES.MUTED;
+  if (!emailNotifications) return NOTIFICATION_PREFERENCES.IN_APP;
+  return EMAIL_ELIGIBLE_EVENTS.has(eventType)
+    ? NOTIFICATION_PREFERENCES.IN_APP_EMAIL
+    : NOTIFICATION_PREFERENCES.IN_APP;
+};
+
+const resolveNotificationPreference = (eventType, settings = {}) => {
+  const mode = settings?.notificationMode === "advanced" ? "advanced" : "simple";
+  if (mode === "advanced") {
+    const candidate = settings?.notificationPreferences?.[eventType];
+    if (VALID_PREFERENCES.has(candidate)) {
+      if (candidate === NOTIFICATION_PREFERENCES.IN_APP_EMAIL &&
+        !EMAIL_ELIGIBLE_EVENTS.has(eventType)) {
+        return NOTIFICATION_PREFERENCES.IN_APP;
+      }
+      return candidate;
+    }
+  }
+  const emailNotifications = settings?.emailNotifications !== false;
+  return getDefaultPreference(eventType, { emailNotifications });
+};
+
+const preferenceToChannels = (preference) => ({
+  inApp: preference !== NOTIFICATION_PREFERENCES.MUTED,
+  email: preference === NOTIFICATION_PREFERENCES.IN_APP_EMAIL,
+});
+
+module.exports = {
+  NOTIFICATION_PREFERENCES,
+  EMAIL_ELIGIBLE_EVENTS,
+  SIMPLE_DEFAULT_EVENTS,
+  getDefaultPreference,
+  resolveNotificationPreference,
+  preferenceToChannels,
+};

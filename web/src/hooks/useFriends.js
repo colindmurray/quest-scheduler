@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useEffect } from "react";
+import { useMemo, useCallback } from "react";
 import { useAuth } from "../app/useAuth";
 import { useFirestoreCollection } from "./useFirestoreCollection";
 import {
@@ -9,17 +9,18 @@ import {
   createFriendRequest,
   acceptFriendRequest,
   declineFriendRequest,
-  syncFriendRequestNotifications,
   ensureFriendInviteCode,
   acceptFriendInviteLink,
   removeFriend,
+  revokeFriendRequest,
 } from "../lib/data/friends";
+import { normalizeEmail } from "../lib/utils";
 
 export function useFriends() {
   const { user } = useAuth();
   const userId = user?.uid || null;
   const userEmail = user?.email || null;
-  const userEmailLower = userEmail ? userEmail.toLowerCase() : null;
+  const userEmailLower = normalizeEmail(userEmail) || null;
   const userDisplayName = user?.displayName || null;
   const userPhotoURL = user?.photoURL || null;
 
@@ -69,13 +70,6 @@ export function useFriends() {
     return { friends: Array.from(emails), friendRequestMap: map };
   }, [acceptedFrom.data, acceptedTo.data]);
 
-  useEffect(() => {
-    if (!userId || incoming.data.length === 0) return;
-    syncFriendRequestNotifications(userId, incoming.data).catch((err) => {
-      console.error("Failed to sync friend request notifications:", err);
-    });
-  }, [userId, incoming.data]);
-
   const sendFriendRequest = useCallback(
     async (identifier) => {
       if (!userId || !userEmail) return;
@@ -116,6 +110,14 @@ export function useFriends() {
     [userEmail]
   );
 
+  const revokeFriendRequestById = useCallback(
+    async (requestId) => {
+      if (!requestId) return;
+      return revokeFriendRequest(requestId);
+    },
+    []
+  );
+
   const getInviteCode = useCallback(async () => {
     if (!userId) return null;
     return ensureFriendInviteCode({
@@ -146,6 +148,7 @@ export function useFriends() {
     sendFriendRequest,
     acceptFriendRequest: acceptFriendRequestById,
     declineFriendRequest: declineFriendRequestById,
+    revokeFriendRequest: revokeFriendRequestById,
     removeFriend: removeFriendById,
     getInviteCode,
     acceptInviteLink,

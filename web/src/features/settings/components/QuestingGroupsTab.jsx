@@ -1,16 +1,21 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Plus, Users, Check, X } from "lucide-react";
 import { useQuestingGroups } from "../../../hooks/useQuestingGroups";
 import { useUserProfiles } from "../../../hooks/useUserProfiles";
 import { useNotifications } from "../../../hooks/useNotifications";
-import { groupInviteNotificationId } from "../../../lib/data/notifications";
+import {
+  groupInviteNotificationId,
+  groupInviteLegacyNotificationId,
+} from "../../../lib/data/notifications";
 import { GroupCard } from "./GroupCard";
 import { CreateGroupModal } from "./CreateGroupModal";
 import { LoadingState } from "../../../components/ui/spinner";
 import { UserIdentity } from "../../../components/UserIdentity";
+import { useAuth } from "../../../app/useAuth";
 
 export function QuestingGroupsTab({ friends = [] }) {
+  const { user } = useAuth();
   const {
     groups,
     pendingInvites,
@@ -30,9 +35,10 @@ export function QuestingGroupsTab({ friends = [] }) {
     canManage,
   } = useQuestingGroups();
   const { removeLocal: removeNotification } = useNotifications();
-  const creatorEmails = (pendingInvites || [])
-    .map((group) => group.creatorEmail)
-    .filter(Boolean);
+  const creatorEmails = useMemo(
+    () => (pendingInvites || []).map((group) => group.creatorEmail).filter(Boolean),
+    [pendingInvites]
+  );
   const { enrichUsers } = useUserProfiles(creatorEmails);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -43,7 +49,12 @@ export function QuestingGroupsTab({ friends = [] }) {
     try {
       await acceptInvite(groupId);
       toast.success("You've joined the group!");
-      removeNotification(groupInviteNotificationId(groupId));
+      [
+        groupInviteNotificationId(groupId, user?.email),
+        groupInviteLegacyNotificationId(groupId),
+      ]
+        .filter(Boolean)
+        .forEach((id) => removeNotification(id));
     } catch (err) {
       console.error("Failed to accept invite:", err);
       toast.error(err.message || "Failed to accept invitation");
@@ -57,7 +68,12 @@ export function QuestingGroupsTab({ friends = [] }) {
     try {
       await declineInvite(groupId);
       toast.success("Invitation declined");
-      removeNotification(groupInviteNotificationId(groupId));
+      [
+        groupInviteNotificationId(groupId, user?.email),
+        groupInviteLegacyNotificationId(groupId),
+      ]
+        .filter(Boolean)
+        .forEach((id) => removeNotification(id));
     } catch (err) {
       console.error("Failed to decline invite:", err);
       toast.error(err.message || "Failed to decline invitation");

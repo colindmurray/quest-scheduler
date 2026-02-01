@@ -9,6 +9,8 @@ vi.mock('../../hooks/useQuestingGroups', () => ({
   useQuestingGroups: () => ({
     acceptInvite: vi.fn(),
     declineInvite: vi.fn(),
+    pendingInvites: [],
+    loading: false,
   }),
 }));
 
@@ -16,6 +18,8 @@ vi.mock('../../hooks/useFriends', () => ({
   useFriends: () => ({
     acceptFriendRequest: vi.fn(),
     declineFriendRequest: vi.fn(),
+    incomingRequests: [{ id: 'req-1' }, { id: 'req-2' }],
+    loading: false,
   }),
 }));
 
@@ -23,6 +27,8 @@ vi.mock('../../hooks/usePollInvites', () => ({
   usePollInvites: () => ({
     acceptInvite: vi.fn(),
     declineInvite: vi.fn(),
+    pendingInvites: [],
+    loading: false,
   }),
 }));
 
@@ -64,6 +70,33 @@ describe('NotificationDropdown', () => {
             read: false,
             createdAt: { toDate: () => new Date() },
             metadata: { fromEmail: 'friend@example.com', requestId: 'req-1' },
+          },
+        ]}
+        loading={false}
+        onMarkRead={vi.fn()}
+        onDismiss={vi.fn()}
+        onMarkAllRead={vi.fn()}
+        onDismissAll={vi.fn()}
+        onRemoveLocal={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Accept')).toBeTruthy();
+    expect(screen.getByText('Decline')).toBeTruthy();
+  });
+
+  test('renders friend request actions for new event types', () => {
+    render(
+      <NotificationDropdown
+        notifications={[
+          {
+            id: 'notif-2',
+            type: NOTIFICATION_TYPES.FRIEND_REQUEST_SENT,
+            title: 'Friend request',
+            body: 'Friend request',
+            read: false,
+            createdAt: { toDate: () => new Date() },
+            metadata: { fromEmail: 'friend@example.com', requestId: 'req-2' },
           },
         ]}
         loading={false}

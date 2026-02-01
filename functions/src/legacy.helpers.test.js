@@ -152,6 +152,7 @@ describe('legacy helpers', () => {
       serverTimestamp: vi.fn(() => 'server-time'),
       delete: vi.fn(() => 'deleted'),
     };
+    adminMock.firestore.Timestamp = { fromDate: vi.fn(() => 'expires-at') };
 
     const functionsMock = {
       https: {

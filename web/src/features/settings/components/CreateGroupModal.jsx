@@ -1,14 +1,34 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../../../components/ui/dialog";
-import { Switch } from "../../../components/ui/switch";
+  SimpleModal,
+  SimpleModalDescription,
+  SimpleModalFooter,
+  SimpleModalHeader,
+  SimpleModalTitle,
+} from "../../../components/ui/simple-modal";
+
+const toggleBaseClasses =
+  "peer inline-flex h-5 w-10 shrink-0 items-center rounded-full border border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus-visible:ring-slate-500 dark:focus-visible:ring-offset-slate-950";
+const toggleThumbClasses =
+  "pointer-events-none block h-4 w-4 rounded-full bg-white shadow transition-transform dark:bg-slate-100";
+
+function SimpleToggle({ checked, onCheckedChange, disabled }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onCheckedChange(!checked)}
+      className={`${toggleBaseClasses} ${checked ? "bg-brand-accent" : "bg-slate-200 dark:bg-slate-700"}`}
+    >
+      <span
+        className={`${toggleThumbClasses} ${checked ? "translate-x-5" : "translate-x-0"}`}
+      />
+    </button>
+  );
+}
 
 export function CreateGroupModal({ open, onOpenChange, onCreateGroup }) {
   const [name, setName] = useState("");
@@ -39,14 +59,14 @@ export function CreateGroupModal({ open, onOpenChange, onCreateGroup }) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Create Questing Group</DialogTitle>
-          <DialogDescription>
+    <SimpleModal open={open} onOpenChange={onOpenChange}>
+      <div className="max-w-md">
+        <SimpleModalHeader>
+          <SimpleModalTitle>Create Questing Group</SimpleModalTitle>
+          <SimpleModalDescription>
             Create a named group for your adventuring party. You can invite members after creation.
-          </DialogDescription>
-        </DialogHeader>
+          </SimpleModalDescription>
+        </SimpleModalHeader>
 
         <form onSubmit={handleSubmit}>
           <div className="mt-4 space-y-4">
@@ -71,11 +91,11 @@ export function CreateGroupModal({ open, onOpenChange, onCreateGroup }) {
                   Allow any member to invite or remove others
                 </p>
               </div>
-              <Switch checked={memberManaged} onCheckedChange={setMemberManaged} />
+              <SimpleToggle checked={memberManaged} onCheckedChange={setMemberManaged} />
             </div>
           </div>
 
-          <DialogFooter className="mt-6">
+          <SimpleModalFooter className="mt-6">
             <button
               type="button"
               onClick={() => onOpenChange(false)}
@@ -90,9 +110,9 @@ export function CreateGroupModal({ open, onOpenChange, onCreateGroup }) {
             >
               {saving ? "Creating..." : "Create group"}
             </button>
-          </DialogFooter>
+          </SimpleModalFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </SimpleModal>
   );
 }

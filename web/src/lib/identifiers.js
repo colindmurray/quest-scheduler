@@ -1,5 +1,6 @@
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "./firebase";
+import { normalizeEmail } from "./utils";
 
 const DISCORD_USERNAME_REGEX = /^[a-z0-9_.]{2,32}$/i;
 const LEGACY_DISCORD_TAG_REGEX = /^.+#\d{4}$/;
@@ -7,10 +8,6 @@ const DISCORD_ID_REGEX = /^\d{17,20}$/;
 
 function normalizeValue(value) {
   return String(value || "").trim();
-}
-
-function normalizeEmail(value) {
-  return normalizeValue(value).toLowerCase();
 }
 
 function isDiscordUsername(value) {

@@ -57,6 +57,9 @@ exports.discordInteractions = onRequest(
     secrets: [DISCORD_APPLICATION_ID, DISCORD_PUBLIC_KEY],
   },
   async (req, res) => {
+    if (req.method === "GET" && req.query?.warmup === "1") {
+      return res.status(204).send("");
+    }
     if (req.method !== "POST") {
       res.set("Allow", "POST");
       return res.status(405).send("Method Not Allowed");

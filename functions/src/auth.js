@@ -1,16 +1,14 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { FieldValue } = require("firebase-admin/firestore");
+const { normalizeEmail } = require("./utils/email");
+const { reconcilePendingNotificationsForUser } = require("./notifications/reconcile");
 
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 
 const DEFAULT_APP_URL = "https://questscheduler.cc";
-
-function normalizeEmail(value) {
-  return String(value || "").trim().toLowerCase();
-}
 
 exports.sendPasswordResetInfo = functions.https.onCall(async (data) => {
   const email = normalizeEmail(data?.email);
@@ -62,6 +60,7 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
         publicIdentifierType: "email",
         settings: {
           emailNotifications: true,
+          notificationMode: "simple",
         },
         createdAt: now,
         updatedAt: now,
@@ -102,6 +101,12 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
       }
     } catch (err) {
       console.warn("onUserCreate: failed to backfill friend request user IDs", err);
+    }
+
+    try {
+      await reconcilePendingNotificationsForUser(email, user.uid);
+    } catch (err) {
+      console.warn("onUserCreate: pending notification reconciliation failed", err);
     }
   }
 });

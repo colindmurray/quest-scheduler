@@ -1,23 +1,19 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
-  ensureGroupInviteNotification,
   groupInviteNotificationId,
-  ensureFriendRequestNotification,
-  ensurePollInviteNotification,
-  createSessionJoinNotification,
-  createSessionInviteNotification,
-  createVoteSubmittedNotification,
-  createGroupMemberChangeNotification,
-  createVoteReminderNotification,
-  createGroupInviteAcceptedNotification,
-  createNotification,
+  friendRequestNotificationId,
+  pollInviteNotificationId,
+  notificationDedupeId,
+  friendRequestLegacyNotificationId,
+  pollInviteLegacyNotificationId,
+  groupInviteLegacyNotificationId,
   markNotificationRead,
   dismissNotification,
   markAllNotificationsRead,
   dismissAllNotifications,
   deleteNotification,
 } from "./notifications";
-import { setDoc, writeBatch, deleteDoc, updateDoc } from "firebase/firestore";
+import { writeBatch, deleteDoc, updateDoc } from "firebase/firestore";
 
 vi.mock("firebase/firestore", () => ({
   collection: vi.fn(),
@@ -26,7 +22,6 @@ vi.mock("firebase/firestore", () => ({
   where: vi.fn(),
   orderBy: vi.fn(),
   serverTimestamp: vi.fn(() => "ts"),
-  setDoc: vi.fn(),
   updateDoc: vi.fn(),
   deleteDoc: vi.fn(),
   writeBatch: vi.fn(),
@@ -34,123 +29,23 @@ vi.mock("firebase/firestore", () => ({
 
 vi.mock("../firebase", () => ({ db: {} }));
 
-describe("ensureGroupInviteNotification", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.stubGlobal("crypto", { randomUUID: () => "uuid_1" });
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("creates or updates a notification payload", async () => {
-    const id = await ensureGroupInviteNotification("user_1", {
-      groupId: "group_1",
-      groupName: "Party One",
-      inviterEmail: "inviter@example.com",
-    });
-
-    expect(id).toBe(groupInviteNotificationId("group_1"));
-    expect(setDoc).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("ensure friend/poll invite notifications", () => {
+describe("notification ids", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("creates friend request notification", async () => {
-    const id = await ensureFriendRequestNotification("user_1", {
-      requestId: "req_1",
-      fromEmail: "friend@example.com",
-      fromUserId: "friend_1",
-    });
-
-    expect(id).toBe("friendRequest:req_1");
-    expect(setDoc).toHaveBeenCalledTimes(1);
-  });
-
-  it("creates poll invite notification", async () => {
-    const id = await ensurePollInviteNotification("user_1", {
-      schedulerId: "poll_1",
-      schedulerTitle: "Session",
-      inviterEmail: "host@example.com",
-    });
-
-    expect(id).toBe("pollInvite:poll_1");
-    expect(setDoc).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("session notifications", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.stubGlobal("crypto", { randomUUID: () => "uuid_2" });
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("creates a join notification", async () => {
-    await createSessionJoinNotification("creator_1", {
-      schedulerId: "poll_1",
-      schedulerTitle: "Weekly Game",
-      participantEmail: "player@example.com",
-    });
-
-    expect(setDoc).toHaveBeenCalledTimes(1);
-  });
-
-  it("creates a vote submitted notification", async () => {
-    await createVoteSubmittedNotification("creator_1", {
-      schedulerId: "poll_2",
-      schedulerTitle: "Monthly Game",
-      voterEmail: "voter@example.com",
-    });
-
-    expect(setDoc).toHaveBeenCalledTimes(1);
-  });
-
-  it("creates a session invite notification", async () => {
-    await createSessionInviteNotification("user_1", {
-      schedulerId: "poll_3",
-      schedulerTitle: "Oneshot",
-      inviterEmail: "host@example.com",
-    });
-
-    expect(setDoc).toHaveBeenCalledTimes(1);
-  });
-
-  it("creates a vote reminder notification", async () => {
-    await createVoteReminderNotification("user_1", {
-      schedulerId: "poll_4",
-      schedulerTitle: "Monthly Game",
-    });
-
-    expect(setDoc).toHaveBeenCalledTimes(1);
-  });
-
-  it("creates group member change notification", async () => {
-    await createGroupMemberChangeNotification("user_1", {
-      groupId: "group_1",
-      groupName: "Heroes",
-      action: "added",
-    });
-
-    expect(setDoc).toHaveBeenCalledTimes(1);
-  });
-
-  it("creates group invite accepted notification", async () => {
-    await createGroupInviteAcceptedNotification("user_1", {
-      groupId: "group_2",
-      groupName: "Party",
-      memberEmail: "member@example.com",
-    });
-
-    expect(setDoc).toHaveBeenCalledTimes(1);
+  it("builds stable notification ids", () => {
+    expect(notificationDedupeId("demo")).toBe("dedupe:demo");
+    expect(friendRequestNotificationId("req_1")).toBe("dedupe:friend:req_1");
+    expect(friendRequestLegacyNotificationId("req_1")).toBe("friendRequest:req_1");
+    expect(pollInviteNotificationId("poll_1", "Invitee@Example.com")).toBe(
+      "dedupe:poll:poll_1:invite:invitee@example.com"
+    );
+    expect(pollInviteLegacyNotificationId("poll_1")).toBe("pollInvite:poll_1");
+    expect(groupInviteNotificationId("group_1", "invitee@example.com")).toBe(
+      "dedupe:group:group_1:invite:invitee@example.com"
+    );
+    expect(groupInviteLegacyNotificationId("group_1")).toBe("groupInvite:group_1");
   });
 });
 
@@ -158,19 +53,8 @@ describe("notification helpers", () => {
   let batch;
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal("crypto", { randomUUID: () => "notif_1" });
     batch = { update: vi.fn(), commit: vi.fn() };
     writeBatch.mockReturnValue(batch);
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("creates a notification with generated id", async () => {
-    const id = await createNotification("user_1", { title: "Hi" });
-    expect(id).toBe("notif_1");
-    expect(setDoc).toHaveBeenCalled();
   });
 
   it("marks all notifications read using batch", async () => {

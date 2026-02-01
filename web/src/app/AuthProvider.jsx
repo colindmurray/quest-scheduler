@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "../lib/firebase";
+import { auth } from "../lib/firebase";
 import { ensureUserProfile } from "../lib/data/users";
+import { reconcilePendingNotifications } from "../lib/data/notification-events";
 import { AuthContext } from "./useAuth";
+import { fetchBannedEmail } from "../lib/data/bans";
+import { normalizeEmail } from "../lib/utils";
 
 const bannedEmailKey = "qs_banned_email";
 const bannedReasonKey = "qs_banned_reason";
-
-function encodeEmailId(email) {
-  return encodeURIComponent(String(email || "").trim().toLowerCase());
-}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -46,15 +44,13 @@ export function AuthProvider({ children }) {
           return;
         }
 
-        const email = nextUser.email?.toLowerCase();
+        const email = normalizeEmail(nextUser?.email);
         if (email) {
-          const bannedRef = doc(db, "bannedEmails", encodeEmailId(email));
-          const snap = await getDoc(bannedRef);
-          if (snap.exists()) {
-            const reason = snap.data()?.reason || "suspended";
-            localStorage.setItem(bannedEmailKey, email);
-            localStorage.setItem(bannedReasonKey, reason);
-            setBanned({ email, reason });
+          const banned = await fetchBannedEmail(email);
+          if (banned) {
+            localStorage.setItem(bannedEmailKey, banned.email);
+            localStorage.setItem(bannedReasonKey, banned.reason);
+            setBanned(banned);
             await signOut(auth);
             setUser(null);
             setProfileReady(false);
@@ -68,6 +64,11 @@ export function AuthProvider({ children }) {
         setBanned(null);
         try {
           await ensureUserProfile(nextUser);
+          try {
+            await reconcilePendingNotifications();
+          } catch (err) {
+            console.warn("Failed to reconcile pending notifications:", err);
+          }
           setProfileReady(true);
         } catch (err) {
           console.error("Failed to ensure user profile:", err);

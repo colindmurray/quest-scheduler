@@ -27,12 +27,10 @@ import {
   upsertSchedulerVote,
 } from "../../lib/data/schedulers";
 import { resolveIdentifier } from "../../lib/identifiers";
-import { createSessionInviteNotification } from "../../lib/data/notifications";
-import { createEmailMessage } from "../../lib/emailTemplates";
+import { buildNotificationActor, emitPollEvent } from "../../lib/data/notification-events";
 import { sendPendingPollInvites, revokePollInvite } from "../../lib/data/pollInvites";
 import { findUserIdsByEmails } from "../../lib/data/users";
 import { buildEmailSet, normalizeEmail, normalizeEmailList } from "../../lib/utils";
-import { queueMail } from "../../lib/data/mail";
 import { validateInviteCandidate } from "./utils/invite-utils";
 import { InvitePanel } from "./components/invite-panel";
 import { QuestingGroupSelect } from "./components/questing-group-select";
@@ -103,6 +101,7 @@ export default function CreateSchedulerPage() {
   const [timezoneInitialized, setTimezoneInitialized] = useState(false);
   const [loadedFromPoll, setLoadedFromPoll] = useState(false);
   const [initialSlotIds, setInitialSlotIds] = useState(new Set());
+  const [initialSlotTimes, setInitialSlotTimes] = useState({});
   const [calendarUpdateOpen, setCalendarUpdateOpen] = useState(false);
   const [calendarUpdateChecked, setCalendarUpdateChecked] = useState(false);
 
@@ -248,6 +247,13 @@ export default function CreateSchedulerPage() {
       }))
     );
     setInitialSlotIds(new Set(slotsSnapshot.data.map((slot) => slot.id)));
+    const slotTimes = {};
+    slotsSnapshot.data.forEach((slot) => {
+      const start = slot.start ? new Date(slot.start).getTime() : null;
+      const end = slot.end ? new Date(slot.end).getTime() : null;
+      slotTimes[slot.id] = { start, end };
+    });
+    setInitialSlotTimes(slotTimes);
     if (scheduler.data.timezone) {
       setSelectedTimezone(scheduler.data.timezone);
       setTimezoneInitialized(true);
@@ -406,68 +412,12 @@ export default function CreateSchedulerPage() {
     );
   };
 
-  const sendAcceptedInvites = async (acceptedRecipients, schedulerId, pollTitle) => {
-    const accepted = acceptedRecipients || [];
-    if (accepted.length === 0) return;
-    const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
-    const resolvedIds = await findUserIdsByEmails(accepted);
-    const userIdsByEmail = new Map(Object.entries(resolvedIds));
-
-    await Promise.all(
-      accepted.map((email) =>
-        queueMail({
-          to: email,
-          message: createEmailMessage({
-            subject: `You're invited to vote on "${pollTitle}"`,
-            title: "Session Poll Invitation",
-            intro: `${user?.email} invited you to vote on "${pollTitle}".`,
-            ctaLabel: "Vote on poll",
-            ctaUrl: pollUrl,
-            extraLines: ["Pick Feasible and Preferred times to help decide."],
-          }),
-        })
-      )
-    );
-
-    await Promise.all(
-      accepted.map((email) => {
-        const userId = userIdsByEmail.get(email);
-        if (!userId) return null;
-        return createSessionInviteNotification(userId, {
-          schedulerId,
-          schedulerTitle: pollTitle,
-          inviterEmail: user?.email || "Someone",
-          inviterUserId: user?.uid || null,
-        });
-      })
-    );
-  };
-
   const sendPendingInvites = async (pendingRecipients, schedulerId, pollTitle) => {
     const pending = pendingRecipients || [];
     if (pending.length === 0) return { added: [], rejected: [] };
     const response = await sendPendingPollInvites(schedulerId, pending, pollTitle);
     const added = response?.added || [];
     const rejected = response?.rejected || [];
-    const pollUrl = `${APP_URL}/scheduler/${schedulerId}`;
-
-    if (added.length > 0) {
-      await Promise.all(
-        added.map((email) =>
-          queueMail({
-            to: email,
-            message: createEmailMessage({
-              subject: `You're invited to join "${pollTitle}"`,
-              title: "Session Poll Invite",
-              intro: `${user?.email} invited you to join the session poll "${pollTitle}".`,
-              ctaLabel: "Review invite",
-              ctaUrl: pollUrl,
-              extraLines: ["Accept the invite to participate and vote on times."],
-            }),
-          })
-        )
-      );
-    }
 
     if (rejected.length > 0) {
       const blocked = rejected.filter((item) => item.reason === "blocked").map((item) => item.email);
@@ -537,7 +487,20 @@ export default function CreateSchedulerPage() {
         pollDescription,
         timezoneModeForScheduler,
       } = getPollInputs();
-      const participantIdMap = await resolveParticipantIdsByEmail(explicitParticipants);
+      const inviteRecipients = Array.from(
+        new Set([...explicitParticipants, ...pendingList].filter(Boolean))
+      )
+        .map((email) => normalizeEmail(email))
+        .filter(
+          (email) =>
+            email &&
+            email !== creatorEmail &&
+            !groupMemberSet.has(email)
+        );
+      const participantIdMap = await resolveParticipantIdsByEmail([
+        creatorEmail,
+        ...inviteRecipients,
+      ]);
       const participantIds = Array.from(
         new Set(Object.values(participantIdMap).filter(Boolean))
       );
@@ -550,17 +513,15 @@ export default function CreateSchedulerPage() {
       const previousPending = new Set(
         (scheduler.data?.pendingInvites || []).map((email) => normalizeEmail(email))
       );
-      const newAcceptedRecipients = explicitParticipants.filter((email) => {
-        if (email === creatorEmail) return false;
-        const userId = participantIdMap[normalizeEmail(email)];
-        if (!userId) return false;
-        return !previousParticipantIds.has(userId);
+      const inviteRecipientSet = new Set(inviteRecipients);
+      const newPendingRecipients = inviteRecipients.filter((email) => {
+        if (previousPending.has(email)) return false;
+        const userId = participantIdMap[email];
+        if (userId && previousParticipantIds.has(userId)) return false;
+        return true;
       });
-      const newPendingRecipients = pendingList.filter(
-        (email) => !previousPending.has(email) && email !== creatorEmail
-      );
       const removedPendingRecipients = Array.from(previousPending).filter(
-        (email) => !pendingList.includes(email)
+        (email) => !inviteRecipientSet.has(email)
       );
       await updateScheduler(editId, {
         title: pollTitle,
@@ -579,6 +540,22 @@ export default function CreateSchedulerPage() {
       const removedIds = Array.from(initialSlotIds).filter(
         (slotId) => !currentSlotIds.has(slotId)
       );
+      const addedCount = slots.filter((slot) => !initialSlotIds.has(slot.id)).length;
+      const changedCount = slots.filter((slot) => {
+        if (!initialSlotIds.has(slot.id)) return false;
+        const initial = initialSlotTimes[slot.id];
+        if (!initial) return false;
+        const start = slot.start instanceof Date ? slot.start.getTime() : new Date(slot.start).getTime();
+        const end = slot.end instanceof Date ? slot.end.getTime() : new Date(slot.end).getTime();
+        return start !== initial.start || end !== initial.end;
+      }).length;
+      const removedCount = removedIds.length;
+      const hasSlotChanges = addedCount + changedCount + removedCount > 0;
+      const summaryParts = [];
+      if (addedCount) summaryParts.push(`${addedCount} slot${addedCount === 1 ? "" : "s"} added`);
+      if (removedCount) summaryParts.push(`${removedCount} slot${removedCount === 1 ? "" : "s"} removed`);
+      if (changedCount) summaryParts.push(`${changedCount} slot${changedCount === 1 ? "" : "s"} updated`);
+      const changeSummary = summaryParts.join(", ");
 
       await Promise.all(
         slots.map((slot) => {
@@ -633,20 +610,39 @@ export default function CreateSchedulerPage() {
         );
       }
 
-      if (newAcceptedRecipients.length > 0) {
-        try {
-          await sendAcceptedInvites(newAcceptedRecipients, editId, pollTitle);
-        } catch (inviteErr) {
-          console.error("Failed to send accepted invites:", inviteErr);
-        }
-      }
-
       if (newPendingRecipients.length > 0) {
         try {
           await sendPendingInvites(newPendingRecipients, editId, pollTitle);
         } catch (inviteErr) {
           console.error("Failed to send pending invites:", inviteErr);
           toast.error(inviteErr?.message || "Failed to send pending invites.");
+        }
+      }
+
+      if (hasSlotChanges) {
+        try {
+          const recipientUserIds = Array.from(
+            new Set([...participantIds, ...groupMemberIds].filter(Boolean))
+          ).filter((participantId) => participantId !== user?.uid);
+          if (recipientUserIds.length > 0) {
+            await emitPollEvent({
+              eventType: "SLOT_CHANGED",
+              schedulerId: editId,
+              pollTitle,
+              actor: buildNotificationActor(user),
+              payload: {
+                pollTitle,
+                changeSummary,
+              },
+              recipients: {
+                userIds: recipientUserIds,
+                emails: [],
+              },
+              dedupeKey: `poll:${editId}:slot-change`,
+            });
+          }
+        } catch (notifyErr) {
+          console.error("Failed to notify participants about slot updates:", notifyErr);
         }
       }
 
@@ -672,7 +668,20 @@ export default function CreateSchedulerPage() {
         pollDescription,
         timezoneModeForScheduler,
       } = getPollInputs();
-      const participantIdMap = await resolveParticipantIdsByEmail(explicitParticipants);
+      const inviteRecipients = Array.from(
+        new Set([...explicitParticipants, ...pendingList].filter(Boolean))
+      )
+        .map((email) => normalizeEmail(email))
+        .filter(
+          (email) =>
+            email &&
+            email !== creatorEmail &&
+            !groupMemberSet.has(email)
+        );
+      const participantIdMap = await resolveParticipantIdsByEmail([
+        creatorEmail,
+        ...inviteRecipients,
+      ]);
       const participantIds = Array.from(
         new Set(Object.values(participantIdMap).filter(Boolean))
       );
@@ -707,18 +716,9 @@ export default function CreateSchedulerPage() {
         })
       );
 
-      const initialAcceptedRecipients = explicitParticipants.filter((email) => email !== creatorEmail);
-      if (initialAcceptedRecipients.length > 0) {
+      if (inviteRecipients.length > 0) {
         try {
-          await sendAcceptedInvites(initialAcceptedRecipients, schedulerId, pollTitle);
-        } catch (inviteErr) {
-          console.error("Failed to send accepted invites:", inviteErr);
-        }
-      }
-
-      if (pendingList.length > 0) {
-        try {
-          await sendPendingInvites(pendingList, schedulerId, pollTitle);
+          await sendPendingInvites(inviteRecipients, schedulerId, pollTitle);
         } catch (inviteErr) {
           console.error("Failed to send pending invites:", inviteErr);
           toast.error(inviteErr?.message || "Failed to send pending invites.");

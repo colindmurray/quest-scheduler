@@ -5,12 +5,22 @@ import { getStorage, connectStorageEmulator } from "firebase/storage";
 import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCBYXfMUdHE2l4oAjbEJ4F-YwVdnbqUbV0",
-  authDomain: "studio-473406021-87ead.firebaseapp.com",
-  projectId: "studio-473406021-87ead",
-  storageBucket: "studio-473406021-87ead.firebasestorage.app",
-  messagingSenderId: "1070792785962",
-  appId: "1:1070792785962:web:eb58fb24b59c86d8a08353",
+  apiKey:
+    import.meta.env.VITE_FIREBASE_API_KEY ||
+    "AIzaSyCBYXfMUdHE2l4oAjbEJ4F-YwVdnbqUbV0",
+  authDomain:
+    import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ||
+    "studio-473406021-87ead.firebaseapp.com",
+  projectId:
+    import.meta.env.VITE_FIREBASE_PROJECT_ID || "studio-473406021-87ead",
+  storageBucket:
+    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ||
+    "studio-473406021-87ead.firebasestorage.app",
+  messagingSenderId:
+    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "1070792785962",
+  appId:
+    import.meta.env.VITE_FIREBASE_APP_ID ||
+    "1:1070792785962:web:eb58fb24b59c86d8a08353",
 };
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);

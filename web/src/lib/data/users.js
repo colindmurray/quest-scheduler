@@ -7,14 +7,12 @@ import {
   serverTimestamp,
   setDoc,
   where,
+  documentId,
 } from "firebase/firestore";
 import { updateProfile } from "firebase/auth";
 import { db } from "../firebase";
 import { buildPublicIdentifier } from "../identity";
-
-function normalizeEmail(email) {
-  return String(email || "").trim().toLowerCase();
-}
+import { chunkArray, normalizeEmail } from "../utils";
 
 function defaultDisplayName({ displayName, discordName }) {
   if (displayName) return displayName;
@@ -35,6 +33,10 @@ export async function findUserIdByEmail(email) {
   return snapshot.docs[0]?.id || null;
 }
 
+export const userRef = (userId) => (userId ? doc(db, "users", userId) : null);
+export const usersPublicRef = (userId) =>
+  userId ? doc(db, "usersPublic", userId) : null;
+
 export async function findUserIdsByEmails(emails = []) {
   const normalized = Array.from(
     new Set((emails || []).filter(Boolean).map((email) => normalizeEmail(email)))
@@ -42,13 +44,8 @@ export async function findUserIdsByEmails(emails = []) {
   if (normalized.length === 0) return {};
 
   const results = {};
-  const chunks = [];
-  for (let i = 0; i < normalized.length; i += 30) {
-    chunks.push(normalized.slice(i, i + 30));
-  }
-
   await Promise.all(
-    chunks.map(async (chunk) => {
+    chunkArray(normalized, 30).map(async (chunk) => {
       const q = query(collection(db, "usersPublic"), where("email", "in", chunk));
       const snapshot = await getDocs(q);
       snapshot.docs.forEach((doc) => {
@@ -61,6 +58,67 @@ export async function findUserIdsByEmails(emails = []) {
   );
 
   return results;
+}
+
+export async function fetchPublicProfilesByEmails(emails = []) {
+  const normalized = Array.from(
+    new Set((emails || []).filter(Boolean).map((email) => normalizeEmail(email)))
+  );
+  if (normalized.length === 0) return {};
+
+  const profiles = {};
+  await Promise.all(
+    chunkArray(normalized, 30).map(async (chunk) => {
+      const q = query(collection(db, "usersPublic"), where("email", "in", chunk));
+      const snapshot = await getDocs(q);
+      snapshot.docs.forEach((docSnap) => {
+        const data = docSnap.data() || {};
+        if (data.email) {
+          profiles[normalizeEmail(data.email)] = {
+            email: data.email,
+            displayName: data.displayName || null,
+            photoURL: data.photoURL || null,
+            emailNotifications: data.emailNotifications ?? null,
+            publicIdentifier: data.publicIdentifier || null,
+            publicIdentifierType: data.publicIdentifierType || null,
+            qsUsername: data.qsUsername || null,
+            discordUsername: data.discordUsername || null,
+          };
+        }
+      });
+    })
+  );
+
+  return profiles;
+}
+
+export async function fetchPublicProfilesByIds(userIds = []) {
+  const normalized = Array.from(new Set((userIds || []).filter(Boolean)));
+  if (normalized.length === 0) return {};
+
+  const profiles = {};
+  await Promise.all(
+    chunkArray(normalized, 30).map(async (chunk) => {
+      const q = query(collection(db, "usersPublic"), where(documentId(), "in", chunk));
+      const snapshot = await getDocs(q);
+      snapshot.docs.forEach((docSnap) => {
+        const data = docSnap.data() || {};
+        profiles[docSnap.id] = {
+          id: docSnap.id,
+          email: data.email || null,
+          displayName: data.displayName || null,
+          photoURL: data.photoURL || null,
+          emailNotifications: data.emailNotifications ?? null,
+          publicIdentifier: data.publicIdentifier || null,
+          publicIdentifierType: data.publicIdentifierType || null,
+          qsUsername: data.qsUsername || null,
+          discordUsername: data.discordUsername || null,
+        };
+      });
+    })
+  );
+
+  return profiles;
 }
 
 export async function ensureUserProfile(user) {

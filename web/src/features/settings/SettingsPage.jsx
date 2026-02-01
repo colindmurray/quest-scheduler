@@ -1,5 +1,4 @@
 import { EmailAuthProvider, linkWithCredential, updateProfile } from "firebase/auth";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -7,11 +6,14 @@ import { toast } from "sonner";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useAuth } from "../../app/useAuth";
 import { useTheme } from "../../app/useTheme";
-import { db, storage } from "../../lib/firebase";
+import { storage } from "../../lib/firebase";
 import { linkGoogleAccount, resendVerificationEmail, signOutUser } from "../../lib/auth";
 import { startDiscordOAuth, unlinkDiscordAccount } from "../../lib/data/discord";
 import { registerQsUsername } from "../../lib/data/usernames";
 import { buildPublicIdentifier } from "../../lib/identity";
+import { fetchUserSettings, saveUserSettings } from "../../lib/data/settings";
+import { normalizeEmail } from "../../lib/utils";
+import { NOTIFICATION_TYPES } from "../../lib/data/notifications";
 import { LoadingState } from "../../components/ui/spinner";
 import { Switch } from "../../components/ui/switch";
 import { UserIdentity } from "../../components/UserIdentity";
@@ -45,6 +47,129 @@ const defaultPerDayDefaults = {
 
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 const AVATAR_MAX_DIMENSION = 512;
+
+const NOTIFICATION_PREFERENCE_VALUES = ["muted", "inApp", "inApp+Email"];
+
+const SIMPLE_NOTIFICATION_EVENTS = new Set([
+  NOTIFICATION_TYPES.POLL_INVITE_SENT,
+  NOTIFICATION_TYPES.GROUP_INVITE_SENT,
+  NOTIFICATION_TYPES.FRIEND_REQUEST_SENT,
+  NOTIFICATION_TYPES.POLL_READY_TO_FINALIZE,
+  NOTIFICATION_TYPES.POLL_REOPENED,
+  NOTIFICATION_TYPES.SLOT_CHANGED,
+  NOTIFICATION_TYPES.VOTE_REMINDER,
+  NOTIFICATION_TYPES.POLL_FINALIZED,
+  NOTIFICATION_TYPES.POLL_CANCELLED,
+  NOTIFICATION_TYPES.POLL_DELETED,
+  NOTIFICATION_TYPES.GROUP_MEMBER_REMOVED,
+  NOTIFICATION_TYPES.GROUP_DELETED,
+]);
+
+const SIMPLE_EMAIL_EVENTS = new Set([
+  NOTIFICATION_TYPES.POLL_INVITE_SENT,
+  NOTIFICATION_TYPES.GROUP_INVITE_SENT,
+  NOTIFICATION_TYPES.FRIEND_REQUEST_SENT,
+  NOTIFICATION_TYPES.POLL_READY_TO_FINALIZE,
+  NOTIFICATION_TYPES.POLL_REOPENED,
+  NOTIFICATION_TYPES.SLOT_CHANGED,
+  NOTIFICATION_TYPES.VOTE_REMINDER,
+  NOTIFICATION_TYPES.POLL_FINALIZED,
+  NOTIFICATION_TYPES.POLL_CANCELLED,
+]);
+
+const NOTIFICATION_PREFERENCE_GROUPS = [
+  {
+    title: "Poll invites",
+    description: "Invitations and responses for session polls.",
+    items: [
+      {
+        eventType: NOTIFICATION_TYPES.POLL_INVITE_SENT,
+        label: "Poll invites",
+        description: "When someone invites you to vote on a poll.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.POLL_INVITE_ACCEPTED,
+        label: "Poll invite accepted",
+        description: "When a participant accepts your poll invite.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.POLL_INVITE_DECLINED,
+        label: "Poll invite declined",
+        description: "When a participant declines your poll invite.",
+      },
+    ],
+  },
+  {
+    title: "Poll activity",
+    description: "Updates while a poll is open or finalized.",
+    items: [
+      {
+        eventType: NOTIFICATION_TYPES.VOTE_SUBMITTED,
+        label: "Vote submitted",
+        description: "When a participant submits their vote.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.POLL_FINALIZED,
+        label: "Poll finalized",
+        description: "When the winning time is chosen.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.POLL_REOPENED,
+        label: "Poll reopened",
+        description: "When a finalized poll is reopened for new votes.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.SLOT_CHANGED,
+        label: "Slot changes",
+        description: "When the available time slots are updated.",
+      },
+    ],
+  },
+  {
+    title: "Social",
+    description: "Friend requests and questing group invitations.",
+    items: [
+      {
+        eventType: NOTIFICATION_TYPES.FRIEND_REQUEST_SENT,
+        label: "Friend requests",
+        description: "When someone sends you a friend request.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.FRIEND_REQUEST_ACCEPTED,
+        label: "Friend request accepted",
+        description: "When a friend request you sent is accepted.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.FRIEND_REQUEST_DECLINED,
+        label: "Friend request declined",
+        description: "When a friend request you sent is declined.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.GROUP_INVITE_SENT,
+        label: "Group invites",
+        description: "When someone invites you to a questing group.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.GROUP_INVITE_ACCEPTED,
+        label: "Group invite accepted",
+        description: "When a questing group invite you sent is accepted.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.GROUP_INVITE_DECLINED,
+        label: "Group invite declined",
+        description: "When a questing group invite you sent is declined.",
+      },
+    ],
+  },
+];
+
+const resolveNotificationPreferenceValue = ({ eventType, emailNotifications, preferences }) => {
+  const stored = preferences?.[eventType];
+  if (NOTIFICATION_PREFERENCE_VALUES.includes(stored)) return stored;
+  if (!SIMPLE_NOTIFICATION_EVENTS.has(eventType)) return "muted";
+  if (!emailNotifications) return "inApp";
+  return SIMPLE_EMAIL_EVENTS.has(eventType) ? "inApp+Email" : "inApp";
+};
 
 function upgradeGooglePhotoUrl(url, size = 256) {
   if (!url) return null;
@@ -102,6 +227,8 @@ export default function SettingsPage() {
   const [displayName, setDisplayName] = useState("");
   const [defaultDuration, setDefaultDuration] = useState(240);
   const [emailNotifications, setEmailNotifications] = useState(true);
+  const [notificationMode, setNotificationMode] = useState("simple");
+  const [notificationPreferences, setNotificationPreferences] = useState({});
   const [qsUsernameInput, setQsUsernameInput] = useState("");
   const [qsUsernameCurrent, setQsUsernameCurrent] = useState("");
   const [qsUsernameSaving, setQsUsernameSaving] = useState(false);
@@ -139,7 +266,7 @@ export default function SettingsPage() {
   const [usernameConfirmOpen, setUsernameConfirmOpen] = useState(false);
   const [pendingSaveData, setPendingSaveData] = useState(null);
 
-  const userRef = useMemo(() => (user ? doc(db, "users", user.uid) : null), [user]);
+  const userId = user?.uid || null;
   const providerData = user?.providerData || [];
   const hasPasswordProvider = providerData.some((provider) => provider.providerId === "password");
   const googleProviderEmail =
@@ -152,11 +279,11 @@ export default function SettingsPage() {
   const googleEmailMismatch =
     googleProviderEmail &&
     user?.email &&
-    googleProviderEmail.toLowerCase() !== user.email.toLowerCase();
+    normalizeEmail(googleProviderEmail) !== normalizeEmail(user.email);
   const calendarEmailMismatch =
     linkedCalendarEmail &&
     user?.email &&
-    linkedCalendarEmail.toLowerCase() !== user.email.toLowerCase();
+    normalizeEmail(linkedCalendarEmail) !== normalizeEmail(user.email);
   const canUnlinkDiscord = hasPasswordProvider || Boolean(googleProviderEmail);
   const discordAvatarUrl = useMemo(() => {
     if (!discordInfo?.userId) return null;
@@ -170,15 +297,16 @@ export default function SettingsPage() {
   }, [avatarSource, customAvatarUrl, discordAvatarUrl, googleAvatarUrl, user?.photoURL]);
 
   useEffect(() => {
-    if (!userRef) return;
+    if (!userId) return;
     setLoading(true);
-    getDoc(userRef)
-      .then((snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
+    fetchUserSettings(userId)
+      .then((data) => {
+        if (data) {
           setDisplayName(data.displayName || user?.displayName || "");
           setDefaultDuration(data.settings?.defaultDurationMinutes ?? 240);
           setEmailNotifications(data.settings?.emailNotifications ?? true);
+          setNotificationMode(data.settings?.notificationMode ?? "simple");
+          setNotificationPreferences(data.settings?.notificationPreferences ?? {});
           setTimezoneMode(data.settings?.timezoneMode ?? "auto");
 
           // Load session defaults mode and values
@@ -240,7 +368,7 @@ export default function SettingsPage() {
         toast.error("Failed to load settings: " + err.message);
       })
       .finally(() => setLoading(false));
-  }, [userRef, user, googleAvatarUrl]);
+  }, [userId, user, googleAvatarUrl]);
 
   useEffect(() => {
     if (!user) return;
@@ -512,7 +640,7 @@ export default function SettingsPage() {
   };
 
   const handleSave = async (skipUsernameConfirmation = false) => {
-    if (!userRef) return;
+    if (!userId || !user) return;
     const normalizedDisplayName = displayName.trim() || user?.displayName || null;
     const nextQsUsername = qsUsernameInput.trim().replace(/^@/, "").toLowerCase();
 
@@ -544,7 +672,7 @@ export default function SettingsPage() {
         publicIdentifierType,
         qsUsername: nextQsUsername || qsUsernameCurrent,
         discordUsername: discordInfo?.username || null,
-        email: user.email?.toLowerCase() || null,
+        email: normalizeEmail(user.email) || null,
       });
 
       // Prepare session defaults for save
@@ -559,11 +687,16 @@ export default function SettingsPage() {
             )
           : // Per-day mode: save each day's individual settings
             perDayDefaults;
+      const cleanedNotificationPreferences = Object.fromEntries(
+        Object.entries(notificationPreferences || {}).filter(([, value]) =>
+          NOTIFICATION_PREFERENCE_VALUES.includes(value)
+        )
+      );
 
-      await setDoc(
-        userRef,
+      await saveUserSettings(
+        userId,
         {
-          email: user.email?.toLowerCase(),
+          email: normalizeEmail(user.email) || null,
           ...(normalizedDisplayName ? { displayName: normalizedDisplayName } : {}),
           photoURL: resolvedAvatarUrl || null,
           avatarSource,
@@ -573,6 +706,8 @@ export default function SettingsPage() {
           settings: {
             defaultDurationMinutes: Number(defaultDuration || 0),
             emailNotifications,
+            notificationMode,
+            notificationPreferences: cleanedNotificationPreferences,
             sessionDefaultsMode,
             defaultStartTime: simpleStartTime,
             defaultStartTimes: sessionDefaultsToSave,
@@ -583,22 +718,15 @@ export default function SettingsPage() {
             googleCalendarIds: calendarIds,
             googleCalendarNames: calendarNames,
           },
-          updatedAt: serverTimestamp(),
         },
-        { merge: true }
-      );
-      await setDoc(
-        doc(db, "usersPublic", user.uid),
         {
-          email: user.email?.toLowerCase(),
+          email: normalizeEmail(user.email) || null,
           ...(normalizedDisplayName ? { displayName: normalizedDisplayName } : {}),
           photoURL: resolvedAvatarUrl || null,
           emailNotifications,
           publicIdentifierType,
           publicIdentifier,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
+        }
       );
       if (normalizedDisplayName && user.displayName !== normalizedDisplayName) {
         await updateProfile(user, { displayName: normalizedDisplayName });
@@ -968,12 +1096,12 @@ export default function SettingsPage() {
                       publicIdentifierType,
                       qsUsername: qsUsernameInput.trim().replace(/^@/, "").toLowerCase(),
                       discordUsername: discordInfo?.username || null,
-                      email: user?.email?.toLowerCase() || null,
+                      email: normalizeEmail(user?.email) || null,
                     }),
                     publicIdentifierType,
                     qsUsername: qsUsernameInput.trim().replace(/^@/, "").toLowerCase(),
                     discordUsername: discordInfo?.username || null,
-                    email: user?.email?.toLowerCase() || null,
+                    email: normalizeEmail(user?.email) || null,
                   }}
                 />
               </div>
@@ -1291,14 +1419,106 @@ export default function SettingsPage() {
 
             <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Notifications</h3>
-              <label className="mt-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                <input
-                  type="checkbox"
-                  checked={emailNotifications}
-                  onChange={(event) => setEmailNotifications(event.target.checked)}
-                />
-                Email me when someone votes
-              </label>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Choose how you want to hear about poll updates and social activity.
+              </p>
+              <div className="mt-4 flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setNotificationMode("simple")}
+                  className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                    notificationMode === "simple"
+                      ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100"
+                      : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                  }`}
+                >
+                  Simple
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNotificationMode("advanced")}
+                  className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                    notificationMode === "advanced"
+                      ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100"
+                      : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                  }`}
+                >
+                  Advanced
+                </button>
+              </div>
+              {notificationMode === "simple" && (
+                <div className="mt-4 space-y-3">
+                  <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <input
+                      type="checkbox"
+                      checked={emailNotifications}
+                      onChange={(event) => setEmailNotifications(event.target.checked)}
+                    />
+                    Email me for important notifications
+                  </label>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                    In-app notifications stay on for key actions like invites and finalized polls.
+                  </p>
+                </div>
+              )}
+              {notificationMode === "advanced" && (
+                <div className="mt-4 grid gap-4">
+                  {NOTIFICATION_PREFERENCE_GROUPS.map((group) => (
+                    <div
+                      key={group.title}
+                      className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/40"
+                    >
+                      <div>
+                        <h4 className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                          {group.title}
+                        </h4>
+                        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                          {group.description}
+                        </p>
+                      </div>
+                      <div className="mt-3 grid gap-3">
+                        {group.items.map((item) => {
+                          const selectId = `notification-pref-${item.eventType}`;
+                          const value = resolveNotificationPreferenceValue({
+                            eventType: item.eventType,
+                            emailNotifications,
+                            preferences: notificationPreferences,
+                          });
+                          return (
+                            <div key={item.eventType} className="grid gap-1">
+                              <label
+                                htmlFor={selectId}
+                                className="flex flex-wrap items-center justify-between gap-3 text-xs font-semibold text-slate-600 dark:text-slate-300"
+                              >
+                                <span>{item.label}</span>
+                                <select
+                                  id={selectId}
+                                  aria-label={item.label}
+                                  className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                  value={value}
+                                  onChange={(event) =>
+                                    setNotificationPreferences((prev) => ({
+                                      ...prev,
+                                      [item.eventType]: event.target.value,
+                                    }))
+                                  }
+                                >
+                                  <option value="muted">Muted</option>
+                                  <option value="inApp">In-app only</option>
+                                  <option value="inApp+Email">In-app + email</option>
+                                </select>
+                              </label>
+                              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                                {item.description}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
 
             <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">

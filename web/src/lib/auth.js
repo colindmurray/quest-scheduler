@@ -14,16 +14,13 @@ import {
 } from "firebase/auth";
 import { auth } from "./firebase";
 import { APP_URL } from "./config";
+import { normalizeEmail } from "./utils";
 
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({
   prompt: "consent",
   access_type: "offline",
 });
-
-function normalizeEmail(email) {
-  return String(email || "").trim().toLowerCase();
-}
 
 export async function signInWithGoogle() {
   const result = await signInWithPopup(auth, provider);

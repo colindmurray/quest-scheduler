@@ -1,9 +1,9 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, test, beforeEach, vi } from 'vitest';
-import { getDocs } from 'firebase/firestore';
 
-vi.mock('../lib/firebase', () => ({
-  db: {},
+vi.mock('../lib/data/users', () => ({
+  fetchPublicProfilesByEmails: vi.fn(),
+  fetchPublicProfilesByIds: vi.fn(),
 }));
 
 import { useUserProfiles, useUserProfilesByIds } from './useUserProfiles';
@@ -14,17 +14,17 @@ describe('useUserProfiles', () => {
   });
 
   test('fetches profiles by email and normalizes keys', async () => {
-    const getDocsMock = vi.mocked(getDocs);
-    getDocsMock.mockResolvedValue({
-      docs: [
-        {
-          data: () => ({
-            email: 'User@Example.com',
-            displayName: 'User One',
-            photoURL: 'https://example.com/user.png',
-          }),
-        },
-      ],
+    const { fetchPublicProfilesByEmails } = await import('../lib/data/users');
+    fetchPublicProfilesByEmails.mockResolvedValue({
+      'user@example.com': {
+        email: 'User@Example.com',
+        displayName: 'User One',
+        photoURL: 'https://example.com/user.png',
+        publicIdentifier: null,
+        publicIdentifierType: null,
+        qsUsername: null,
+        discordUsername: null,
+      },
     });
 
     const emails = ['USER@example.com'];
@@ -52,17 +52,18 @@ describe('useUserProfilesByIds', () => {
   });
 
   test('fetches profiles by ids', async () => {
-    const getDocsMock = vi.mocked(getDocs);
-    getDocsMock.mockResolvedValue({
-      docs: [
-        {
-          id: 'user-1',
-          data: () => ({
-            email: 'user@example.com',
-            displayName: 'User One',
-          }),
-        },
-      ],
+    const { fetchPublicProfilesByIds } = await import('../lib/data/users');
+    fetchPublicProfilesByIds.mockResolvedValue({
+      'user-1': {
+        id: 'user-1',
+        email: 'user@example.com',
+        displayName: 'User One',
+        photoURL: null,
+        publicIdentifier: null,
+        publicIdentifierType: null,
+        qsUsername: null,
+        discordUsername: null,
+      },
     });
 
     const ids = ['user-1'];

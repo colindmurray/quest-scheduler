@@ -6,8 +6,12 @@ const discordOAuth = require("./discord/oauth");
 const discordUnlink = require("./discord/unlink");
 const discordRoles = require("./discord/roles");
 const discordNudge = require("./discord/nudge");
+const discordWarmup = require("./discord/warmup");
 const schedulerTriggers = require("./triggers/scheduler");
 const auth = require("./auth");
+const notificationEvents = require("./notifications/emit");
+const notificationRouter = require("./notifications/router");
+const notificationReconcile = require("./notifications/reconcile");
 
 module.exports = {
   ...legacy,
@@ -18,6 +22,10 @@ module.exports = {
   ...discordUnlink,
   ...discordRoles,
   ...discordNudge,
+  ...discordWarmup,
   ...schedulerTriggers,
   ...auth,
+  ...notificationEvents,
+  ...notificationRouter,
+  ...notificationReconcile,
 };

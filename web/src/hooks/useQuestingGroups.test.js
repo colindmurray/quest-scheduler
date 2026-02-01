@@ -1,4 +1,4 @@
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 
 let currentUser = { uid: 'user1', email: 'user@example.com', displayName: 'User' };
@@ -57,10 +57,6 @@ vi.mock('../lib/data/questingGroups', () => ({
   getDefaultGroupColor: (...args) => getDefaultGroupColorMock(...args),
 }));
 
-const ensureGroupInviteNotificationMock = vi.fn(() => Promise.resolve());
-vi.mock('../lib/data/notifications', () => ({
-  ensureGroupInviteNotification: (...args) => ensureGroupInviteNotificationMock(...args),
-}));
 
 const resolveIdentifierMock = vi.fn();
 vi.mock('../lib/identifiers', () => ({
@@ -72,22 +68,11 @@ vi.mock('../lib/data/friends', () => ({
   createFriendRequest: (...args) => createFriendRequestMock(...args),
 }));
 
-const createEmailMessageMock = vi.fn(() => ({ subject: 'invite' }));
-vi.mock('../lib/emailTemplates', () => ({
-  createEmailMessage: (...args) => createEmailMessageMock(...args),
-}));
 
-vi.mock('../lib/firebase', () => ({ db: {} }));
-
-const setDocMock = vi.fn();
-const docMock = vi.fn(() => ({ path: 'doc' }));
-const collectionMock = vi.fn(() => ({ path: 'mail' }));
-
-vi.mock('firebase/firestore', () => ({
-  doc: (...args) => docMock(...args),
-  setDoc: (...args) => setDocMock(...args),
-  serverTimestamp: vi.fn(() => 'server-time'),
-  collection: (...args) => collectionMock(...args),
+const persistGroupColorMock = vi.fn();
+vi.mock('../lib/data/settings', () => ({
+  userSettingsRef: vi.fn((userId) => (userId ? { id: userId } : null)),
+  setGroupColor: (...args) => persistGroupColorMock(...args),
 }));
 
 const findUserIdByEmailMock = vi.fn();
@@ -136,14 +121,7 @@ describe('useQuestingGroups', () => {
       await result.current.setGroupColor('group1', 'red');
     });
 
-    expect(setDocMock).toHaveBeenCalledWith(
-      expect.any(Object),
-      expect.objectContaining({
-        groupColors: { group1: 'red' },
-        updatedAt: 'server-time',
-      }),
-      { merge: true }
-    );
+    expect(persistGroupColorMock).toHaveBeenCalledWith('user1', {}, 'group1', 'red');
   });
 
   test('createGroup delegates to data layer', async () => {
@@ -179,14 +157,6 @@ describe('useQuestingGroups', () => {
       'invitee@example.com',
       'invitee-id',
       'user1'
-    );
-    expect(createEmailMessageMock).toHaveBeenCalled();
-    expect(setDocMock).toHaveBeenCalledWith(
-      expect.any(Object),
-      expect.objectContaining({
-        to: 'invitee@example.com',
-        message: { subject: 'invite' },
-      })
     );
     expect(createFriendRequestMock).toHaveBeenCalledWith(
       {
@@ -238,7 +208,8 @@ describe('useQuestingGroups', () => {
       'group1',
       'Group',
       'member@example.com',
-      'member-1'
+      'member-1',
+      currentUser
     );
     expect(removeMemberFromGroupPollsMock).toHaveBeenCalledWith('group1', 'member@example.com');
   });
@@ -250,7 +221,12 @@ describe('useQuestingGroups', () => {
       await result.current.leave('group1');
     });
 
-    expect(leaveGroupMock).toHaveBeenCalledWith('group1', 'user@example.com', 'user1');
+    expect(leaveGroupMock).toHaveBeenCalledWith(
+      'group1',
+      'user@example.com',
+      'user1',
+      currentUser
+    );
     expect(removeMemberFromGroupPollsMock).toHaveBeenCalledWith('group1', 'user@example.com');
   });
 
@@ -279,40 +255,6 @@ describe('useQuestingGroups', () => {
     expect(result.current.canManage(ownerGroup)).toBe(true);
     expect(result.current.canManage(memberManagedGroup)).toBe(true);
     expect(result.current.canManage({ creatorId: 'other', memberManaged: false })).toBe(false);
-  });
-
-  test('syncs group invite notifications from pending invites', async () => {
-    useFirestoreCollectionMock.mockImplementation((ref) => {
-      if (ref === 'invites-query') {
-        return {
-          data: [
-            {
-              id: 'group1',
-              name: 'Heroes',
-              creatorEmail: 'creator@example.com',
-              pendingInviteMeta: {
-                'user@example.com': { invitedByEmail: 'inviter@example.com' },
-              },
-            },
-          ],
-          loading: false,
-        };
-      }
-      return {
-        data: [{ id: 'group1', memberIds: [] }],
-        loading: false,
-      };
-    });
-
-    renderHook(() => useQuestingGroups());
-
-    await waitFor(() => {
-      expect(ensureGroupInviteNotificationMock).toHaveBeenCalledWith('user1', {
-        groupId: 'group1',
-        groupName: 'Heroes',
-        inviterEmail: 'inviter@example.com',
-      });
-    });
   });
 
   test('inviteMember no-ops without user email', async () => {

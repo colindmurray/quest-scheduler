@@ -10,17 +10,15 @@ vi.mock('./useFirestoreDoc', () => ({
   useFirestoreDoc: (...args) => useFirestoreDocMock(...args),
 }));
 
-const setDocMock = vi.fn();
-const docMock = vi.fn(() => ({ id: 'user1' }));
-const serverTimestampMock = vi.fn(() => 'server-time');
+const addArchivedPollMock = vi.fn();
 
-vi.mock('firebase/firestore', () => ({
-  doc: (...args) => docMock(...args),
-  setDoc: (...args) => setDocMock(...args),
-  serverTimestamp: () => serverTimestampMock(),
+vi.mock('../lib/data/settings', () => ({
+  userSettingsRef: vi.fn((userId) => (userId ? { id: userId } : null)),
+  addArchivedPoll: (...args) => addArchivedPollMock(...args),
+  removeArchivedPoll: vi.fn(),
+  setCalendarSyncPreference: vi.fn(),
+  setGroupColor: vi.fn(),
 }));
-
-vi.mock('../lib/firebase', () => ({ db: {} }));
 
 import { useUserSettings } from './useUserSettings';
 
@@ -48,14 +46,7 @@ describe('useUserSettings', () => {
       await result.current.archivePoll('poll2');
     });
 
-    expect(setDocMock).toHaveBeenCalledWith(
-      { id: 'user1' },
-      expect.objectContaining({
-        archivedPolls: ['poll1', 'poll2'],
-        updatedAt: 'server-time',
-      }),
-      { merge: true }
-    );
+    expect(addArchivedPollMock).toHaveBeenCalledWith('user1', 'poll2', ['poll1']);
   });
 
   test('archivePoll does nothing for existing poll', async () => {
@@ -65,7 +56,7 @@ describe('useUserSettings', () => {
       await result.current.archivePoll('poll1');
     });
 
-    expect(setDocMock).not.toHaveBeenCalled();
+    expect(addArchivedPollMock).toHaveBeenCalledWith('user1', 'poll1', ['poll1']);
   });
 
   test('getSessionDefaults uses per-day settings', () => {

@@ -1,111 +1,50 @@
-import { collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
 import { useMemo, useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { Plus, Archive } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Check, Plus, X } from "lucide-react";
 import { useAuth } from "../../app/useAuth";
-import { db } from "../../lib/firebase";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useSchedulersByCreator, useSchedulersByGroupIds, useSchedulersByParticipant } from "../../hooks/useSchedulers";
 import { useUserSettings } from "../../hooks/useUserSettings";
 import { useQuestingGroups } from "../../hooks/useQuestingGroups";
 import { usePollInvites } from "../../hooks/usePollInvites";
 import { useNotifications } from "../../hooks/useNotifications";
-import { pollInviteNotificationId } from "../../lib/data/notifications";
+import {
+  pollInviteNotificationId,
+  pollInviteLegacyNotificationId,
+} from "../../lib/data/notifications";
 import { LoadingState } from "../../components/ui/spinner";
 import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfiles";
 import { UserIdentity } from "../../components/UserIdentity";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../../components/ui/dialog";
+import { useSchedulerAttendance } from "./hooks/useSchedulerAttendance";
+import { normalizeEmail } from "../../lib/utils";
 import { NextSessionCard } from "./components/NextSessionCard";
 import { SessionCard } from "./components/SessionCard";
 import { DashboardCalendar } from "./components/DashboardCalendar";
 import { MobileAgendaView } from "./components/MobileAgendaView";
 import { buildAttendanceSummary } from "./lib/attendance";
-
-function SectionHeader({ title, subtitle, action }) {
-  return (
-    <div className="flex items-center justify-between">
-      <div>
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
-        {subtitle && (
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
-        )}
-      </div>
-      {action}
-    </div>
-  );
-}
-
-function TabButton({ active, onClick, children }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-        active
-          ? "bg-brand-primary text-white"
-          : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-600"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function chunkArray(items, size) {
-  const chunks = [];
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size));
-  }
-  return chunks;
-}
+import { PastSessionsSection } from "./components/past-sessions-section";
+import { SectionHeader } from "./components/section-header";
 
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { archivedPolls, loading: settingsLoading } = useUserSettings();
   const { groups, getGroupColor } = useQuestingGroups();
+  const normalizedUserEmail = normalizeEmail(user?.email) || "";
   const groupIds = useMemo(
     () => (groups || []).map((group) => group.id).filter(Boolean),
     [groups]
   );
-  const groupIdsKey = useMemo(() => groupIds.slice().sort().join("|"), [groupIds]);
   const { pendingInvites, loading: pendingInvitesLoading, acceptInvite, declineInvite } = usePollInvites();
   const { removeLocal: removeNotification } = useNotifications();
   const [pastSessionsTab, setPastSessionsTab] = useState("finalized");
   const [isMobile, setIsMobile] = useState(false);
-  const [slotsByScheduler, setSlotsByScheduler] = useState({});
-  const [votesByScheduler, setVotesByScheduler] = useState({});
-  const [votersByScheduler, setVotersByScheduler] = useState({});
-  const [groupSchedulers, setGroupSchedulers] = useState([]);
-  const [groupPollsLoading, setGroupPollsLoading] = useState(false);
-  const [pendingInviteOpen, setPendingInviteOpen] = useState(false);
-  const [selectedInvite, setSelectedInvite] = useState(null);
-  const inviterEmails = useMemo(
-    () =>
-      (pendingInvites || [])
-        .map((invite) => {
-          const meta = invite.pendingInviteMeta?.[user?.email?.toLowerCase() || ""] || {};
-          return meta.invitedByEmail || invite.creatorEmail || null;
-        })
-        .filter(Boolean),
-    [pendingInvites, user?.email]
-  );
-  const { enrichUsers } = useUserProfiles(inviterEmails);
-  const inviterMap = useMemo(() => {
-    const map = new Map();
-    const enriched = enrichUsers(inviterEmails);
-    enriched.forEach((entry) => {
-      if (entry?.email) {
-        map.set(entry.email.toLowerCase(), entry);
-      }
-    });
-    return map;
-  }, [enrichUsers, inviterEmails]);
+  const {
+    data: groupSchedulers,
+    loading: groupPollsLoading,
+    error: groupPollsError,
+  } = useSchedulersByGroupIds(groupIds);
+  const [pendingInviteHandledIds, setPendingInviteHandledIds] = useState(() => new Set());
+  const [pendingInviteBusy, setPendingInviteBusy] = useState({});
 
   // Detect mobile viewport
   useEffect(() => {
@@ -115,70 +54,12 @@ export default function DashboardPage() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  useEffect(() => {
-    if (!groupIds.length) {
-      setGroupSchedulers([]);
-      setGroupPollsLoading(false);
-      return undefined;
-    }
+  if (groupPollsError) {
+    console.error("Failed to load questing group polls:", groupPollsError);
+  }
 
-    const chunks = chunkArray(groupIds, 10);
-    const byChunk = new Map();
-    const loadedChunks = new Set();
-    setGroupPollsLoading(true);
-
-    const unsubscribes = chunks.map((chunk, index) => {
-      const q = query(
-        collection(db, "schedulers"),
-        where("questingGroupId", "in", chunk)
-      );
-      return onSnapshot(
-        q,
-        (snapshot) => {
-          byChunk.set(
-            index,
-            snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-          );
-          loadedChunks.add(index);
-          const merged = Array.from(byChunk.values()).flat();
-          const deduped = new Map();
-          merged.forEach((doc) => {
-            deduped.set(doc.id, doc);
-          });
-          setGroupSchedulers(Array.from(deduped.values()));
-          if (loadedChunks.size === chunks.length) {
-            setGroupPollsLoading(false);
-          }
-        },
-        (err) => {
-          console.error("Failed to load questing group polls:", err);
-          loadedChunks.add(index);
-          if (loadedChunks.size === chunks.length) {
-            setGroupPollsLoading(false);
-          }
-        }
-      );
-    });
-
-    return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
-  }, [groupIdsKey, groupIds]);
-
-  const allParticipatingIdsQuery = useMemo(() => {
-    if (!user?.uid) return null;
-    return query(
-      collection(db, "schedulers"),
-      where("participantIds", "array-contains", user.uid)
-    );
-  }, [user?.uid]);
-
-  // Query for polls user created
-  const myQuery = useMemo(() => {
-    if (!user?.uid) return null;
-    return query(collection(db, "schedulers"), where("creatorId", "==", user.uid));
-  }, [user?.uid]);
-
-  const allParticipatingById = useFirestoreCollection(allParticipatingIdsQuery);
-  const mine = useFirestoreCollection(myQuery);
+  const allParticipatingById = useSchedulersByParticipant(user?.uid || null);
+  const mine = useSchedulersByCreator(user?.uid || null);
   const groupMembersById = useMemo(() => {
     const map = new Map();
     (groups || []).forEach((group) => {
@@ -194,9 +75,58 @@ export default function DashboardPage() {
     });
     return Array.from(deduped.values());
   }, [allParticipatingById.data, groupSchedulers]);
+  const pendingInvitesFromSchedulers = useMemo(
+    () =>
+      participatingSchedulers.filter((scheduler) => {
+        const pending = scheduler.pendingInvites || [];
+        return pending.some((email) => normalizeEmail(email) === normalizedUserEmail);
+      }),
+    [participatingSchedulers, normalizedUserEmail]
+  );
+  const effectivePendingInvites =
+    pendingInvites && pendingInvites.length > 0
+      ? pendingInvites
+      : pendingInvitesFromSchedulers;
+  const pendingInviteIdSet = useMemo(
+    () => new Set((effectivePendingInvites || []).map((invite) => invite.id)),
+    [effectivePendingInvites]
+  );
+  const inviterEmails = useMemo(
+    () =>
+      (effectivePendingInvites || [])
+        .map((invite) => {
+          const meta = invite.pendingInviteMeta?.[normalizedUserEmail || ""] || {};
+          return meta.invitedByEmail || invite.creatorEmail || null;
+        })
+        .filter(Boolean),
+    [effectivePendingInvites, normalizedUserEmail]
+  );
+  const { enrichUsers } = useUserProfiles(inviterEmails);
+  const inviterMap = useMemo(() => {
+    const map = new Map();
+    const enriched = enrichUsers(inviterEmails);
+    enriched.forEach((entry) => {
+      if (entry?.email) {
+        map.set(normalizeEmail(entry.email), entry);
+      }
+    });
+    return map;
+  }, [enrichUsers, inviterEmails]);
+  const visiblePendingInvites = useMemo(() => {
+    return (effectivePendingInvites || []).filter(
+      (invite) => !pendingInviteHandledIds.has(invite.id)
+    );
+  }, [effectivePendingInvites, pendingInviteHandledIds]);
+  const activeSchedulers = useMemo(
+    () =>
+      participatingSchedulers.filter(
+        (scheduler) => !pendingInviteIdSet.has(scheduler.id)
+      ),
+    [participatingSchedulers, pendingInviteIdSet]
+  );
   const allParticipantIds = useMemo(() => {
     const ids = new Set();
-    participatingSchedulers.forEach((scheduler) => {
+    activeSchedulers.forEach((scheduler) => {
       (scheduler.participantIds || []).forEach((id) => {
         if (id) ids.add(id);
       });
@@ -208,61 +138,15 @@ export default function DashboardPage() {
       }
     });
     return Array.from(ids);
-  }, [participatingSchedulers, groupMembersById]);
+  }, [activeSchedulers, groupMembersById]);
   const { profiles: participantProfilesById } = useUserProfilesByIds(allParticipantIds);
 
-  // Fetch slots and votes for all schedulers to get winning slots and vote counts
-  useEffect(() => {
-    if (!participatingSchedulers.length) return;
-
-    const fetchSlotsAndVotes = async () => {
-      const slotsMap = {};
-      const votesMap = {};
-      const votersMap = {};
-
-      await Promise.all(
-        participatingSchedulers.map(async (scheduler) => {
-          try {
-            // Fetch slots
-            const slotsSnap = await getDocs(
-              collection(db, "schedulers", scheduler.id, "slots")
-            );
-            const slots = slotsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-            slotsMap[scheduler.id] = slots;
-
-            // Fetch votes - store voter emails and avatars
-            const votesSnap = await getDocs(
-              collection(db, "schedulers", scheduler.id, "votes")
-            );
-            const voteDocs = votesSnap.docs.map((doc) => ({
-              id: doc.id,
-              ...doc.data(),
-            }));
-            votesMap[scheduler.id] = voteDocs;
-            votersMap[scheduler.id] = voteDocs
-              .map((voteDoc) => ({
-                id: voteDoc.id,
-                email: voteDoc.userEmail,
-                avatar: voteDoc.userAvatar,
-              }))
-              .filter((v) => v.id || v.email);
-          } catch (err) {
-            console.error(`Failed to fetch data for scheduler ${scheduler.id}:`, err);
-          }
-        })
-      );
-
-      setSlotsByScheduler(slotsMap);
-      setVotesByScheduler(votesMap);
-      setVotersByScheduler(votersMap);
-    };
-
-    fetchSlotsAndVotes();
-  }, [participatingSchedulers]);
+  const { slotsByScheduler, votesByScheduler, votersByScheduler } =
+    useSchedulerAttendance(activeSchedulers);
 
   // Enrich schedulers with slot data and voters
   const enrichedSchedulers = useMemo(() => {
-    return participatingSchedulers.map((scheduler) => {
+    return activeSchedulers.map((scheduler) => {
       const slots = slotsByScheduler[scheduler.id] || [];
       const voteDocs = votesByScheduler[scheduler.id] || [];
       const winningSlot = scheduler.winningSlotId
@@ -277,7 +161,7 @@ export default function DashboardPage() {
 
       const voters = (votersByScheduler[scheduler.id] || []).map((voter) => ({
         ...voter,
-        email: voter.email ? voter.email.toLowerCase() : voter.email,
+        email: voter.email ? normalizeEmail(voter.email) : voter.email,
       }));
       const groupMemberIds = scheduler.questingGroupId
         ? groupMembersById.get(scheduler.questingGroupId) || []
@@ -293,14 +177,14 @@ export default function DashboardPage() {
       const participantEmails = Array.from(
         new Set(
           participantProfiles
-            .map((profile) => profile.email?.toLowerCase())
+            .map((profile) => normalizeEmail(profile.email))
             .filter(Boolean)
         )
       );
       const participantEmailById = new Map(
         participantProfiles
           .filter((profile) => profile?.email)
-          .map((profile) => [profile.id, profile.email.toLowerCase()])
+          .map((profile) => [profile.id, normalizeEmail(profile.email)])
       );
       const respondedIds = voteDocs.map((voteDoc) => voteDoc.id).filter(Boolean);
       const respondedSet = new Set(respondedIds);
@@ -319,6 +203,7 @@ export default function DashboardPage() {
         ...scheduler,
         effectiveParticipants: participantEmails,
         winningSlot,
+        slots,
         firstSlot: futureSlots[0] || null,
         votedCount: voteDocs.length,
         voters,
@@ -330,7 +215,7 @@ export default function DashboardPage() {
       };
     });
   }, [
-    participatingSchedulers,
+    activeSchedulers,
     slotsByScheduler,
     votesByScheduler,
     votersByScheduler,
@@ -361,6 +246,12 @@ export default function DashboardPage() {
       if (!s.winningSlot?.start) return true; // No date = past
       return new Date(s.winningSlot.start) <= now;
     });
+  }, [enrichedSchedulers, archivedPolls]);
+
+  const cancelledSessions = useMemo(() => {
+    return enrichedSchedulers.filter(
+      (s) => s.status === "CANCELLED" && !archivedPolls.includes(s.id)
+    );
   }, [enrichedSchedulers, archivedPolls]);
 
   const archivedSessions = useMemo(() => {
@@ -446,36 +337,66 @@ export default function DashboardPage() {
     mine.loading ||
     settingsLoading ||
     pendingInvitesLoading;
-  const normalizedEmail = user?.email?.toLowerCase() || "";
-
-  const handleOpenInvite = (invite) => {
-    setSelectedInvite(invite);
-    setPendingInviteOpen(true);
+  const handleOpenInvite = (inviteId) => {
+    const target = `/scheduler/${inviteId}`;
+    navigate(target);
+    setTimeout(() => {
+      if (window.location.pathname !== target) {
+        window.location.assign(target);
+      }
+    }, 50);
   };
 
-  const handleDeclineInvite = async () => {
-    if (!selectedInvite) return;
+  const markPendingInviteHandled = (inviteId) => {
+    setPendingInviteHandledIds((prev) => {
+      const next = new Set(prev);
+      next.add(inviteId);
+      return next;
+    });
+  };
+
+  const setInviteBusy = (inviteId, isBusy) => {
+    setPendingInviteBusy((prev) => ({
+      ...prev,
+      [inviteId]: isBusy,
+    }));
+  };
+
+  const handleDeclineInvite = async (invite) => {
+    if (!invite) return;
+    setInviteBusy(invite.id, true);
     try {
-      await declineInvite(selectedInvite.id);
-      removeNotification(pollInviteNotificationId(selectedInvite.id));
+      await declineInvite(invite.id);
+      [
+        pollInviteNotificationId(invite.id, user?.email),
+        pollInviteLegacyNotificationId(invite.id),
+      ]
+        .filter(Boolean)
+        .forEach((id) => removeNotification(id));
+      markPendingInviteHandled(invite.id);
     } catch (err) {
       console.error("Failed to decline poll invite:", err);
     } finally {
-      setPendingInviteOpen(false);
-      setSelectedInvite(null);
+      setInviteBusy(invite.id, false);
     }
   };
 
-  const handleAcceptInvite = async () => {
-    if (!selectedInvite) return;
+  const handleAcceptInvite = async (invite) => {
+    if (!invite) return;
+    setInviteBusy(invite.id, true);
     try {
-      await acceptInvite(selectedInvite.id);
-      removeNotification(pollInviteNotificationId(selectedInvite.id));
-      setPendingInviteOpen(false);
-      setSelectedInvite(null);
-      window.location.assign(`/scheduler/${selectedInvite.id}`);
+      await acceptInvite(invite.id);
+      [
+        pollInviteNotificationId(invite.id, user?.email),
+        pollInviteLegacyNotificationId(invite.id),
+      ]
+        .filter(Boolean)
+        .forEach((id) => removeNotification(id));
+      markPendingInviteHandled(invite.id);
     } catch (err) {
       console.error("Failed to accept poll invite:", err);
+    } finally {
+      setInviteBusy(invite.id, false);
     }
   };
 
@@ -547,11 +468,12 @@ export default function DashboardPage() {
                       key={scheduler.id}
                       scheduler={scheduler}
                       winningSlot={scheduler.winningSlot}
+                      slots={scheduler.slots}
                       conflictsWith={conflictMap.get(scheduler.id) || []}
-                        attendanceSummary={scheduler.attendanceSummary}
-                        groupColor={
-                          scheduler.questingGroupId
-                            ? getGroupColor(scheduler.questingGroupId)
+                      attendanceSummary={scheduler.attendanceSummary}
+                      groupColor={
+                        scheduler.questingGroupId
+                          ? getGroupColor(scheduler.questingGroupId)
                             : null
                         }
                         participants={scheduler.effectiveParticipants || []}
@@ -576,6 +498,7 @@ export default function DashboardPage() {
                       key={scheduler.id}
                       scheduler={scheduler}
                       showVoteNeeded={needsVote.has(scheduler.id)}
+                      slots={scheduler.slots}
                       attendanceSummary={scheduler.attendanceSummary}
                       groupColor={
                         scheduler.questingGroupId
@@ -604,27 +527,30 @@ export default function DashboardPage() {
 
         {/* Sidebar - 1 column */}
         <div className="space-y-6">
-          {pendingInvites.length > 0 && (
+          {visiblePendingInvites.length > 0 && (
             <section className="rounded-3xl bg-white p-6 shadow-xl shadow-slate-200 dark:bg-slate-800 dark:shadow-slate-900/50">
               <SectionHeader
                 title="Pending poll invites"
                 subtitle="Session polls waiting for your response"
               />
               <div className="mt-4 space-y-2">
-                {pendingInvites.map((invite) => {
-                  const meta = invite.pendingInviteMeta?.[normalizedEmail] || {};
+                {visiblePendingInvites.map((invite) => {
+                  const meta = invite.pendingInviteMeta?.[normalizedUserEmail] || {};
                   const inviterEmail = meta.invitedByEmail || invite.creatorEmail || null;
                   const inviterProfile = inviterEmail
-                    ? inviterMap.get(inviterEmail.toLowerCase()) || { email: inviterEmail }
+                    ? inviterMap.get(normalizeEmail(inviterEmail)) || { email: inviterEmail }
                     : null;
+                  const isBusy = Boolean(pendingInviteBusy[invite.id]);
                   return (
-                    <button
+                    <div
                       key={invite.id}
-                      type="button"
-                      onClick={() => handleOpenInvite(invite)}
-                      className="flex w-full items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-xs text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                      className="flex w-full items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-xs text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200 dark:hover:bg-amber-900/40"
                     >
-                      <div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenInvite(invite.id)}
+                        className="flex flex-1 flex-col text-left"
+                      >
                         <p className="text-sm font-semibold">{invite.title || "Session Poll"}</p>
                         <p className="mt-1 text-xs text-amber-700/90 dark:text-amber-200/80">
                           Invited by{" "}
@@ -634,11 +560,33 @@ export default function DashboardPage() {
                             "Unknown"
                           )}
                         </p>
+                      </button>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-800/60 dark:text-amber-200">
+                          Review
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            aria-label="Accept invite"
+                            onClick={() => handleAcceptInvite(invite)}
+                            disabled={isBusy}
+                            className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500 text-white transition-colors hover:bg-emerald-600 disabled:opacity-50"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Decline invite"
+                            onClick={() => handleDeclineInvite(invite)}
+                            disabled={isBusy}
+                            className="flex h-7 w-7 items-center justify-center rounded-full border border-amber-200 bg-white text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-800/60 dark:text-amber-200">
-                        Review
-                      </span>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -673,6 +621,8 @@ export default function DashboardPage() {
                   <SessionCard
                     key={scheduler.id}
                     scheduler={scheduler}
+                    winningSlot={enriched?.winningSlot}
+                    slots={enriched?.slots || []}
                     groupColor={
                       scheduler.questingGroupId
                         ? getGroupColor(scheduler.questingGroupId)
@@ -693,128 +643,18 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          {/* Past Sessions */}
-          <section className="rounded-3xl bg-white p-6 shadow-xl shadow-slate-200 dark:bg-slate-800 dark:shadow-slate-900/50">
-            <SectionHeader title="Past Sessions" subtitle="Finalized and archived" />
-
-            {/* Tabs */}
-            <div className="mt-3 flex gap-2 rounded-full border border-slate-200 bg-slate-50 p-1 w-fit dark:border-slate-600 dark:bg-slate-700">
-              <TabButton
-                active={pastSessionsTab === "finalized"}
-                onClick={() => setPastSessionsTab("finalized")}
-              >
-                Finalized
-              </TabButton>
-              <TabButton
-                active={pastSessionsTab === "archived"}
-                onClick={() => setPastSessionsTab("archived")}
-              >
-                <span className="flex items-center gap-1">
-                  <Archive className="h-3 w-3" />
-                  Archived ({archivedSessions.length})
-                </span>
-              </TabButton>
-            </div>
-
-            <div className="mt-4 space-y-2">
-              {pastSessionsTab === "finalized" && (
-                <>
-                  {pastFinalized.length === 0 && (
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      No past sessions yet.
-                    </p>
-                  )}
-                  {pastFinalized.slice(0, 5).map((scheduler) => (
-                    <SessionCard
-                      key={scheduler.id}
-                      scheduler={scheduler}
-                      winningSlot={scheduler.winningSlot}
-                      groupColor={
-                        scheduler.questingGroupId
-                          ? getGroupColor(scheduler.questingGroupId)
-                          : null
-                      }
-                      attendanceSummary={scheduler.attendanceSummary}
-                      participants={scheduler.effectiveParticipants || []}
-                      voters={scheduler.voters || []}
-                      questingGroup={scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null}
-                    />
-                  ))}
-                </>
-              )}
-
-              {pastSessionsTab === "archived" && (
-                <>
-                  {archivedSessions.length === 0 && (
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      No archived polls. Archive polls from the poll page.
-                    </p>
-                  )}
-                  {archivedSessions.slice(0, 5).map((scheduler) => (
-                    <SessionCard
-                      key={scheduler.id}
-                      scheduler={scheduler}
-                      isArchived
-                      winningSlot={scheduler.winningSlot}
-                      groupColor={
-                        scheduler.questingGroupId
-                          ? getGroupColor(scheduler.questingGroupId)
-                          : null
-                      }
-                      attendanceSummary={scheduler.attendanceSummary}
-                      participants={scheduler.effectiveParticipants || []}
-                      voters={scheduler.voters || []}
-                      questingGroup={scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null}
-                    />
-                  ))}
-                </>
-              )}
-            </div>
-          </section>
+          <PastSessionsSection
+            pastSessionsTab={pastSessionsTab}
+            onTabChange={setPastSessionsTab}
+            pastFinalized={pastFinalized}
+            cancelledSessions={cancelledSessions}
+            archivedSessions={archivedSessions}
+            getGroupColor={getGroupColor}
+            groupsById={groupsById}
+          />
         </div>
       </div>
 
-      <Dialog open={pendingInviteOpen} onOpenChange={setPendingInviteOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Session poll invite</DialogTitle>
-            <DialogDescription>
-              {selectedInvite
-                ? `You've been invited to join "${selectedInvite.title || "Session Poll"}".`
-                : "Review your pending invite."}
-            </DialogDescription>
-          </DialogHeader>
-          {selectedInvite && (
-            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-700/60 dark:bg-amber-900/30 dark:text-amber-200">
-              Invited by{" "}
-              {(() => {
-                const meta = selectedInvite.pendingInviteMeta?.[normalizedEmail] || {};
-                const inviterEmail = meta.invitedByEmail || selectedInvite.creatorEmail || null;
-                if (!inviterEmail) return "Unknown";
-                const inviterProfile =
-                  inviterMap.get(inviterEmail.toLowerCase()) || { email: inviterEmail };
-                return <UserIdentity user={inviterProfile} />;
-              })()}
-            </div>
-          )}
-          <DialogFooter className="mt-6">
-            <button
-              type="button"
-              onClick={handleDeclineInvite}
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
-            >
-              Decline
-            </button>
-            <button
-              type="button"
-              onClick={handleAcceptInvite}
-              className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
-            >
-              Accept &amp; view poll
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

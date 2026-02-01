@@ -1,8 +1,16 @@
-import { collection, doc, query, where, serverTimestamp, setDoc, updateDoc, deleteDoc, arrayUnion, arrayRemove, getDocs, getDoc, deleteField } from "firebase/firestore";
+import { collection, doc, query, where, serverTimestamp, setDoc, updateDoc, deleteDoc, arrayRemove, getDocs, getDoc, getDocFromServer, waitForPendingWrites } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "../firebase";
-import { createGroupInviteNotification, createGroupMemberChangeNotification, createGroupInviteAcceptedNotification, groupInviteNotificationId, deleteNotification } from "./notifications";
 import { findUserIdByEmail } from "./users";
+import { normalizeEmail } from "../utils";
+import { buildNotificationActor, emitNotificationEvent } from "./notification-events";
+import {
+  dismissNotification,
+  dismissNotificationsByResource,
+  deleteNotification,
+  groupInviteNotificationId,
+  groupInviteLegacyNotificationId,
+} from "./notifications";
 
 // Collection references
 export const questingGroupsRef = () => collection(db, "questingGroups");
@@ -46,7 +54,10 @@ export function getDefaultGroupColor(index) {
 export async function createQuestingGroup({ name, creatorId, creatorEmail, memberManaged = false }) {
   const groupId = crypto.randomUUID();
   const ref = questingGroupRef(groupId);
-  const normalizedEmail = creatorEmail.toLowerCase();
+  const normalizedEmail = normalizeEmail(creatorEmail);
+  if (!normalizedEmail) {
+    throw new Error("Missing creator email.");
+  }
 
   await setDoc(ref, {
     name,
@@ -80,7 +91,10 @@ export async function inviteMemberToGroup(
   inviteeUserId = null,
   inviterUserId = null
 ) {
-  const normalizedInvitee = inviteeEmail.toLowerCase();
+  const normalizedInvitee = normalizeEmail(inviteeEmail);
+  if (!normalizedInvitee) {
+    throw new Error("Missing invitee email.");
+  }
   const functions = getFunctions();
   const sendGroupInvite = httpsCallable(functions, "sendGroupInvite");
   const response = await sendGroupInvite({
@@ -90,7 +104,7 @@ export async function inviteMemberToGroup(
   const result = response.data || {};
   if (!result.added) {
     if (result.reason === "blocked") {
-      throw new Error("This user is not accepting new invites from you.");
+      return { suppressed: true };
     }
     if (result.reason === "member" || result.reason === "pending") {
       throw new Error("This person is already a member or has a pending invite.");
@@ -98,29 +112,16 @@ export async function inviteMemberToGroup(
     throw new Error("Unable to send group invite.");
   }
 
-  const resolvedUserId = result.inviteeUserId || inviteeUserId || null;
-
-  // Create in-app notification if we have the user ID
-  if (resolvedUserId) {
-    try {
-      await createGroupInviteNotification(resolvedUserId, {
-        groupId,
-        groupName,
-        inviterEmail,
-        inviterUserId,
-      });
-    } catch (err) {
-      console.warn("Failed to create group invite notification:", err);
-    }
-  }
-
-  // Email will be sent via the mail collection (handled by caller)
 }
 
 // Accept group invitation
 export async function acceptGroupInvitation(groupId, userEmail, userId = null) {
   const ref = questingGroupRef(groupId);
-  const normalizedEmail = userEmail.toLowerCase();
+  const normalizedEmail = normalizeEmail(userEmail);
+  if (!normalizedEmail) {
+    throw new Error("Missing email for group invitation.");
+  }
+  const resolvedUserId = userId || (await findUserIdByEmail(normalizedEmail));
   const snap = await getDoc(ref);
   if (!snap.exists()) {
     throw new Error("Questing group not found.");
@@ -133,40 +134,163 @@ export async function acceptGroupInvitation(groupId, userEmail, userId = null) {
     inviterUserId = await findUserIdByEmail(inviterEmail);
   }
 
-  await updateDoc(ref, {
-    ...(userId ? { memberIds: arrayUnion(userId) } : {}),
-    pendingInvites: arrayRemove(normalizedEmail),
-    [`pendingInviteMeta.${normalizedEmail}`]: deleteField(),
-    updatedAt: serverTimestamp(),
+  const memberIds = Array.isArray(data.memberIds) ? data.memberIds : [];
+  const nextMemberIds = resolvedUserId
+    ? Array.from(new Set([...memberIds, resolvedUserId]))
+    : memberIds;
+  const currentPendingInvites = Array.isArray(data.pendingInvites) ? data.pendingInvites : [];
+  const nextPendingInvites = currentPendingInvites.filter(
+    (email) => normalizeEmail(email) !== normalizedEmail
+  );
+  const currentInviteMeta = data.pendingInviteMeta && typeof data.pendingInviteMeta === "object"
+    ? { ...data.pendingInviteMeta }
+    : {};
+  Object.keys(currentInviteMeta).forEach((key) => {
+    if (normalizeEmail(key) === normalizedEmail) {
+      delete currentInviteMeta[key];
+    }
   });
 
-  if (userId) {
-    await deleteNotification(userId, groupInviteNotificationId(groupId));
+  await updateDoc(ref, {
+    ...(resolvedUserId ? { memberIds: nextMemberIds } : {}),
+    pendingInvites: nextPendingInvites,
+    pendingInviteMeta: currentInviteMeta,
+    updatedAt: serverTimestamp(),
+  });
+  await waitForPendingWrites(db);
+  try {
+    const verifyAcceptSnap = await getDocFromServer(ref);
+    if (verifyAcceptSnap?.exists?.()) {
+      const verifyData = verifyAcceptSnap.data() || {};
+      const verifyPending = Array.isArray(verifyData.pendingInvites)
+        ? verifyData.pendingInvites.map((email) => normalizeEmail(email))
+        : [];
+      if (verifyPending.includes(normalizedEmail)) {
+        throw new Error("Failed to accept group invite. Please try again.");
+      }
+    }
+  } catch (err) {
+    console.warn("Unable to confirm group invite acceptance:", err);
   }
 
-  if (inviterUserId) {
-    await createGroupInviteAcceptedNotification(inviterUserId, {
-      groupId,
-      groupName: data.name || "Questing Group",
-      memberEmail: normalizedEmail,
-      memberUserId: userId,
+  if (resolvedUserId) {
+    await emitNotificationEvent({
+      eventType: "GROUP_INVITE_ACCEPTED",
+      resource: { type: "group", id: groupId, title: data.name || "Questing Group" },
+      actor: buildNotificationActor({ uid: resolvedUserId, email: normalizedEmail }),
+      payload: {
+        groupId,
+        groupName: data.name || "Questing Group",
+        memberEmail: normalizedEmail,
+        memberUserId: resolvedUserId,
+      },
+      recipients: {
+        userIds: inviterUserId ? [inviterUserId] : [],
+        emails: [],
+      },
     });
+  }
+
+  if (resolvedUserId) {
+    try {
+      const ids = [
+        groupInviteNotificationId(groupId, normalizedEmail),
+        groupInviteLegacyNotificationId(groupId),
+      ].filter(Boolean);
+      await Promise.allSettled(ids.map((id) => dismissNotification(resolvedUserId, id)));
+      await dismissNotificationsByResource(resolvedUserId, groupId, [
+        "GROUP_INVITE_SENT",
+        "GROUP_INVITE",
+      ]);
+      await Promise.allSettled(ids.map((id) => deleteNotification(resolvedUserId, id)));
+      await waitForPendingWrites(db);
+    } catch (err) {
+      console.warn("Failed to dismiss group invite notification:", err);
+    }
   }
 }
 
 // Decline group invitation
 export async function declineGroupInvitation(groupId, userEmail, userId = null) {
   const ref = questingGroupRef(groupId);
-  const normalizedEmail = userEmail.toLowerCase();
-
-  await updateDoc(ref, {
-    pendingInvites: arrayRemove(normalizedEmail),
-    [`pendingInviteMeta.${normalizedEmail}`]: deleteField(),
-    updatedAt: serverTimestamp(),
+  const normalizedEmail = normalizeEmail(userEmail);
+  if (!normalizedEmail) {
+    throw new Error("Missing email for group invitation.");
+  }
+  const resolvedUserId = userId || (await findUserIdByEmail(normalizedEmail));
+  const snap = await getDoc(ref);
+  if (!snap.exists()) {
+    throw new Error("Questing group not found.");
+  }
+  const data = snap.data() || {};
+  const currentPendingInvites = Array.isArray(data.pendingInvites) ? data.pendingInvites : [];
+  const nextPendingInvites = currentPendingInvites.filter(
+    (email) => normalizeEmail(email) !== normalizedEmail
+  );
+  const currentInviteMeta = data.pendingInviteMeta && typeof data.pendingInviteMeta === "object"
+    ? { ...data.pendingInviteMeta }
+    : {};
+  Object.keys(currentInviteMeta).forEach((key) => {
+    if (normalizeEmail(key) === normalizedEmail) {
+      delete currentInviteMeta[key];
+    }
   });
 
-  if (userId) {
-    await deleteNotification(userId, groupInviteNotificationId(groupId));
+  await updateDoc(ref, {
+    memberIds: Array.isArray(data.memberIds) ? data.memberIds : [],
+    pendingInvites: nextPendingInvites,
+    pendingInviteMeta: currentInviteMeta,
+    updatedAt: serverTimestamp(),
+  });
+  await waitForPendingWrites(db);
+  try {
+    const verifyDeclineSnap = await getDocFromServer(ref);
+    if (verifyDeclineSnap?.exists?.()) {
+      const verifyData = verifyDeclineSnap.data() || {};
+      const verifyPending = Array.isArray(verifyData.pendingInvites)
+        ? verifyData.pendingInvites.map((email) => normalizeEmail(email))
+        : [];
+      if (verifyPending.includes(normalizedEmail)) {
+        throw new Error("Failed to decline group invite. Please try again.");
+      }
+    }
+  } catch (err) {
+    console.warn("Unable to confirm group invite decline:", err);
+  }
+
+  if (resolvedUserId) {
+    await emitNotificationEvent({
+      eventType: "GROUP_INVITE_DECLINED",
+      resource: { type: "group", id: groupId, title: "Questing Group" },
+      actor: buildNotificationActor({ uid: resolvedUserId, email: normalizedEmail }),
+      payload: {
+        groupId,
+        memberEmail: normalizedEmail,
+        memberUserId: resolvedUserId,
+      },
+      recipients: {
+        userIds: [],
+        emails: [],
+      },
+    });
+  }
+
+  if (resolvedUserId) {
+    try {
+      const ids = [
+        groupInviteNotificationId(groupId, normalizedEmail),
+        groupInviteLegacyNotificationId(groupId),
+      ].filter(Boolean);
+      await Promise.allSettled(ids.map((id) => dismissNotification(resolvedUserId, id)));
+      await dismissNotificationsByResource(resolvedUserId, groupId, [
+        "GROUP_INVITE_SENT",
+        "GROUP_INVITE",
+      ]);
+      await Promise.allSettled(ids.map((id) => deleteNotification(resolvedUserId, id)));
+      await waitForPendingWrites(db);
+    } catch (err) {
+      console.warn("Failed to dismiss group invite notification:", err);
+    }
   }
 }
 
@@ -175,25 +299,43 @@ export async function revokeGroupInvite(groupId, inviteeEmail) {
   const revokeInvite = httpsCallable(functions, "revokeGroupInvite");
   await revokeInvite({
     groupId,
-    inviteeEmail: inviteeEmail.toLowerCase(),
+    inviteeEmail: normalizeEmail(inviteeEmail),
   });
 }
 
 // Remove a member from the group
-export async function removeMemberFromGroup(groupId, groupName, memberEmail, memberUserId = null) {
+export async function removeMemberFromGroup(
+  groupId,
+  groupName,
+  memberEmail,
+  memberUserId = null,
+  actor = null
+) {
   const ref = questingGroupRef(groupId);
+  const normalizedMemberEmail = normalizeEmail(memberEmail) || memberEmail || null;
+  const resolvedMemberId =
+    memberUserId || (normalizedMemberEmail ? await findUserIdByEmail(normalizedMemberEmail) : null);
 
   await updateDoc(ref, {
-    ...(memberUserId ? { memberIds: arrayRemove(memberUserId) } : {}),
+    ...(resolvedMemberId ? { memberIds: arrayRemove(resolvedMemberId) } : {}),
     updatedAt: serverTimestamp(),
   });
 
-  // Create notification for removed member
-  if (memberUserId) {
-    await createGroupMemberChangeNotification(memberUserId, {
-      groupId,
-      groupName,
-      action: "removed",
+  if (resolvedMemberId && actor?.uid) {
+    await emitNotificationEvent({
+      eventType: "GROUP_MEMBER_REMOVED",
+      resource: { type: "group", id: groupId, title: groupName || "Questing Group" },
+      actor: buildNotificationActor(actor),
+      payload: {
+        groupId,
+        groupName,
+        memberEmail: normalizedMemberEmail,
+        memberUserId: resolvedMemberId,
+      },
+      recipients: {
+        userIds: [resolvedMemberId],
+        emails: [],
+      },
     });
   }
 
@@ -202,13 +344,39 @@ export async function removeMemberFromGroup(groupId, groupName, memberEmail, mem
 }
 
 // Leave a group (self-removal)
-export async function leaveGroup(groupId, userEmail, userId = null) {
+export async function leaveGroup(groupId, userEmail, userId = null, actor = null) {
   const ref = questingGroupRef(groupId);
+  const normalizedEmail = normalizeEmail(userEmail) || userEmail || null;
+  let groupData = null;
+  if (userId && actor?.uid) {
+    const groupSnap = await getDoc(ref);
+    if (groupSnap.exists()) {
+      groupData = groupSnap.data() || null;
+    }
+  }
 
   await updateDoc(ref, {
     ...(userId ? { memberIds: arrayRemove(userId) } : {}),
     updatedAt: serverTimestamp(),
   });
+
+  if (groupData?.creatorId && groupData.creatorId !== userId && actor?.uid) {
+    await emitNotificationEvent({
+      eventType: "GROUP_MEMBER_LEFT",
+      resource: { type: "group", id: groupId, title: groupData.name || "Questing Group" },
+      actor: buildNotificationActor(actor),
+      payload: {
+        groupId,
+        groupName: groupData.name || "Questing Group",
+        memberEmail: normalizedEmail,
+        memberUserId: userId,
+      },
+      recipients: {
+        userIds: [groupData.creatorId],
+        emails: [],
+      },
+    });
+  }
 }
 
 // Delete a group
@@ -234,6 +402,6 @@ export async function removeMemberFromGroupPolls(groupId, memberEmail) {
   const cleanupPolls = httpsCallable(functions, "removeGroupMemberFromPolls");
   await cleanupPolls({
     groupId,
-    memberEmail: memberEmail.toLowerCase(),
+    memberEmail: normalizeEmail(memberEmail),
   });
 }

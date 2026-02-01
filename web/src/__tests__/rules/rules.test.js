@@ -73,6 +73,11 @@ describe('Firestore rules', () => {
       email_verified: false,
       firebase: { sign_in_provider: 'password' },
     });
+    const discordUser = testEnv.authenticatedContext('dora', {
+      email: 'dora@example.com',
+      email_verified: false,
+      firebase: { sign_in_provider: 'custom' },
+    });
     const verified = testEnv.authenticatedContext('vera', {
       email: 'vera@example.com',
       email_verified: true,
@@ -91,6 +96,84 @@ describe('Firestore rules', () => {
         creatorId: 'vera',
         memberIds: ['vera'],
         memberManaged: false,
+      })
+    );
+
+    await assertSucceeds(
+      setDoc(doc(discordUser.firestore(), 'questingGroups', 'group3'), {
+        creatorId: 'dora',
+        memberIds: ['dora'],
+        memberManaged: false,
+      })
+    );
+  });
+
+  test('questingGroups: invitee can accept or decline pending invite', async () => {
+    const invitee = testEnv.authenticatedContext('invitee', {
+      email: 'invitee@example.com',
+      email_verified: true,
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'questingGroups', 'group-accept'), {
+        name: 'Group Accept',
+        creatorId: 'creator1',
+        creatorEmail: 'creator@example.com',
+        memberManaged: false,
+        memberIds: ['creator1'],
+        pendingInvites: ['invitee@example.com'],
+        pendingInviteMeta: {
+          'invitee@example.com': { invitedByEmail: 'creator@example.com' },
+        },
+      });
+      await setDoc(doc(context.firestore(), 'questingGroups', 'group-decline'), {
+        name: 'Group Decline',
+        creatorId: 'creator1',
+        creatorEmail: 'creator@example.com',
+        memberManaged: false,
+        memberIds: ['creator1'],
+        pendingInvites: ['invitee@example.com'],
+        pendingInviteMeta: {
+          'invitee@example.com': { invitedByEmail: 'creator@example.com' },
+        },
+      });
+    });
+
+    await assertSucceeds(
+      updateDoc(doc(invitee.firestore(), 'questingGroups', 'group-accept'), {
+        memberIds: ['creator1', 'invitee'],
+        pendingInvites: [],
+        pendingInviteMeta: {},
+        updatedAt: new Date(),
+      })
+    );
+
+    await assertSucceeds(
+      updateDoc(doc(invitee.firestore(), 'questingGroups', 'group-decline'), {
+        memberIds: ['creator1'],
+        pendingInvites: [],
+        pendingInviteMeta: {},
+        updatedAt: new Date(),
+      })
+    );
+  });
+
+  test('schedulers: custom provider can create with unverified email', async () => {
+    const discordUser = testEnv.authenticatedContext('dora', {
+      email: 'dora@example.com',
+      email_verified: false,
+      firebase: { sign_in_provider: 'custom' },
+    });
+
+    await assertSucceeds(
+      setDoc(doc(discordUser.firestore(), 'schedulers', 'sched1'), {
+        title: 'Test Poll',
+        creatorId: 'dora',
+        creatorEmail: 'dora@example.com',
+        status: 'OPEN',
+        participantIds: [],
+        pendingInvites: [],
+        allowLinkSharing: false,
       })
     );
   });
@@ -113,6 +196,106 @@ describe('Firestore rules', () => {
     await assertFails(getDoc(doc(anon.firestore(), 'schedulers', 'sched1')));
   });
 
+  test('schedulers: invitee can decline and remove pending invite + participantId', async () => {
+    const invitee = testEnv.authenticatedContext('invitee', {
+      email: 'invitee@example.com',
+      email_verified: true,
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'schedulers', 'sched-invitee'), {
+        title: 'Invitee Poll',
+        creatorId: 'creator1',
+        creatorEmail: 'creator@example.com',
+        status: 'OPEN',
+        participantIds: ['invitee'],
+        pendingInvites: ['invitee@example.com'],
+        pendingInviteMeta: {
+          'invitee@example.com': { invitedByEmail: 'creator@example.com' },
+        },
+        allowLinkSharing: false,
+      });
+    });
+
+    await assertSucceeds(
+      updateDoc(doc(invitee.firestore(), 'schedulers', 'sched-invitee'), {
+        participantIds: [],
+        pendingInvites: [],
+        pendingInviteMeta: {},
+        updatedAt: new Date(),
+      })
+    );
+  });
+
+  test('schedulers: invitee can accept when already a participant', async () => {
+    const invitee = testEnv.authenticatedContext('invitee', {
+      email: 'invitee@example.com',
+      email_verified: true,
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'schedulers', 'sched-accept'), {
+        title: 'Invitee Poll',
+        creatorId: 'creator1',
+        creatorEmail: 'creator@example.com',
+        status: 'OPEN',
+        participantIds: ['invitee'],
+        pendingInvites: ['invitee@example.com'],
+        pendingInviteMeta: {
+          'invitee@example.com': { invitedByEmail: 'creator@example.com' },
+        },
+        allowLinkSharing: false,
+      });
+    });
+
+    await assertSucceeds(
+      updateDoc(doc(invitee.firestore(), 'schedulers', 'sched-accept'), {
+        pendingInvites: [],
+        pendingInviteMeta: {},
+        updatedAt: new Date(),
+      })
+    );
+  });
+
+  test('friendRequests: invitee can accept or decline pending request', async () => {
+    const invitee = testEnv.authenticatedContext('invitee', {
+      email: 'invitee@example.com',
+      email_verified: true,
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'friendRequests', 'request-accept'), {
+        fromEmail: 'sender@example.com',
+        fromUserId: 'sender1',
+        toEmail: 'invitee@example.com',
+        toUserId: null,
+        status: 'pending',
+      });
+      await setDoc(doc(context.firestore(), 'friendRequests', 'request-decline'), {
+        fromEmail: 'sender@example.com',
+        fromUserId: null,
+        toEmail: 'invitee@example.com',
+        toUserId: null,
+        status: 'pending',
+      });
+    });
+
+    await assertSucceeds(
+      updateDoc(doc(invitee.firestore(), 'friendRequests', 'request-accept'), {
+        status: 'accepted',
+        respondedAt: new Date(),
+        toUserId: 'invitee',
+      })
+    );
+
+    await assertSucceeds(
+      updateDoc(doc(invitee.firestore(), 'friendRequests', 'request-decline'), {
+        status: 'declined',
+        respondedAt: new Date(),
+      })
+    );
+  });
+
   test('notifications: create requires allowed type + unread flags', async () => {
     const alice = testEnv.authenticatedContext('alice', {
       email: 'alice@example.com',
@@ -132,6 +315,71 @@ describe('Firestore rules', () => {
         type: 'FRIEND_REQUEST',
         read: true,
         dismissed: false,
+      })
+    );
+  });
+
+  test('notificationEvents and pendingNotifications are server-only', async () => {
+    const alice = testEnv.authenticatedContext('alice', {
+      email: 'alice@example.com',
+      email_verified: true,
+    });
+
+    await assertFails(
+      setDoc(doc(alice.firestore(), 'notificationEvents', 'event1'), {
+        eventType: 'POLL_INVITE_SENT',
+      })
+    );
+
+    await assertFails(getDoc(doc(alice.firestore(), 'notificationEvents', 'event1')));
+
+    await assertFails(
+      setDoc(doc(alice.firestore(), 'pendingNotifications', 'hash1', 'events', 'event1'), {
+        eventType: 'POLL_INVITE_SENT',
+      })
+    );
+
+    await assertFails(
+      getDoc(doc(alice.firestore(), 'pendingNotifications', 'hash1', 'events', 'event1'))
+    );
+  });
+
+  test('feedbackSubmissions: create allowed for owner, read/update denied', async () => {
+    const alice = testEnv.authenticatedContext('alice', {
+      email: 'alice@example.com',
+      email_verified: true,
+    });
+    const bob = testEnv.authenticatedContext('bob', {
+      email: 'bob@example.com',
+      email_verified: true,
+    });
+
+    await assertSucceeds(
+      setDoc(doc(alice.firestore(), 'feedbackSubmissions', 'fb1'), {
+        userId: 'alice',
+        userEmail: 'alice@example.com',
+        title: 'Bug in calendar sync',
+        issueType: 'Bug',
+        description: 'Steps to reproduce.',
+        createdAt: new Date(),
+      })
+    );
+
+    await assertFails(getDoc(doc(alice.firestore(), 'feedbackSubmissions', 'fb1')));
+    await assertFails(
+      updateDoc(doc(alice.firestore(), 'feedbackSubmissions', 'fb1'), {
+        description: 'Updated details.',
+      })
+    );
+
+    await assertFails(
+      setDoc(doc(bob.firestore(), 'feedbackSubmissions', 'fb2'), {
+        userId: 'alice',
+        userEmail: 'bob@example.com',
+        title: 'Not allowed',
+        issueType: 'Other',
+        description: 'Should fail.',
+        createdAt: new Date(),
       })
     );
   });
@@ -180,6 +428,60 @@ describe('Storage rules', () => {
         ref(aliceStorage, 'profiles/alice/bad-type.gif'),
         new Uint8Array([1, 2, 3]),
         { contentType: 'image/gif' }
+      )
+    );
+  });
+
+  test('feedback uploads enforce owner, size, and content type', async () => {
+    const alice = testEnv.authenticatedContext('alice', {
+      email: 'alice@example.com',
+      email_verified: true,
+    });
+    const bob = testEnv.authenticatedContext('bob', {
+      email: 'bob@example.com',
+      email_verified: true,
+    });
+
+    const aliceStorage = alice.storage();
+    const bobStorage = bob.storage();
+
+    await assertSucceeds(
+      uploadBytes(
+        ref(aliceStorage, 'feedback/alice/screenshot.png'),
+        new Uint8Array([1, 2, 3]),
+        { contentType: 'image/png' }
+      )
+    );
+
+    await assertSucceeds(
+      uploadBytes(
+        ref(aliceStorage, 'feedback/alice/clip.mp4'),
+        new Uint8Array([1, 2, 3]),
+        { contentType: 'video/mp4' }
+      )
+    );
+
+    await assertFails(
+      uploadBytes(
+        ref(bobStorage, 'feedback/alice/other.png'),
+        new Uint8Array([1, 2, 3]),
+        { contentType: 'image/png' }
+      )
+    );
+
+    await assertFails(
+      uploadBytes(
+        ref(aliceStorage, 'feedback/alice/too-large.mp4'),
+        new Uint8Array(20 * 1024 * 1024 + 1),
+        { contentType: 'video/mp4' }
+      )
+    );
+
+    await assertFails(
+      uploadBytes(
+        ref(aliceStorage, 'feedback/alice/bad-type.txt'),
+        new Uint8Array([1, 2, 3]),
+        { contentType: 'text/plain' }
       )
     );
   });

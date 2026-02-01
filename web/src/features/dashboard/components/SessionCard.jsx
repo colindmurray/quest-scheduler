@@ -1,10 +1,11 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { format, formatDistanceToNow } from "date-fns";
-import { Calendar, AlertCircle, AlertTriangle, ExternalLink, Users } from "lucide-react";
-import { AvatarStack } from "../../../components/ui/voter-avatars";
+import { AlertCircle, AlertTriangle, ExternalLink } from "lucide-react";
+import { AvatarStack, VotingAvatarStack } from "../../../components/ui/voter-avatars";
 import { buildColorMap } from "../../../components/ui/voter-avatar-utils";
 import { useUserProfiles } from "../../../hooks/useUserProfiles";
+import { normalizeEmail } from "../../../lib/utils";
+import { PollStatusMeta } from "../../../components/poll-status-meta";
 
 export function SessionCard({
   scheduler,
@@ -12,6 +13,7 @@ export function SessionCard({
   groupColor = null,
   showVoteNeeded = false,
   winningSlot = null,
+  slots = [],
   participants = [],
   voters = [],
   attendanceSummary = null,
@@ -20,7 +22,7 @@ export function SessionCard({
 }) {
   const navigate = useNavigate();
   const participantEmails = participants.map((p) => (typeof p === "string" ? p : p.email));
-  const voterEmails = voters.map((v) => v.email?.toLowerCase()).filter(Boolean);
+  const voterEmails = voters.map((v) => normalizeEmail(v.email)).filter(Boolean);
   const colorMap = buildColorMap(participantEmails);
   const { enrichUsers } = useUserProfiles(participantEmails);
   const participantUsers = enrichUsers(participantEmails);
@@ -39,31 +41,29 @@ export function SessionCard({
   // Calculate who has voted and who hasn't
   const voterEmailSet = new Set(voterEmails);
   const pendingVoters = participantUsers.filter(
-    (p) => !voterEmailSet.has(p.email?.toLowerCase())
+    (p) => !voterEmailSet.has(normalizeEmail(p.email))
   );
 
   // Determine guests (participants not in questing group)
   const groupMemberSet = new Set(
-    (questingGroup?.members || []).map((m) => m.toLowerCase())
+    (questingGroup?.members || []).map((email) => normalizeEmail(email)).filter(Boolean)
   );
   const guestCount = participantEmails.filter(
-    (email) => !groupMemberSet.has(email.toLowerCase())
+    (email) => !groupMemberSet.has(normalizeEmail(email))
   ).length;
 
   const totalParticipants = participantUsers.length;
-
-  // Determine the time display
-  let timeDisplay = null;
-  let relativeTime = null;
-
-  if (winningSlot?.start) {
-    const slotDate = new Date(winningSlot.start);
-    timeDisplay = format(slotDate, "MMM d, yyyy · h:mm a");
-    if (slotDate > new Date()) {
-      relativeTime = formatDistanceToNow(slotDate, { addSuffix: true });
-    }
-  }
-
+  const hasParticipants = totalParticipants > 0;
+  const allVotesIn = scheduler.status === "OPEN" && hasParticipants && pendingVoters.length === 0;
+  const isCancelled =
+    scheduler?.status === "CANCELLED" ||
+    scheduler?.calendarSync?.state === "CANCELLED" ||
+    Boolean(
+      scheduler?.cancelledAt ||
+        scheduler?.calendarSync?.cancelled?.at ||
+        scheduler?.calendarSync?.cancelledAt ||
+        scheduler?.cancelled?.at
+    );
   const handleOpen = () => {
     const target = `/scheduler/${scheduler.id}`;
     navigate(target);
@@ -106,27 +106,18 @@ export function SessionCard({
                   Conflict
                 </span>
               )}
-              {isArchived && (
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                  Archived
-                </span>
-              )}
             </div>
 
-            {/* Date/time for finalized sessions */}
-            {timeDisplay && (
-              <div className="mt-1 flex items-center gap-2">
-                <Calendar className="h-3 w-3 text-emerald-500" />
-                <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                  {timeDisplay}
-                </span>
-                {relativeTime && (
-                  <span className="text-xs text-emerald-600 dark:text-emerald-400">
-                    {relativeTime}
-                  </span>
-                )}
-              </div>
-            )}
+            <PollStatusMeta
+              scheduler={scheduler}
+              winningSlot={winningSlot}
+              slots={slots}
+              allVotesIn={allVotesIn}
+              isArchived={isArchived}
+              questingGroupName={questingGroup?.name || null}
+              questingGroupColor={groupColor}
+              guestCount={guestCount}
+            />
           </div>
 
           {/* Google Calendar indicator */}
@@ -134,35 +125,6 @@ export function SessionCard({
             <div className="flex-shrink-0" title="Synced to Google Calendar">
               <ExternalLink className="h-4 w-4 text-slate-400 dark:text-slate-500" />
             </div>
-          )}
-        </div>
-
-        {/* Status and Group Row */}
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          {/* Status badge */}
-          {scheduler.status === "OPEN" && (
-            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
-              Open
-            </span>
-          )}
-          {scheduler.status === "FINALIZED" && (
-            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
-              Finalized
-            </span>
-          )}
-
-          {/* Questing Group chip */}
-          {questingGroup && (
-            <span
-              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
-              style={{ backgroundColor: groupColor || "#6366f1" }}
-            >
-              <Users className="h-3 w-3" />
-              {questingGroup.name}
-              {guestCount > 0 && (
-                <span className="opacity-80">+ {guestCount} guest{guestCount !== 1 ? "s" : ""}</span>
-              )}
-            </span>
           )}
         </div>
 
@@ -181,19 +143,14 @@ export function SessionCard({
             </div>
 
             {/* Pending votes section - only show for open polls */}
-            {scheduler.status === "OPEN" && (
+            {scheduler.status === "OPEN" && hasParticipants && (
               <div className="flex items-center gap-1.5">
                 {pendingVoters.length > 0 ? (
                   <>
                     <span className="font-medium text-amber-600 dark:text-amber-400">
                       {pendingVoters.length}/{totalParticipants} pending:
                     </span>
-                    <AvatarStack
-                      users={pendingVoters}
-                      max={10}
-                      size={18}
-                      colorMap={colorMap}
-                    />
+                    <VotingAvatarStack users={pendingVoters} size={18} colorMap={colorMap} />
                   </>
                 ) : (
                   <span className="text-emerald-600 dark:text-emerald-400">All voted!</span>
@@ -209,7 +166,7 @@ export function SessionCard({
               <span className="font-semibold text-emerald-600 dark:text-emerald-300">
                 Confirmed
               </span>
-              <AvatarStack users={confirmedUsers} max={4} size={16} colorMap={colorMap} />
+              <VotingAvatarStack users={confirmedUsers} size={16} colorMap={colorMap} />
               <span className="text-slate-400 dark:text-slate-500">
                 {confirmedUsers.length}
               </span>
@@ -218,7 +175,7 @@ export function SessionCard({
               <span className="font-semibold text-rose-600 dark:text-rose-300">
                 Unavailable
               </span>
-              <AvatarStack users={unavailableUsers} max={4} size={16} colorMap={colorMap} />
+              <VotingAvatarStack users={unavailableUsers} size={16} colorMap={colorMap} />
               <span className="text-slate-400 dark:text-slate-500">
                 {unavailableUsers.length}
               </span>
@@ -227,7 +184,7 @@ export function SessionCard({
               <span className="font-semibold text-slate-500 dark:text-slate-300">
                 Unresponded
               </span>
-              <AvatarStack users={unrespondedUsers} max={4} size={16} colorMap={colorMap} />
+              <VotingAvatarStack users={unrespondedUsers} size={16} colorMap={colorMap} />
               <span className="text-slate-400 dark:text-slate-500">
                 {unrespondedUsers.length}
               </span>

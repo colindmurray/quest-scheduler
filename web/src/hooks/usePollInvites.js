@@ -6,12 +6,13 @@ import {
   declinePollInvite,
   pollPendingInvitesQuery,
 } from "../lib/data/pollInvites";
+import { normalizeEmail } from "../lib/utils";
 
 export function usePollInvites() {
   const { user } = useAuth();
   const userId = user?.uid || null;
   const userEmail = user?.email || null;
-  const userEmailLower = userEmail ? userEmail.toLowerCase() : null;
+  const userEmailLower = normalizeEmail(userEmail) || null;
 
   const pendingRef = useMemo(() => {
     if (!userEmailLower) return null;

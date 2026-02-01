@@ -25,6 +25,9 @@ const firestoreNamespace = {
 
 describe('discord oauth functions', () => {
   beforeAll(async () => {
+    const discordClientId = process.env.DISCORD_CLIENT_ID || 'test-client-id';
+    const discordClientSecret =
+      process.env.DISCORD_CLIENT_SECRET || 'test-client-secret';
     const adminModule = await import('firebase-admin');
     const admin = adminModule.default || adminModule;
     vi.spyOn(admin, 'initializeApp').mockImplementation(() => ({}));
@@ -36,8 +39,10 @@ describe('discord oauth functions', () => {
     const configModule = await import('./config');
     const config = configModule.default || configModule;
     config.DISCORD_REGION = 'us-central1';
-    vi.spyOn(config.DISCORD_CLIENT_ID, 'value').mockReturnValue('client-id');
-    vi.spyOn(config.DISCORD_CLIENT_SECRET, 'value').mockReturnValue('client-secret');
+    vi.spyOn(config.DISCORD_CLIENT_ID, 'value').mockReturnValue(discordClientId);
+    vi.spyOn(config.DISCORD_CLIENT_SECRET, 'value').mockReturnValue(
+      discordClientSecret
+    );
     config.APP_URL = 'https://app.example.com';
 
     oauth = await import('./oauth');

@@ -7,11 +7,14 @@ service cloud.firestore {
 
     function isEmailVerified() {
       return request.auth.token.email_verified == true
-        || request.auth.token.firebase.sign_in_provider == 'google.com';
+        || request.auth.token.firebase.sign_in_provider == 'google.com'
+        || request.auth.token.firebase.sign_in_provider == 'custom';
     }
 
     function userEmail() {
-      return request.auth.token.email;
+      return request.auth.token.email != null
+        ? request.auth.token.email.lower()
+        : null;
     }
 
     function isCreator(data) {
@@ -101,6 +104,24 @@ service cloud.firestore {
         allow read: if isSignedIn() && request.auth.uid == userId;
         allow write: if false;
       }
+    }
+
+    match /notificationEvents/{eventId} {
+      allow read, write: if false;
+    }
+
+    match /pendingNotifications/{emailHash}/events/{eventId} {
+      allow read, write: if false;
+    }
+
+    match /feedbackSubmissions/{submissionId} {
+      allow read, update, delete: if false;
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.issueType is string
+        && request.resource.data.description is string
+        && request.resource.data.userEmail == request.auth.token.email;
     }
 
     match /usersPublic/{userId} {
@@ -248,11 +269,22 @@ service cloud.firestore {
           && data.pendingInvites.size() == request.resource.data.pendingInvites.size() + 1
           && !(userEmail() in request.resource.data.pendingInvites)
           && data.pendingInvites.hasAll(request.resource.data.pendingInvites)
-          && request.resource.data.participantIds.hasAll(data.participantIds)
-          && request.resource.data.participantIds.size() <= data.participantIds.size() + 1
           && (
-            request.resource.data.participantIds.size() == data.participantIds.size()
-            || request.auth.uid in request.resource.data.participantIds
+            (
+              request.resource.data.participantIds.size() == data.participantIds.size()
+              && request.resource.data.participantIds.hasAll(data.participantIds)
+            )
+            || (
+              request.resource.data.participantIds.size() == data.participantIds.size() + 1
+              && request.auth.uid in request.resource.data.participantIds
+              && request.resource.data.participantIds.hasAll(data.participantIds)
+            )
+            || (
+              request.resource.data.participantIds.size() + 1 == data.participantIds.size()
+              && request.auth.uid in data.participantIds
+              && !(request.auth.uid in request.resource.data.participantIds)
+              && data.participantIds.hasAll(request.resource.data.participantIds)
+            )
           );
       }
 
@@ -341,21 +373,21 @@ service cloud.firestore {
       allow read: if isSignedIn() && (
         resource == null ||
         request.auth.uid == resource.data.fromUserId ||
-        request.auth.token.email == resource.data.toEmail ||
-        request.auth.token.email == resource.data.fromEmail
+        userEmail() == resource.data.toEmail ||
+        userEmail() == resource.data.fromEmail
       );
 
       allow update: if isSignedIn() && (
         (
-          request.auth.token.email == resource.data.toEmail &&
+          userEmail() == resource.data.toEmail &&
           resource.data.status == "pending" &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "respondedAt", "toUserId"]) &&
           request.resource.data.status in ["accepted", "declined"]
         ) ||
         (
           (request.auth.uid == resource.data.fromUserId ||
-            request.auth.token.email == resource.data.toEmail ||
-            request.auth.token.email == resource.data.fromEmail) &&
+            userEmail() == resource.data.toEmail ||
+            userEmail() == resource.data.fromEmail) &&
           resource.data.status == "accepted" &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "respondedAt"]) &&
           request.resource.data.status == "removed"
@@ -363,8 +395,8 @@ service cloud.firestore {
       );
 
       allow delete: if isSignedIn()
-        && (request.auth.token.email == resource.data.fromEmail
-          || request.auth.token.email == resource.data.toEmail)
+        && (userEmail() == resource.data.fromEmail
+          || userEmail() == resource.data.toEmail)
         && resource.data.status in ["accepted", "removed"];
     }
 

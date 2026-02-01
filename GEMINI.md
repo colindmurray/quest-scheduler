@@ -2,6 +2,19 @@
 
 **Quest Scheduler** is a Firebase-backed scheduling application designed to streamline coordinating tabletop game sessions. It features slot-based voting (Feasible/Preferred), Google Calendar integration, and real-time updates.
 
+## Research & Reasoning Workflow (Expert Mode)
+- Start with repo docs: `AGENTS.md`, `docs/decisions.md`, `docs/task-list.md`, `docs/testing.md`, and feature-specific design docs under `docs/`.
+- If external research is required, prioritize official docs and primary sources first.
+- Summarize findings as actionable steps, note assumptions, and update `docs/decisions.md` if new conventions are introduced.
+- Prefer small, verifiable changes with explicit acceptance criteria and tests.
+
+## Pragmatic Delivery Priorities
+- **Ship robust features first.** This is a small project (~10 users) with limited budget; keep scope lean.
+- **Avoid YAGNI and over‑engineering.** Only add complexity when it solves a current, real need.
+- **Cost‑aware by default.** Avoid recommendations that introduce paid services, heavy infra, or ongoing ops burden.
+- **Forward‑looking, not premature scaling.** Prefer designs that can grow later without forcing it now.
+- **Actionable > informative.** Prioritize changes that unblock user actions and reduce confusion.
+
 ## Project Structure
 
 The project is organized as a monorepo with distinct frontend and backend directories:
@@ -93,3 +106,8 @@ firebase deploy --only hosting --project studio-473406021-87ead
 - **Sync:** Ensure Calendar and List views reflect the same state.
 - **Visual Distinction:** Clearly differentiate actions available to the *Creator* vs. *Participants*.
 - **Voting:** "Preferred" vote implies "Feasible".
+
+## Durable State (Long Tasks)
+- Progress + checkpoints: `docs/task-list.md`
+- Decisions + conventions: `docs/decisions.md`
+- Test setup + emulator: `docs/testing.md`

@@ -29,6 +29,7 @@ extensions/*.secret.local
 # OAuth client secrets (local only)
 client_secret*.json
 functions/credentials/
+quest-scheduler-staging-oauth.json
 
 # OS files
 .DS_Store

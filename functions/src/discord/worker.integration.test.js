@@ -1,9 +1,10 @@
 import { beforeAll, afterAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { spawn } from 'node:child_process';
+import net from 'node:net';
+import path from 'node:path';
 import admin from 'firebase-admin';
 import { InteractionType } from 'discord-api-types/v10';
 
-const hasEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
-const describeOrSkip = hasEmulator ? describe : describe.skip;
 const projectId = process.env.GCLOUD_PROJECT || 'quest-scheduler-test';
 
 if (!process.env.GCLOUD_PROJECT) {
@@ -29,6 +30,78 @@ const channelId = 'channel-1';
 
 let worker;
 let db;
+let emulatorProcess;
+let emulatorStarted = false;
+
+const EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
+const [emulatorHostname, emulatorPortRaw] = EMULATOR_HOST.split(':');
+const emulatorPort = Number(emulatorPortRaw || 8080);
+
+const canConnect = (host, port) =>
+  new Promise((resolve) => {
+    const socket = net.createConnection({ host, port });
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once('error', () => {
+      resolve(false);
+    });
+  });
+
+const waitForEmulatorReady = (proc, timeoutMs = 30000) =>
+  new Promise((resolve) => {
+    let resolved = false;
+    const timeout = setTimeout(() => {
+      if (!resolved) resolve(false);
+    }, timeoutMs);
+
+    const handleOutput = (chunk) => {
+      const text = chunk.toString();
+      if (text.includes('All emulators ready')) {
+        clearTimeout(timeout);
+        resolved = true;
+        resolve(true);
+      }
+    };
+
+    proc.stdout?.on('data', handleOutput);
+    proc.stderr?.on('data', handleOutput);
+    proc.once('exit', () => {
+      if (!resolved) {
+        clearTimeout(timeout);
+        resolve(false);
+      }
+    });
+  });
+
+const ensureFirestoreEmulator = async () => {
+  if (process.env.FIRESTORE_EMULATOR_HOST) return true;
+  if (await canConnect(emulatorHostname, emulatorPort)) {
+    process.env.FIRESTORE_EMULATOR_HOST = `${emulatorHostname}:${emulatorPort}`;
+    return true;
+  }
+
+  const cwd = path.resolve(__dirname, '../../..');
+  try {
+    emulatorProcess = spawn(
+      'firebase',
+      ['emulators:start', '--only', 'firestore', '--project', projectId],
+      { cwd, stdio: ['ignore', 'pipe', 'pipe'] }
+    );
+  } catch (err) {
+    return false;
+  }
+
+  const ready = await waitForEmulatorReady(emulatorProcess);
+  if (!ready) return false;
+  emulatorStarted = true;
+  process.env.FIRESTORE_EMULATOR_HOST = `${emulatorHostname}:${emulatorPort}`;
+  return true;
+};
+
+const emulatorReady = await ensureFirestoreEmulator();
+const describeOrSkip = emulatorReady ? describe : describe.skip;
 
 function makeSnowflake() {
   const timestamp = BigInt(Date.now()) - DISCORD_EPOCH;
@@ -88,6 +161,10 @@ describeOrSkip('discord worker integration (emulator)', () => {
   afterAll(async () => {
     await resetFirestore();
     await Promise.all(admin.apps.map((app) => app.delete()));
+    if (emulatorProcess && emulatorStarted) {
+      emulatorProcess.kill('SIGINT');
+      await new Promise((resolve) => emulatorProcess.once('exit', resolve));
+    }
   });
 
   test('vote flow writes session + votes', async () => {

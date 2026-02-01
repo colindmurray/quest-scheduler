@@ -101,6 +101,7 @@ describe('legacy google calendar flows', () => {
       auth: () => authMock,
     };
     adminMock.firestore.FieldValue = { serverTimestamp: vi.fn(() => 'server-time') };
+    adminMock.firestore.Timestamp = { fromDate: vi.fn(() => 'expires-at') };
 
     const functionsMock = {
       https: {
@@ -126,7 +127,7 @@ describe('legacy google calendar flows', () => {
 
     require.cache[require.resolve('firebase-admin')] = { exports: adminMock };
     require.cache[require.resolve('firebase-admin/firestore')] = {
-      exports: { FieldValue: adminMock.firestore.FieldValue },
+      exports: { FieldValue: adminMock.firestore.FieldValue, Timestamp: { fromDate: vi.fn(() => 'expires-at') } },
     };
     require.cache[require.resolve('firebase-functions/v1')] = { exports: functionsMock };
     require.cache[require.resolve('firebase-functions/params')] = {

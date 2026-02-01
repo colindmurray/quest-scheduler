@@ -3,14 +3,14 @@ import { toast } from "sonner";
 import { resolveIdentifier } from "../../../lib/identifiers";
 import { useUserProfiles } from "../../../hooks/useUserProfiles";
 import { UserIdentity } from "../../../components/UserIdentity";
+import { normalizeEmail } from "../../../lib/utils";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../../../components/ui/dialog";
+  SimpleModal,
+  SimpleModalDescription,
+  SimpleModalFooter,
+  SimpleModalHeader,
+  SimpleModalTitle,
+} from "../../../components/ui/simple-modal";
 
 export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, friends = [] }) {
   const [email, setEmail] = useState("");
@@ -18,18 +18,22 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
   const [error, setError] = useState(null);
   const [sendFriendInvite, setSendFriendInvite] = useState(false);
 
-  const existingMembers = new Set([
-    ...(group?.members || []).map((e) => e.toLowerCase()),
-    ...(group?.pendingInvites || []).map((e) => e.toLowerCase()),
-  ]);
+  const existingMembers = new Set(
+    [
+      ...(group?.members || []),
+      ...(group?.pendingInvites || []),
+    ]
+      .map((email) => normalizeEmail(email))
+      .filter(Boolean)
+  );
 
-  const friendSet = new Set(friends.map((e) => e.toLowerCase()));
+  const friendSet = new Set(friends.map((email) => normalizeEmail(email)).filter(Boolean));
   const availableSuggestions = friends.filter(
-    (e) => !existingMembers.has(e.toLowerCase())
+    (email) => !existingMembers.has(normalizeEmail(email))
   );
   const { enrichUsers } = useUserProfiles(availableSuggestions);
   const suggestionUsers = enrichUsers(availableSuggestions);
-  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedEmail = normalizeEmail(email);
   const showFriendInviteToggle = Boolean(normalizedEmail);
 
   const handleSubmit = async (e) => {
@@ -49,7 +53,7 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
       return;
     }
 
-    const resolvedEmail = resolved.email.toLowerCase();
+    const resolvedEmail = normalizeEmail(resolved.email);
     if (existingMembers.has(resolvedEmail)) {
       setError("This person is already a member or has a pending invite");
       return;
@@ -79,14 +83,14 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Invite to {group?.name}</DialogTitle>
-          <DialogDescription>
+    <SimpleModal open={open} onOpenChange={onOpenChange}>
+      <div className="max-w-md">
+        <SimpleModalHeader>
+          <SimpleModalTitle>Invite to {group?.name}</SimpleModalTitle>
+          <SimpleModalDescription>
             Invite someone by email, Discord username, or @username. They'll receive an email and in-app notification.
-          </DialogDescription>
-        </DialogHeader>
+          </SimpleModalDescription>
+        </SimpleModalHeader>
 
         <form onSubmit={handleSubmit}>
           <div className="mt-4 space-y-4">
@@ -98,7 +102,7 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
                 onChange={(e) => {
                   const nextValue = e.target.value;
                   setEmail(nextValue);
-                  const nextNormalized = nextValue.trim().toLowerCase();
+                  const nextNormalized = normalizeEmail(nextValue);
                   if (!nextNormalized || friendSet.has(nextNormalized)) {
                     setSendFriendInvite(false);
                   }
@@ -147,7 +151,7 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
             )}
           </div>
 
-          <DialogFooter className="mt-6">
+          <SimpleModalFooter className="mt-6">
             <button
               type="button"
               onClick={() => onOpenChange(false)}
@@ -162,9 +166,9 @@ export function InviteMemberModal({ open, onOpenChange, group, onInviteMember, f
             >
               {saving ? "Sending..." : "Send invitation"}
             </button>
-          </DialogFooter>
+          </SimpleModalFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </SimpleModal>
   );
 }

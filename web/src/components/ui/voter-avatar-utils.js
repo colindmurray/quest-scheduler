@@ -1,3 +1,5 @@
+import { normalizeEmail } from "../../lib/utils";
+
 // 15 pastel colors across the spectrum
 const PASTEL_COLORS = [
   { bg: "#FECDD3", text: "#9F1239" }, // Rose
@@ -20,7 +22,7 @@ const PASTEL_COLORS = [
 // Simple hash function for consistent color assignment
 function hashEmail(email) {
   if (!email) return 0;
-  const normalized = email.toLowerCase().trim();
+  const normalized = normalizeEmail(email);
   let hash = 0;
   for (let i = 0; i < normalized.length; i++) {
     const char = normalized.charCodeAt(i);

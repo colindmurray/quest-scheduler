@@ -2,31 +2,31 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 
+const mockUser = {
+  uid: 'user1',
+  email: 'user@example.com',
+  displayName: 'User',
+  photoURL: null,
+  providerData: [],
+};
+
 vi.mock('../../app/useAuth', () => ({
   useAuth: () => ({
-    user: {
-      uid: 'user1',
-      email: 'user@example.com',
-      displayName: 'User',
-      photoURL: null,
-      providerData: [],
-    },
+    user: mockUser,
+    refreshUser: vi.fn(),
   }),
 }));
 
 vi.mock('../../app/useTheme', () => ({
-  useTheme: () => ({ darkMode: false }),
+  useTheme: () => ({ darkMode: false, setDarkMode: vi.fn() }),
 }));
 
-const getDocMock = vi.fn();
-const setDocMock = vi.fn();
-const serverTimestampMock = vi.fn(() => 'server-time');
+const fetchUserSettingsMock = vi.fn();
+const saveUserSettingsMock = vi.fn();
 
-vi.mock('firebase/firestore', () => ({
-  doc: vi.fn(() => ({ id: 'user1' })),
-  getDoc: (...args) => getDocMock(...args),
-  setDoc: (...args) => setDocMock(...args),
-  serverTimestamp: () => serverTimestampMock(),
+vi.mock('../../lib/data/settings', () => ({
+  fetchUserSettings: (...args) => fetchUserSettingsMock(...args),
+  saveUserSettings: (...args) => saveUserSettingsMock(...args),
 }));
 
 vi.mock('firebase/storage', () => ({
@@ -41,7 +41,7 @@ vi.mock('firebase/functions', () => ({
   httpsCallable: vi.fn(() => vi.fn()),
 }));
 
-vi.mock('../../lib/firebase', () => ({ db: {}, storage: {} }));
+vi.mock('../../lib/firebase', () => ({ storage: {} }));
 
 vi.mock('../../lib/auth', () => ({
   linkGoogleAccount: vi.fn(),
@@ -74,12 +74,9 @@ import SettingsPage from './SettingsPage';
 describe('SettingsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    getDocMock.mockResolvedValue({
-      exists: () => true,
-      data: () => ({
-        displayName: 'User',
-        settings: {},
-      }),
+    fetchUserSettingsMock.mockResolvedValue({
+      displayName: 'User',
+      settings: {},
     });
   });
 
@@ -91,5 +88,29 @@ describe('SettingsPage', () => {
     );
 
     expect(screen.getByText('Loading settings...')).toBeTruthy();
+  });
+
+  test('renders advanced notification preferences when enabled', async () => {
+    fetchUserSettingsMock.mockImplementationOnce(() =>
+      Promise.resolve({
+        displayName: 'User',
+        settings: {
+          notificationMode: 'advanced',
+          notificationPreferences: {
+            POLL_INVITE_SENT: 'inApp',
+          },
+        },
+      })
+    );
+
+    render(
+      <MemoryRouter>
+        <SettingsPage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(fetchUserSettingsMock).toHaveBeenCalled());
+    const pollInviteSelect = await screen.findByLabelText('Poll invites');
+    expect(pollInviteSelect.value).toBe('inApp');
   });
 });

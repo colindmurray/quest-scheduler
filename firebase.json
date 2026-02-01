@@ -1,7 +1,7 @@
 {
   "hosting": {
     "predeploy": [
-      "npm --prefix web run build:dev"
+      "node scripts/build-web.js"
     ],
     "public": "web/dist",
     "ignore": [

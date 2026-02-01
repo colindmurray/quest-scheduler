@@ -7,7 +7,7 @@ import { format, parse, startOfWeek, getDay, isSameDay, isBefore, startOfDay, st
 import { formatInTimeZone } from "date-fns-tz";
 import { enUS } from "date-fns/locale";
 import { toast } from "sonner";
-import { MoreVertical, Pencil, Copy, Archive, ArchiveRestore, Trash2 } from "lucide-react";
+import { MoreVertical, Pencil, Copy, Archive, ArchiveRestore, Trash2, RotateCcw } from "lucide-react";
 import { useAuth } from "../../app/useAuth";
 import { useUserSettings } from "../../hooks/useUserSettings";
 import { useFriends } from "../../hooks/useFriends";
@@ -41,14 +41,16 @@ import { UserAvatar } from "../../components/ui/avatar";
 import { UserIdentity } from "../../components/UserIdentity";
 import { LoadingState } from "../../components/ui/spinner";
 import { CalendarJumpControls } from "../../components/ui/calendar-jump-controls";
+import { PollStatusMeta } from "../../components/poll-status-meta";
 import { buildEmailSet, isValidEmail, normalizeEmail, normalizeEmailList } from "../../lib/utils";
 import { resolveIdentifier } from "../../lib/identifiers";
-import { createVoteSubmittedNotification, pollInviteNotificationId } from "../../lib/data/notifications";
-import { createSessionFinalizedNotification } from "../../lib/data/notifications";
+import {
+  pollInviteNotificationId,
+  pollInviteLegacyNotificationId,
+} from "../../lib/data/notifications";
 import { fetchPublicProfilesByIds, findUserIdByEmail, findUserIdsByEmails } from "../../lib/data/users";
 import { acceptPollInvite, declinePollInvite, removeParticipantFromPoll, revokePollInvite } from "../../lib/data/pollInvites";
-import { createEmailMessage } from "../../lib/emailTemplates";
-import { queueMail } from "../../lib/data/mail";
+import { buildNotificationActor, emitPollEvent } from "../../lib/data/notification-events";
 import { validateInviteCandidate } from "./utils/invite-utils";
 import { CloneDialog } from "./components/clone-dialog";
 import { FinalizeDialog } from "./components/finalize-dialog";
@@ -90,6 +92,7 @@ export default function SchedulerPage() {
     slots,
     allVotes,
     userVote,
+    userVoteRef,
   } = useSchedulerData({ schedulerId: id, user });
   const [view, setView] = useState("list");
   const [draftVotes, setDraftVotes] = useState({});
@@ -120,6 +123,7 @@ export default function SchedulerPage() {
   const [archiveSaving, setArchiveSaving] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelSaving, setCancelSaving] = useState(false);
+  const [restoreSaving, setRestoreSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [deleteUpdateCalendar, setDeleteUpdateCalendar] = useState(false);
@@ -138,6 +142,19 @@ export default function SchedulerPage() {
   const isPollArchived = isArchived(id);
   const isCreator = scheduler.data?.creatorId === user?.uid;
   const normalizedUserEmail = normalizeEmail(user?.email) || null;
+  const pendingInviteEmails = useMemo(
+    () => scheduler.data?.pendingInvites || [],
+    [scheduler.data?.pendingInvites]
+  );
+  const pendingInviteEmailSet = useMemo(
+    () =>
+      new Set(
+        pendingInviteEmails
+          .map((email) => normalizeEmail(email))
+          .filter(Boolean)
+      ),
+    [pendingInviteEmails]
+  );
   const isGroupMember = Boolean(
     scheduler.data?.questingGroupId &&
       user?.uid &&
@@ -146,7 +163,15 @@ export default function SchedulerPage() {
   const isExplicitParticipant = useMemo(() => {
     return Boolean(user?.uid && scheduler.data?.participantIds?.includes(user.uid));
   }, [scheduler.data?.participantIds, user?.uid]);
-  const isEffectiveParticipant = isExplicitParticipant || isGroupMember;
+  const isPendingInvite = useMemo(
+    () => (normalizedUserEmail ? pendingInviteEmailSet.has(normalizedUserEmail) : false),
+    [normalizedUserEmail, pendingInviteEmailSet]
+  );
+  const isAcceptedParticipant = useMemo(() => {
+    if (isGroupMember) return true;
+    if (!isExplicitParticipant) return false;
+    return !isPendingInvite;
+  }, [isGroupMember, isExplicitParticipant, isPendingInvite]);
   const [calendarView, setCalendarView] = useState("month");
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [expandedSlots, setExpandedSlots] = useState({});
@@ -303,21 +328,21 @@ export default function SchedulerPage() {
   useEffect(() => {
     if (!scheduler.data || !user?.email || !id) return;
     if (isCreator) return;
-    const normalizedEmail = normalizeEmail(user.email);
     const participantMatch = scheduler.data.participantIds?.includes(user?.uid);
-    const isPendingInvite = scheduler.data.pendingInvites?.some(
-      (email) => normalizeEmail(email) === normalizedEmail
-    );
-    if (participantMatch || isGroupMember) {
+    if (isGroupMember) {
       setInvitePromptOpen(false);
       return;
     }
-    if (scheduler.data.allowLinkSharing || isPendingInvite) {
+    if (isPendingInvite) {
+      setInvitePromptOpen(true);
+      return;
+    }
+    if (scheduler.data.allowLinkSharing && !participantMatch) {
       setInvitePromptOpen(true);
     } else {
       setInvitePromptOpen(false);
     }
-  }, [id, scheduler.data, user?.email, user?.uid, isCreator, isGroupMember]);
+  }, [id, scheduler.data, user?.email, user?.uid, isCreator, isGroupMember, isPendingInvite]);
 
   useEffect(() => {
     if (!userVote.data) return;
@@ -395,10 +420,6 @@ export default function SchedulerPage() {
     ]);
     return Array.from(merged);
   }, [explicitParticipantEmails, questingGroupMembers]);
-  const pendingInviteEmails = useMemo(
-    () => scheduler.data?.pendingInvites || [],
-    [scheduler.data?.pendingInvites]
-  );
   const { enrichUsers: enrichPendingInviteUsers } = useUserProfiles(pendingInviteEmails);
   const pendingInviteUsers = useMemo(
     () => enrichPendingInviteUsers(pendingInviteEmails),
@@ -447,6 +468,7 @@ export default function SchedulerPage() {
         avatar: vote?.userAvatar || profile.photoURL || null,
         hasVoted: Boolean(vote),
         isGroupMember: questingGroupMemberSet.has(profile.id),
+        isPendingInvite: email ? pendingInviteEmailSet.has(normalizeEmail(email)) : false,
       };
     });
   }, [
@@ -457,6 +479,7 @@ export default function SchedulerPage() {
     voteMapById,
     voteMapByEmail,
     questingGroupMemberSet,
+    pendingInviteEmailSet,
   ]);
   const nonGroupParticipants = useMemo(
     () => participants.filter((participant) => !participant.isGroupMember),
@@ -470,6 +493,15 @@ export default function SchedulerPage() {
           .map((participant) => [normalizeEmail(participant.email), participant])
       ),
     [participants]
+  );
+  const pendingInviteNonParticipants = useMemo(
+    () =>
+      pendingInviteUsers.filter((invitee) => {
+        const normalized = normalizeEmail(invitee.email);
+        if (!normalized) return false;
+        return !participantMapByEmail.has(normalized);
+      }),
+    [pendingInviteUsers, participantMapByEmail]
   );
   const groupUsersWithStatus = useMemo(
     () =>
@@ -495,6 +527,16 @@ export default function SchedulerPage() {
   );
   const participantCount = participantIdSet.size;
   const voteCount = allVotes.data.length;
+  const allVotesIn = useMemo(() => {
+    if (scheduler.data?.status !== "OPEN") return false;
+    if (!participantCount) return false;
+    return voteCount >= participantCount;
+  }, [participantCount, scheduler.data?.status, voteCount]);
+  const winningSlot = useMemo(() => {
+    const winningId = scheduler.data?.winningSlotId;
+    if (!winningId) return null;
+    return slots.data.find((slot) => slot.id === winningId) || null;
+  }, [scheduler.data?.winningSlotId, slots.data]);
 
   const sortedSlots = useMemo(() => {
     const rows = slots.data.map((slot) => {
@@ -626,7 +668,12 @@ export default function SchedulerPage() {
     setInvitePromptBusy(true);
     try {
       await acceptPollInvite(id, user.email, user.uid);
-      removeNotification(pollInviteNotificationId(id));
+      [
+        pollInviteNotificationId(id, user.email),
+        pollInviteLegacyNotificationId(id),
+      ]
+        .filter(Boolean)
+        .forEach((notificationId) => removeNotification(notificationId));
       setInvitePromptOpen(false);
     } catch (err) {
       console.error("Failed to accept poll invite:", err);
@@ -642,7 +689,12 @@ export default function SchedulerPage() {
     try {
       if (isPendingInvite) {
         await declinePollInvite(id, user.email, user.uid);
-        removeNotification(pollInviteNotificationId(id));
+        [
+          pollInviteNotificationId(id, user.email),
+          pollInviteLegacyNotificationId(id),
+        ]
+          .filter(Boolean)
+          .forEach((notificationId) => removeNotification(notificationId));
       }
       setInvitePromptOpen(false);
       navigate("/dashboard");
@@ -809,7 +861,7 @@ export default function SchedulerPage() {
   };
 
   const setVote = (slotId, nextValue) => {
-    if (!isParticipant) {
+    if (!isAcceptedParticipant) {
       toast.error("Accept the invite to vote on this poll.");
       return;
     }
@@ -863,7 +915,7 @@ export default function SchedulerPage() {
 
   const handleSave = async () => {
     if (!user || !userVoteRef) return;
-    if (!isParticipant) {
+    if (!isAcceptedParticipant) {
       toast.error("Accept the invite to vote on this poll.");
       return false;
     }
@@ -879,32 +931,30 @@ export default function SchedulerPage() {
         updatedAt: serverTimestamp(),
       });
 
-      const notifyCreator = creator.data?.settings?.emailNotifications;
-      const recipient = scheduler.data?.creatorEmail;
-      if (recipient && normalizeEmail(user.email) !== normalizeEmail(recipient)) {
-        try {
-          if (notifyCreator) {
-            await queueMail({
-              to: recipient,
-              message: createEmailMessage({
-                subject: "New vote submitted",
-                title: "New Vote Submitted",
-                intro: `${user.email} updated votes for "${scheduler.data?.title || "your session poll"}".`,
-                ctaLabel: "View poll",
-                ctaUrl: window.location.href,
-              }),
-            });
-          }
-          if (scheduler.data?.creatorId) {
-            await createVoteSubmittedNotification(scheduler.data.creatorId, {
+      const recipient = normalizeEmail(scheduler.data?.creatorEmail);
+      if (recipient && normalizeEmail(user.email) !== recipient) {
+        const recipients = {
+          userIds: scheduler.data?.creatorId ? [scheduler.data.creatorId] : [],
+          emails: recipient ? [recipient] : [],
+        };
+        if (recipients.userIds.length || recipients.emails.length) {
+          try {
+            await emitPollEvent({
+              eventType: "VOTE_SUBMITTED",
               schedulerId: id,
-              schedulerTitle: scheduler.data?.title || "Session Poll",
-              voterEmail: user.email,
-              voterUserId: user.uid,
+              pollTitle: scheduler.data?.title || "Session Poll",
+              actor: buildNotificationActor(user),
+              payload: {
+                pollTitle: scheduler.data?.title || "Session Poll",
+                voterEmail: normalizeEmail(user.email) || user.email,
+                voterUserId: user.uid,
+              },
+              recipients,
+              dedupeKey: `poll:${id}:vote:${user.uid}`,
             });
+          } catch (notifyErr) {
+            console.error("Failed to notify creator about vote:", notifyErr);
           }
-        } catch (notifyErr) {
-          console.error("Failed to notify creator about vote:", notifyErr);
         }
       }
       toast.success("Votes saved successfully");
@@ -1065,16 +1115,12 @@ export default function SchedulerPage() {
       if (participantIds.length > 0) {
         try {
           const normalizedCreatorEmail = normalizeEmail(creatorEmail) || null;
-          const optOuts = new Set();
           const emails = new Set();
           const profilesById = await fetchPublicProfilesByIds(participantIds);
           Object.values(profilesById).forEach((profile) => {
             if (!profile?.email) return;
             const normalized = normalizeEmail(profile.email);
             emails.add(normalized);
-            if (profile.emailNotifications === false) {
-              optOuts.add(normalized);
-            }
           });
           const timezone =
             scheduler.data?.timezone ||
@@ -1085,38 +1131,31 @@ export default function SchedulerPage() {
             "MMM d, yyyy · h:mm a"
           )} - ${formatInTimeZone(slotEnd, timezone, "h:mm a")}`;
           const winningLabel = `${rangeLabel} (${timezone})`;
-          const recipients = Array.from(emails).filter(
-            (email) => email !== normalizedCreatorEmail && !optOuts.has(email)
+          const recipientEmails = Array.from(emails).filter(
+            (email) => email !== normalizedCreatorEmail
           );
-          const notificationRecipients = participantIds.filter(
+          const recipientUserIds = participantIds.filter(
             (participantId) => participantId !== scheduler.data?.creatorId
           );
-          await Promise.all(
-            notificationRecipients.map((participantId) =>
-              createSessionFinalizedNotification(participantId, {
-                schedulerId: id,
-                schedulerTitle: scheduler.data?.title || "Session Poll",
+          if (recipientUserIds.length || recipientEmails.length) {
+            await emitPollEvent({
+              eventType: "POLL_FINALIZED",
+              schedulerId: id,
+              pollTitle: scheduler.data?.title || "Session Poll",
+              actor: buildNotificationActor(user),
+              payload: {
+                pollTitle: scheduler.data?.title || "Session Poll",
                 winningDate: winningLabel,
-              })
-            )
-          );
-          await Promise.all(
-            recipients.map((email) =>
-              queueMail({
-                to: email,
-                message: createEmailMessage({
-                  subject: `Session poll finalized: ${scheduler.data?.title || "Session Poll"}`,
-                  title: "Session Poll Finalized",
-                  intro: `A winning time was selected for "${scheduler.data?.title || "this session poll"}".`,
-                  ctaLabel: "View poll",
-                  ctaUrl: window.location.href,
-                  extraLines: [`Winning time: ${winningLabel}`],
-                }),
-              })
-            )
-          );
+              },
+              recipients: {
+                userIds: recipientUserIds,
+                emails: recipientEmails,
+              },
+              dedupeKey: `poll:${id}:finalized`,
+            });
+          }
         } catch (notifyErr) {
-          console.error("Failed to send finalization emails:", notifyErr);
+          console.error("Failed to send finalization notifications:", notifyErr);
         }
       }
       setFinalizeOpen(false);
@@ -1145,6 +1184,49 @@ export default function SchedulerPage() {
         status: "OPEN",
         winningSlotId: null,
       });
+      const participantIds = Array.from(
+        new Set(
+          [
+            ...(scheduler.data?.participantIds || []),
+            ...questingGroupMemberIds,
+          ].filter(Boolean)
+        )
+      );
+      if (participantIds.length > 0) {
+        try {
+          const normalizedCreatorEmail = normalizeEmail(scheduler.data?.creatorEmail) || null;
+          const emails = new Set();
+          const profilesById = await fetchPublicProfilesByIds(participantIds);
+          Object.values(profilesById).forEach((profile) => {
+            if (!profile?.email) return;
+            const normalized = normalizeEmail(profile.email);
+            emails.add(normalized);
+          });
+          const recipientEmails = Array.from(emails).filter(
+            (email) => email !== normalizedCreatorEmail
+          );
+          const recipientUserIds = participantIds.filter(
+            (participantId) => participantId !== scheduler.data?.creatorId
+          );
+          if (recipientUserIds.length || recipientEmails.length) {
+            await emitPollEvent({
+              eventType: "POLL_REOPENED",
+              schedulerId: id,
+              pollTitle: scheduler.data?.title || "Session Poll",
+              actor: buildNotificationActor(user),
+              payload: {
+                pollTitle: scheduler.data?.title || "Session Poll",
+              },
+              recipients: {
+                userIds: recipientUserIds,
+                emails: recipientEmails,
+              },
+            });
+          }
+        } catch (notifyErr) {
+          console.error("Failed to send poll reopen notification:", notifyErr);
+        }
+      }
       toast.success("Session poll re-opened");
       success = true;
     } catch (err) {
@@ -1228,7 +1310,9 @@ export default function SchedulerPage() {
       const participantIds = Array.from(
         new Set(Object.values(participantIdsByEmail).filter(Boolean))
       );
-      const pendingInvites = inviteEmails.filter((email) => !participantIdsByEmail[email]);
+      const pendingInvites = inviteEmails.filter(
+        (email) => normalizeEmail(email) !== normalizeEmail(newCreatorEmail)
+      );
 
       const cloneGroup = cloneGroupId
         ? groups.find((group) => group.id === cloneGroupId) || null
@@ -1383,6 +1467,24 @@ export default function SchedulerPage() {
     }
   };
 
+  const handleRestoreSession = async () => {
+    if (!id) return;
+    setRestoreSaving(true);
+    try {
+      const nextStatus = scheduler.data?.winningSlotId ? "FINALIZED" : "OPEN";
+      await updateScheduler(id, {
+        status: nextStatus,
+        updatedAt: serverTimestamp(),
+      });
+      toast.success("Session restored");
+    } catch (err) {
+      console.error("Failed to restore session:", err);
+      toast.error(err.message || "Failed to restore session");
+    } finally {
+      setRestoreSaving(false);
+    }
+  };
+
   const handleNudge = async () => {
     if (!id) return;
     setNudgeSending(true);
@@ -1475,11 +1577,7 @@ export default function SchedulerPage() {
     );
   }
 
-  const isParticipant = isEffectiveParticipant;
-  const isPendingInvite = scheduler.data.pendingInvites?.some(
-    (email) => normalizedUserEmail && normalizeEmail(email) === normalizedUserEmail
-  );
-  const canVote = Boolean(isParticipant && !isLocked);
+  const canVote = Boolean(isAcceptedParticipant && !isLocked);
   const pendingInviteMeta =
     (normalizedUserEmail && scheduler.data.pendingInviteMeta?.[normalizedUserEmail]) || {};
   const inviterLabel = pendingInviteMeta.invitedByEmail || scheduler.data.creatorEmail || "someone";
@@ -1489,7 +1587,7 @@ export default function SchedulerPage() {
   const canAccess =
     isCreator ||
     scheduler.data.allowLinkSharing ||
-    isParticipant ||
+    isAcceptedParticipant ||
     isPendingInvite;
   if (!canAccess) {
     return (
@@ -1527,31 +1625,16 @@ export default function SchedulerPage() {
                   {pollDescription}
                 </p>
               )}
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {participantCount} participants
-                </p>
-                {scheduler.data.status === "OPEN" && (
-                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
-                    Open
-                  </span>
-                )}
-                {scheduler.data.status === "FINALIZED" && (
-                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
-                    Finalized
-                  </span>
-                )}
-                {scheduler.data.status === "CANCELLED" && (
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-200">
-                    Cancelled
-                  </span>
-                )}
-                {isPollArchived && (
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                    Archived
-                  </span>
-                )}
-              </div>
+              <PollStatusMeta
+                scheduler={scheduler.data}
+                winningSlot={winningSlot}
+                slots={slots.data}
+                allVotesIn={allVotesIn}
+                isArchived={isPollArchived}
+                questingGroupName={questingGroupName}
+                questingGroupColor={questingGroupColor}
+                guestCount={nonGroupParticipants.length}
+              />
               {discordStatus && (
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                   <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
@@ -1620,7 +1703,7 @@ export default function SchedulerPage() {
                   <Copy className="mr-2 h-4 w-4" />
                   Clone poll
                 </DropdownMenuItem>
-                {isExplicitParticipant && !isCreator && (
+                {isExplicitParticipant && !isCreator && !isPendingInvite && (
                   <DropdownMenuItem
                     onClick={() => {
                       if (isGroupMember) {
@@ -1665,6 +1748,15 @@ export default function SchedulerPage() {
                     </DropdownMenuItem>
                   </>
                 )}
+                {isCreator && scheduler.data?.status === "CANCELLED" && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleRestoreSession} disabled={restoreSaving}>
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      {restoreSaving ? "Restoring..." : "Restore session"}
+                    </DropdownMenuItem>
+                  </>
+                )}
                 {/* Delete - owner only */}
                 {isCreator && (
                   <>
@@ -1681,6 +1773,10 @@ export default function SchedulerPage() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+
+          <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+            {participantCount} participants
+          </p>
 
           <div className="mt-6 rounded-3xl border border-slate-200/70 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1765,12 +1861,18 @@ export default function SchedulerPage() {
                   <UserIdentity user={participant} className="text-slate-700 dark:text-slate-200" />
                   <span
                     className={`text-[10px] font-semibold ${
-                      participant.hasVoted
-                        ? "text-emerald-600 dark:text-emerald-300"
-                        : "text-slate-400 dark:text-slate-500"
+                      participant.isPendingInvite
+                        ? "text-amber-600 dark:text-amber-300"
+                        : participant.hasVoted
+                          ? "text-emerald-600 dark:text-emerald-300"
+                          : "text-slate-400 dark:text-slate-500"
                     }`}
                   >
-                    {participant.hasVoted ? "Voted" : "Pending"}
+                    {participant.isPendingInvite
+                      ? "Pending invite"
+                      : participant.hasVoted
+                        ? "Voted"
+                        : "Pending"}
                   </span>
                   {isCreator &&
                     normalizeEmail(participant.email) !==
@@ -1791,13 +1893,13 @@ export default function SchedulerPage() {
                 </div>
               ))}
             </div>
-            {pendingInviteEmails.length > 0 && (
+            {pendingInviteNonParticipants.length > 0 && (
               <div className="mt-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                   Pending invites
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {pendingInviteUsers.map((invitee) => (
+                  {pendingInviteNonParticipants.map((invitee) => (
                     <div
                       key={invitee.email}
                       className="flex items-center gap-2 rounded-full border border-dashed border-amber-300 bg-amber-50 px-3 py-1 text-xs text-amber-700 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200"
@@ -1900,13 +2002,26 @@ export default function SchedulerPage() {
                   toolbar: CalendarToolbar,
                 }}
                 eventPropGetter={(event) => {
-                  if (selectedEventId !== event.id) return {};
-                  return {
-                    style: {
-                      boxShadow:
-                        "0 0 0 2px rgba(59, 130, 246, 0.7), 0 0 12px rgba(59, 130, 246, 0.35)",
-                    },
-                  };
+                  const style = {};
+                  const winningSlotId = scheduler.data?.winningSlotId;
+                  const isFinalized =
+                    scheduler.data?.status === "FINALIZED" && Boolean(winningSlotId);
+                  const isWinner = winningSlotId === event.id;
+
+                  if (isFinalized) {
+                    style.backgroundColor = isWinner ? "#22c55e" : "#e2e8f0";
+                    style.borderColor = isWinner ? "#16a34a" : "#cbd5e1";
+                    style.color = isWinner ? "#ffffff" : "#475569";
+                    style.opacity = isWinner ? 0.95 : 0.8;
+                    style.fontWeight = isWinner ? 600 : 500;
+                  }
+
+                  if (selectedEventId === event.id) {
+                    style.boxShadow =
+                      "0 0 0 2px rgba(59, 130, 246, 0.7), 0 0 12px rgba(59, 130, 246, 0.35)";
+                  }
+
+                  return Object.keys(style).length ? { style } : {};
                 }}
                 style={{ height: 520 }}
               />
@@ -2346,7 +2461,7 @@ export default function SchedulerPage() {
       />
 
       <InvitePromptDialog
-        open={invitePromptOpen}
+        open={invitePromptOpen || isPendingInvite}
         onOpenChange={setInvitePromptOpen}
         isPendingInvite={isPendingInvite}
         inviterProfile={inviterProfile}

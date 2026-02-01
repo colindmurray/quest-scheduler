@@ -1,12 +1,17 @@
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { useMemo, useCallback } from "react";
 import { useAuth } from "../app/useAuth";
 import { useFirestoreDoc } from "./useFirestoreDoc";
-import { db } from "../lib/firebase";
+import {
+  userSettingsRef,
+  addArchivedPoll,
+  removeArchivedPoll,
+  setCalendarSyncPreference as persistCalendarSyncPreference,
+  setGroupColor as persistGroupColor,
+} from "../lib/data/settings";
 
 export function useUserSettings() {
   const { user } = useAuth();
-  const userRef = useMemo(() => (user ? doc(db, "users", user.uid) : null), [user]);
+  const userRef = useMemo(() => userSettingsRef(user?.uid || null), [user?.uid]);
   const { data, loading } = useFirestoreDoc(userRef);
 
   const archivedPolls = useMemo(() => data?.archivedPolls || [], [data?.archivedPolls]);
@@ -15,36 +20,18 @@ export function useUserSettings() {
 
   const archivePoll = useCallback(
     async (pollId) => {
-      if (!userRef || !pollId) return;
       const currentArchived = data?.archivedPolls || [];
-      if (currentArchived.includes(pollId)) return;
-      await setDoc(
-        userRef,
-        {
-          archivedPolls: [...currentArchived, pollId],
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      return addArchivedPoll(user?.uid, pollId, currentArchived);
     },
-    [userRef, data?.archivedPolls]
+    [user?.uid, data?.archivedPolls]
   );
 
   const unarchivePoll = useCallback(
     async (pollId) => {
-      if (!userRef || !pollId) return;
       const currentArchived = data?.archivedPolls || [];
-      if (!currentArchived.includes(pollId)) return;
-      await setDoc(
-        userRef,
-        {
-          archivedPolls: currentArchived.filter((id) => id !== pollId),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      return removeArchivedPoll(user?.uid, pollId, currentArchived);
     },
-    [userRef, data?.archivedPolls]
+    [user?.uid, data?.archivedPolls]
   );
 
   const isArchived = useCallback(
@@ -54,35 +41,16 @@ export function useUserSettings() {
 
   const setCalendarSyncPreference = useCallback(
     async (preference) => {
-      if (!userRef) return;
-      await setDoc(
-        userRef,
-        {
-          calendarSyncPreference: preference,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      return persistCalendarSyncPreference(user?.uid, preference);
     },
-    [userRef]
+    [user?.uid]
   );
 
   const setGroupColor = useCallback(
     async (groupId, color) => {
-      if (!userRef) return;
-      await setDoc(
-        userRef,
-        {
-          groupColors: {
-            ...groupColors,
-            [groupId]: color,
-          },
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      return persistGroupColor(user?.uid, groupColors, groupId, color);
     },
-    [userRef, groupColors]
+    [user?.uid, groupColors]
   );
 
   /**

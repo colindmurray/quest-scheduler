@@ -24,7 +24,6 @@ const acceptedFriendRequestsToQueryMock = vi.fn(() => 'accepted-to-ref');
 const createFriendRequestMock = vi.fn();
 const acceptFriendRequestMock = vi.fn();
 const declineFriendRequestMock = vi.fn();
-const syncFriendRequestNotificationsMock = vi.fn(() => Promise.resolve());
 const ensureFriendInviteCodeMock = vi.fn(() => 'invite-code');
 const acceptFriendInviteLinkMock = vi.fn();
 const removeFriendMock = vi.fn();
@@ -37,7 +36,6 @@ vi.mock('../lib/data/friends', () => ({
   createFriendRequest: (...args) => createFriendRequestMock(...args),
   acceptFriendRequest: (...args) => acceptFriendRequestMock(...args),
   declineFriendRequest: (...args) => declineFriendRequestMock(...args),
-  syncFriendRequestNotifications: (...args) => syncFriendRequestNotificationsMock(...args),
   ensureFriendInviteCode: (...args) => ensureFriendInviteCodeMock(...args),
   acceptFriendInviteLink: (...args) => acceptFriendInviteLinkMock(...args),
   removeFriend: (...args) => removeFriendMock(...args),

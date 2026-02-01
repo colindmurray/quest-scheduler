@@ -1,17 +1,14 @@
-import { useMemo, useCallback, useEffect } from "react";
-import { doc, setDoc, serverTimestamp, collection } from "firebase/firestore";
+import { useMemo, useCallback } from "react";
+import { setGroupColor as persistGroupColor, userSettingsRef } from "../lib/data/settings";
 import { useAuth } from "../app/useAuth";
 import { useFirestoreCollection } from "./useFirestoreCollection";
 import { useFirestoreDoc } from "./useFirestoreDoc";
 import { useUserProfilesByIds } from "./useUserProfiles";
-import { db } from "../lib/firebase";
 import { findUserIdByEmail } from "../lib/data/users";
-import { ensureGroupInviteNotification } from "../lib/data/notifications";
 import { useFriends } from "./useFriends";
-import { APP_URL } from "../lib/config";
-import { createEmailMessage } from "../lib/emailTemplates";
 import { createFriendRequest } from "../lib/data/friends";
 import { resolveIdentifier } from "../lib/identifiers";
+import { normalizeEmail } from "../lib/utils";
 import {
   userGroupsByIdQuery,
   userPendingInvitesQuery,
@@ -34,7 +31,7 @@ export function useQuestingGroups() {
   const { friends } = useFriends();
   const userId = user?.uid || null;
   const userEmail = user?.email || null;
-  const userEmailLower = userEmail ? userEmail.toLowerCase() : null;
+  const userEmailLower = normalizeEmail(userEmail) || null;
   const userDisplayName = user?.displayName || null;
 
   // Query for groups user is a member of
@@ -50,7 +47,7 @@ export function useQuestingGroups() {
   }, [userEmailLower]);
 
   // Get user settings for group colors
-  const userRef = useMemo(() => (userId ? doc(db, "users", userId) : null), [userId]);
+  const userRef = useMemo(() => userSettingsRef(userId), [userId]);
   const { data: userData } = useFirestoreDoc(userRef);
 
   const groupsById = useFirestoreCollection(groupsByIdQueryRef);
@@ -81,25 +78,11 @@ export function useQuestingGroups() {
       };
     });
   }, [rawGroups, memberProfiles]);
-  const friendSet = useMemo(
-    () => new Set((friends || []).map((email) => email.toLowerCase())),
-    [friends]
-  );
+  const friendSet = useMemo(() => {
+    const normalized = (friends || []).map((email) => normalizeEmail(email)).filter(Boolean);
+    return new Set(normalized);
+  }, [friends]);
 
-  useEffect(() => {
-    if (!userId || !userEmailLower || pendingInvites.length === 0) return;
-    pendingInvites.forEach((group) => {
-      if (!group?.id) return;
-      const inviteMeta = group.pendingInviteMeta?.[userEmailLower || ""] || {};
-      ensureGroupInviteNotification(userId, {
-        groupId: group.id,
-        groupName: group.name || "Questing Group",
-        inviterEmail: inviteMeta.invitedByEmail || group.creatorEmail || "Unknown",
-      }).catch((err) => {
-        console.error("Failed to sync group invite notification:", err);
-      });
-    });
-  }, [userId, userEmailLower, pendingInvites]);
 
   // Get group colors from user settings
   const groupColors = useMemo(() => userData?.groupColors || {}, [userData?.groupColors]);
@@ -120,20 +103,9 @@ export function useQuestingGroups() {
   // Set color for a group
   const setGroupColor = useCallback(
     async (groupId, color) => {
-      if (!userRef) return;
-      await setDoc(
-        userRef,
-        {
-          groupColors: {
-            ...groupColors,
-            [groupId]: color,
-          },
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      return persistGroupColor(userId, groupColors, groupId, color);
     },
-    [userRef, groupColors]
+    [userId, groupColors]
   );
 
   // Create a new group
@@ -160,7 +132,10 @@ export function useQuestingGroups() {
     async (groupId, groupName, inviteeIdentifier, { sendFriendInvite = false } = {}) => {
       if (!userEmail) return;
       const resolved = await resolveIdentifier(inviteeIdentifier);
-      const normalizedInvitee = resolved.email.toLowerCase();
+      const normalizedInvitee = normalizeEmail(resolved.email);
+      if (!normalizedInvitee) {
+        throw new Error("Enter a valid email or Discord username.");
+      }
       const shouldSendFriendInvite = sendFriendInvite && !friendSet.has(normalizedInvitee);
 
       await inviteMemberToGroup(
@@ -171,25 +146,6 @@ export function useQuestingGroups() {
         resolved.userId || null,
         userId
       );
-
-      // Send email notification
-      const inviteUrl = `${APP_URL}/friends?tab=groups`;
-      const message = createEmailMessage({
-        subject: `You've been invited to join "${groupName}"`,
-        title: "Questing Group Invitation",
-        intro: `${userEmail} invited you to join the questing group "${groupName}".`,
-        ctaLabel: "View invite",
-        ctaUrl: inviteUrl,
-        extraLines: ["Log in to accept or decline this invitation."],
-      });
-      try {
-        await setDoc(doc(collection(db, "mail")), {
-          to: normalizedInvitee,
-          message,
-        });
-      } catch (err) {
-        console.warn("Failed to queue group invite email:", err);
-      }
 
       if (shouldSendFriendInvite) {
         try {
@@ -232,23 +188,23 @@ export function useQuestingGroups() {
   const removeMember = useCallback(
     async (groupId, groupName, memberEmail, removeFromPolls = true) => {
       const memberUserId = await findUserIdByEmail(memberEmail);
-      await removeMemberFromGroup(groupId, groupName, memberEmail, memberUserId);
+      await removeMemberFromGroup(groupId, groupName, memberEmail, memberUserId, user);
 
       if (removeFromPolls) {
         await removeMemberFromGroupPolls(groupId, memberEmail);
       }
     },
-    []
+    [user]
   );
 
   // Leave a group
   const leave = useCallback(
     async (groupId) => {
       if (!userEmail) return;
-      await leaveGroup(groupId, userEmail, userId);
+      await leaveGroup(groupId, userEmail, userId, user);
       await removeMemberFromGroupPolls(groupId, userEmail);
     },
-    [userEmail, userId]
+    [user, userEmail, userId]
   );
 
   // Delete a group

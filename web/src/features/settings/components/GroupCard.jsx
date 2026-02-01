@@ -9,14 +9,33 @@ import { useUserProfiles } from "../../../hooks/useUserProfiles";
 import { generateDiscordLinkCode, fetchDiscordGuildRoles } from "../../../lib/data/discord";
 import { UserIdentity } from "../../../components/UserIdentity";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../../../components/ui/dialog";
-import { Switch } from "../../../components/ui/switch";
+  SimpleModal,
+  SimpleModalDescription,
+  SimpleModalFooter,
+  SimpleModalHeader,
+  SimpleModalTitle,
+} from "../../../components/ui/simple-modal";
+const toggleBaseClasses =
+  "peer inline-flex h-5 w-10 shrink-0 items-center rounded-full border border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus-visible:ring-slate-500 dark:focus-visible:ring-offset-slate-950";
+const toggleThumbClasses =
+  "pointer-events-none block h-4 w-4 rounded-full bg-white shadow transition-transform dark:bg-slate-100";
+
+function SimpleToggle({ checked, onCheckedChange, disabled }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onCheckedChange(!checked)}
+      className={`${toggleBaseClasses} ${checked ? "bg-brand-accent" : "bg-slate-200 dark:bg-slate-700"}`}
+    >
+      <span
+        className={`${toggleThumbClasses} ${checked ? "translate-x-5" : "translate-x-0"}`}
+      />
+    </button>
+  );
+}
 
 const DEFAULT_DISCORD_ALERTS = {
   finalizationEvents: true,
@@ -361,14 +380,14 @@ export function GroupCard({
       />
 
       {/* Settings Modal */}
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Group Settings</DialogTitle>
-            <DialogDescription>
+      <SimpleModal open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <div className="max-w-md">
+          <SimpleModalHeader>
+            <SimpleModalTitle>Group Settings</SimpleModalTitle>
+            <SimpleModalDescription>
               Customize your personal settings for "{group.name}"
-            </DialogDescription>
-          </DialogHeader>
+            </SimpleModalDescription>
+          </SimpleModalHeader>
 
           <div className="mt-4 space-y-4">
             <div>
@@ -396,7 +415,7 @@ export function GroupCard({
                     Allow any member to invite or remove others
                   </p>
                 </div>
-                <Switch
+                <SimpleToggle
                   checked={group.memberManaged}
                   onCheckedChange={handleToggleMemberManaged}
                 />
@@ -487,7 +506,7 @@ export function GroupCard({
                             Posts when a final time is chosen or the poll is re-opened.
                           </p>
                         </div>
-                        <Switch
+                        <SimpleToggle
                           checked={discordAlertSettings.finalizationEvents}
                           onCheckedChange={(value) =>
                             handleDiscordAlertChange("finalizationEvents", value)
@@ -504,7 +523,7 @@ export function GroupCard({
                             Posts when someone submits or updates their votes.
                           </p>
                         </div>
-                        <Switch
+                        <SimpleToggle
                           checked={discordAlertSettings.voteSubmitted}
                           onCheckedChange={(value) =>
                             handleDiscordAlertChange("voteSubmitted", value)
@@ -521,7 +540,7 @@ export function GroupCard({
                             Posts when time slots are added, removed, or updated.
                           </p>
                         </div>
-                        <Switch
+                        <SimpleToggle
                           checked={discordAlertSettings.slotChanges}
                           onCheckedChange={(value) =>
                             handleDiscordAlertChange("slotChanges", value)
@@ -536,7 +555,7 @@ export function GroupCard({
             )}
           </div>
 
-          <DialogFooter className="mt-6">
+          <SimpleModalFooter className="mt-6">
             <button
               type="button"
               onClick={() => setSettingsOpen(false)}
@@ -544,16 +563,16 @@ export function GroupCard({
             >
               Done
             </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SimpleModalFooter>
+        </div>
+      </SimpleModal>
 
       {/* Remove Member Confirmation */}
-      <Dialog open={removeMemberOpen} onOpenChange={setRemoveMemberOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Remove member</DialogTitle>
-            <DialogDescription>
+      <SimpleModal open={removeMemberOpen} onOpenChange={setRemoveMemberOpen}>
+        <div className="max-w-md">
+          <SimpleModalHeader>
+            <SimpleModalTitle>Remove member</SimpleModalTitle>
+            <SimpleModalDescription>
               Are you sure you want to remove{" "}
               {memberToRemove ? (
                 <UserIdentity user={memberToRemoveProfile || { email: memberToRemove }} />
@@ -561,8 +580,8 @@ export function GroupCard({
                 "this member"
               )}{" "}
               from "{group.name}"?
-            </DialogDescription>
-          </DialogHeader>
+            </SimpleModalDescription>
+          </SimpleModalHeader>
 
           <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-900/20">
             <p className="text-sm text-amber-700 dark:text-amber-300">
@@ -570,7 +589,7 @@ export function GroupCard({
             </p>
           </div>
 
-          <DialogFooter className="mt-6">
+          <SimpleModalFooter className="mt-6">
             <button
               type="button"
               onClick={() => setRemoveMemberOpen(false)}
@@ -586,21 +605,21 @@ export function GroupCard({
             >
               {saving ? "Removing..." : "Remove member"}
             </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SimpleModalFooter>
+        </div>
+      </SimpleModal>
 
       {/* Leave Confirmation */}
-      <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Leave group</DialogTitle>
-            <DialogDescription>
+      <SimpleModal open={leaveOpen} onOpenChange={setLeaveOpen}>
+        <div className="max-w-md">
+          <SimpleModalHeader>
+            <SimpleModalTitle>Leave group</SimpleModalTitle>
+            <SimpleModalDescription>
               Are you sure you want to leave "{group.name}"?
-            </DialogDescription>
-          </DialogHeader>
+            </SimpleModalDescription>
+          </SimpleModalHeader>
 
-          <DialogFooter className="mt-6">
+          <SimpleModalFooter className="mt-6">
             <button
               type="button"
               onClick={() => setLeaveOpen(false)}
@@ -616,21 +635,21 @@ export function GroupCard({
             >
               {saving ? "Leaving..." : "Leave group"}
             </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SimpleModalFooter>
+        </div>
+      </SimpleModal>
 
       {/* Revoke Invite Confirmation */}
-      <Dialog open={revokeInviteOpen} onOpenChange={setRevokeInviteOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Remove invite</DialogTitle>
-            <DialogDescription>
+      <SimpleModal open={revokeInviteOpen} onOpenChange={setRevokeInviteOpen}>
+        <div className="max-w-md">
+          <SimpleModalHeader>
+            <SimpleModalTitle>Remove invite</SimpleModalTitle>
+            <SimpleModalDescription>
               Remove the pending invite for {revokeInviteEmail}?
-            </DialogDescription>
-          </DialogHeader>
+            </SimpleModalDescription>
+          </SimpleModalHeader>
 
-          <DialogFooter className="mt-6">
+          <SimpleModalFooter className="mt-6">
             <button
               type="button"
               onClick={() => setRevokeInviteOpen(false)}
@@ -646,19 +665,19 @@ export function GroupCard({
             >
               {saving ? "Removing..." : "Remove invite"}
             </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SimpleModalFooter>
+        </div>
+      </SimpleModal>
 
       {/* Delete Confirmation */}
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete group</DialogTitle>
-            <DialogDescription>
+      <SimpleModal open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <div className="max-w-md">
+          <SimpleModalHeader>
+            <SimpleModalTitle>Delete group</SimpleModalTitle>
+            <SimpleModalDescription>
               Are you sure you want to delete "{group.name}"? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
+            </SimpleModalDescription>
+          </SimpleModalHeader>
 
           <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
             <p className="text-sm font-semibold text-red-700 dark:text-red-300">
@@ -669,7 +688,7 @@ export function GroupCard({
             </p>
           </div>
 
-          <DialogFooter className="mt-6">
+          <SimpleModalFooter className="mt-6">
             <button
               type="button"
               onClick={() => setDeleteOpen(false)}
@@ -685,9 +704,9 @@ export function GroupCard({
             >
               {saving ? "Deleting..." : "Delete group"}
             </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SimpleModalFooter>
+        </div>
+      </SimpleModal>
     </>
   );
 }

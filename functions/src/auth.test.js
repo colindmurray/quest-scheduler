@@ -88,6 +88,9 @@ describe('auth functions', () => {
         };
       })(),
     };
+    require.cache[require.resolve('./notifications/reconcile')] = {
+      exports: { reconcilePendingNotificationsForUser: vi.fn() },
+    };
 
     const authModule = await import('./auth');
     sendPasswordResetInfo = authModule.sendPasswordResetInfo;

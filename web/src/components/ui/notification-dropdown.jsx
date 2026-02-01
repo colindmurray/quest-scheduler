@@ -1,16 +1,18 @@
 import { useNavigate } from "react-router-dom";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Check, X, Users, Calendar, Vote, Bell, UserPlus } from "lucide-react";
 import { useQuestingGroups } from "../../hooks/useQuestingGroups";
 import { useFriends } from "../../hooks/useFriends";
 import { usePollInvites } from "../../hooks/usePollInvites";
-import { NOTIFICATION_TYPES } from "../../lib/data/notifications";
+import { NOTIFICATION_TYPES, normalizeNotificationType } from "../../lib/data/notifications";
 import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfiles";
 import { UserIdentity } from "../UserIdentity";
+import { normalizeEmail } from "../../lib/utils";
 
 function NotificationIcon({ type }) {
-  switch (type) {
+  const normalizedType = normalizeNotificationType(type);
+  switch (normalizedType) {
     case NOTIFICATION_TYPES.FRIEND_REQUEST:
       return <UserPlus className="h-4 w-4 text-indigo-500" />;
     case NOTIFICATION_TYPES.FRIEND_ACCEPTED:
@@ -52,9 +54,10 @@ function NotificationItem({
   onRemoveLocal,
   resolveActor,
 }) {
-  const isGroupInvite = notification.type === NOTIFICATION_TYPES.GROUP_INVITE;
-  const isFriendRequest = notification.type === NOTIFICATION_TYPES.FRIEND_REQUEST;
-  const isPollInvite = notification.type === NOTIFICATION_TYPES.POLL_INVITE;
+  const normalizedType = normalizeNotificationType(notification.type);
+  const isGroupInvite = normalizedType === NOTIFICATION_TYPES.GROUP_INVITE;
+  const isFriendRequest = normalizedType === NOTIFICATION_TYPES.FRIEND_REQUEST;
+  const isPollInvite = normalizedType === NOTIFICATION_TYPES.POLL_INVITE;
   const timeAgo = notification.createdAt?.toDate
     ? formatDistanceToNow(notification.createdAt.toDate(), { addSuffix: true })
     : "";
@@ -108,7 +111,9 @@ function NotificationItem({
   const metadata = notification.metadata || {};
 
   const renderBody = () => {
-    switch (notification.type) {
+    const schedulerTitle = metadata.schedulerTitle || notification.resource?.title;
+    const groupName = metadata.groupName || notification.resource?.title;
+    switch (normalizedType) {
       case NOTIFICATION_TYPES.FRIEND_REQUEST:
         return actorNode ? (
           <>
@@ -126,49 +131,49 @@ function NotificationItem({
           notification.body
         );
       case NOTIFICATION_TYPES.POLL_INVITE:
-        return actorNode && metadata.schedulerTitle ? (
+        return actorNode && schedulerTitle ? (
           <>
-            {actorNode} invited you to join "{metadata.schedulerTitle}"
+            {actorNode} invited you to join "{schedulerTitle}"
           </>
         ) : (
           notification.body
         );
       case NOTIFICATION_TYPES.SESSION_INVITE:
-        return actorNode && metadata.schedulerTitle ? (
+        return actorNode && schedulerTitle ? (
           <>
-            {actorNode} invited you to vote on "{metadata.schedulerTitle}"
+            {actorNode} invited you to vote on "{schedulerTitle}"
           </>
         ) : (
           notification.body
         );
       case NOTIFICATION_TYPES.GROUP_INVITE:
-        return actorNode && metadata.groupName ? (
+        return actorNode && groupName ? (
           <>
-            {actorNode} invited you to join "{metadata.groupName}"
+            {actorNode} invited you to join "{groupName}"
           </>
         ) : (
           notification.body
         );
       case NOTIFICATION_TYPES.GROUP_INVITE_ACCEPTED:
-        return actorNode && metadata.groupName ? (
+        return actorNode && groupName ? (
           <>
-            {actorNode} accepted your invite to "{metadata.groupName}"
+            {actorNode} accepted your invite to "{groupName}"
           </>
         ) : (
           notification.body
         );
       case NOTIFICATION_TYPES.SESSION_JOINED:
-        return actorNode && metadata.schedulerTitle ? (
+        return actorNode && schedulerTitle ? (
           <>
-            {actorNode} joined "{metadata.schedulerTitle}"
+            {actorNode} joined "{schedulerTitle}"
           </>
         ) : (
           notification.body
         );
       case NOTIFICATION_TYPES.VOTE_SUBMITTED:
-        return actorNode && metadata.schedulerTitle ? (
+        return actorNode && schedulerTitle ? (
           <>
-            {actorNode} updated votes for "{metadata.schedulerTitle}"
+            {actorNode} updated votes for "{schedulerTitle}"
           </>
         ) : (
           notification.body
@@ -248,9 +253,37 @@ export function NotificationDropdown({
   onRemoveLocal,
 }) {
   const navigate = useNavigate();
-  const { acceptInvite, declineInvite } = useQuestingGroups();
-  const { acceptFriendRequest, declineFriendRequest } = useFriends();
-  const { acceptInvite: acceptPollInvite, declineInvite: declinePollInvite } = usePollInvites();
+  const {
+    acceptInvite,
+    declineInvite,
+    pendingInvites: pendingGroupInvites,
+    loading: groupsLoading,
+  } = useQuestingGroups();
+  const {
+    acceptFriendRequest,
+    declineFriendRequest,
+    incomingRequests,
+    loading: friendsLoading,
+  } = useFriends();
+  const {
+    acceptInvite: acceptPollInvite,
+    declineInvite: declinePollInvite,
+    pendingInvites: pendingPollInvites,
+    loading: pollInvitesLoading,
+  } = usePollInvites();
+
+  const pendingFriendRequestIds = useMemo(
+    () => new Set((incomingRequests || []).map((request) => request.id).filter(Boolean)),
+    [incomingRequests]
+  );
+  const pendingGroupInviteIds = useMemo(
+    () => new Set((pendingGroupInvites || []).map((invite) => invite.id).filter(Boolean)),
+    [pendingGroupInvites]
+  );
+  const pendingPollInviteIds = useMemo(
+    () => new Set((pendingPollInvites || []).map((invite) => invite.id).filter(Boolean)),
+    [pendingPollInvites]
+  );
 
   const actorUserIds = useMemo(
     () =>
@@ -258,6 +291,7 @@ export function NotificationDropdown({
         .map((notification) => {
           const meta = notification.metadata || {};
           return (
+            notification.actor?.uid ||
             meta.actorUserId ||
             meta.fromUserId ||
             meta.inviterUserId ||
@@ -278,6 +312,7 @@ export function NotificationDropdown({
         .map((notification) => {
           const meta = notification.metadata || {};
           return (
+            notification.actor?.email ||
             meta.actorEmail ||
             meta.fromEmail ||
             meta.inviterEmail ||
@@ -301,10 +336,48 @@ export function NotificationDropdown({
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
+  useEffect(() => {
+    if (loading || friendsLoading || groupsLoading || pollInvitesLoading) return;
+    if (!notifications.length) return;
+
+    notifications.forEach((notification) => {
+      const normalizedType = normalizeNotificationType(notification.type);
+      if (normalizedType === NOTIFICATION_TYPES.FRIEND_REQUEST) {
+        const requestId = notification.metadata?.requestId || notification.resource?.id;
+        if (requestId && !pendingFriendRequestIds.has(requestId)) {
+          onDismiss(notification.id);
+        }
+      }
+      if (normalizedType === NOTIFICATION_TYPES.GROUP_INVITE) {
+        const groupId = notification.metadata?.groupId || notification.resource?.id;
+        if (groupId && !pendingGroupInviteIds.has(groupId)) {
+          onDismiss(notification.id);
+        }
+      }
+      if (normalizedType === NOTIFICATION_TYPES.POLL_INVITE) {
+        const schedulerId = notification.metadata?.schedulerId || notification.resource?.id;
+        if (schedulerId && !pendingPollInviteIds.has(schedulerId)) {
+          onDismiss(notification.id);
+        }
+      }
+    });
+  }, [
+    loading,
+    friendsLoading,
+    groupsLoading,
+    pollInvitesLoading,
+    notifications,
+    pendingFriendRequestIds,
+    pendingGroupInviteIds,
+    pendingPollInviteIds,
+    onDismiss,
+  ]);
+
   const resolveActor = useCallback(
     (notification) => {
       const meta = notification?.metadata || {};
       const actorUserId =
+        notification?.actor?.uid ||
         meta.actorUserId ||
         meta.fromUserId ||
         meta.inviterUserId ||
@@ -314,6 +387,7 @@ export function NotificationDropdown({
         meta.memberUserId ||
         null;
       const actorEmail =
+        notification?.actor?.email ||
         meta.actorEmail ||
         meta.fromEmail ||
         meta.inviterEmail ||
@@ -327,7 +401,7 @@ export function NotificationDropdown({
         return profilesById[actorUserId];
       }
       if (actorEmail) {
-        const normalized = String(actorEmail).toLowerCase();
+        const normalized = normalizeEmail(actorEmail);
         return profilesByEmail[normalized] || { email: actorEmail };
       }
       return null;

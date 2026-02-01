@@ -19,6 +19,13 @@ Optional Vite env overrides (prefix with `VITE_`):
 - `VITE_SUPPORT_EMAIL` (default: `support@questscheduler.cc`)
 - `VITE_APP_NAME` (default: `Quest Scheduler`)
 - `VITE_GOOGLE_OAUTH_CLIENT_ID` (Google Identity Services client ID for the web login button)
+- Firebase web config overrides:
+  - `VITE_FIREBASE_API_KEY`
+  - `VITE_FIREBASE_AUTH_DOMAIN`
+  - `VITE_FIREBASE_PROJECT_ID`
+  - `VITE_FIREBASE_STORAGE_BUCKET`
+  - `VITE_FIREBASE_MESSAGING_SENDER_ID`
+  - `VITE_FIREBASE_APP_ID`
 
 ## Functions config (env)
 - Local dev: create `functions/.env` from `functions/.env.example`.
@@ -70,6 +77,25 @@ firebase deploy --only hosting,firestore,extensions --project studio-473406021-8
 firebase deploy --only hosting --project studio-473406021-87ead
 ```
 
+- Convenience scripts (set build mode automatically):
+```
+./scripts/deploy-prod.sh
+DEPLOY_ONLY=hosting ./scripts/deploy-prod.sh
+```
+
+## Staging deploy (quest-scheduler-stg)
+- Create `web/.env.staging` from `web/.env.staging.example`.
+- Create `functions/.env.quest-scheduler-stg` with staging values (set `QS_APP_URL=https://quest-scheduler-stg.firebaseapp.com`).
+- Build + deploy with staging mode:
+```
+VITE_BUILD_MODE=staging firebase deploy --only hosting,firestore,extensions --project quest-scheduler-stg
+```
+- Convenience script:
+```
+./scripts/deploy-staging.sh
+DEPLOY_ONLY=hosting ./scripts/deploy-staging.sh
+```
+
 ## Extensions config
 - Params: `extensions/firestore-send-email.env`
 - Secrets: `extensions/firestore-send-email.secret.local` (ignored by git)
@@ -78,6 +104,11 @@ Update extension config:
 ```
 firebase deploy --only extensions --project studio-473406021-87ead
 ```
+
+## Firestore TTL
+- Configure TTL for `notificationEvents.expiresAt` (default 90 days).
+- Firebase Console: Firestore Database → TTL → add collection `notificationEvents` with field `expiresAt`.
+- TTL is not enforced by the local emulator; validate in staging/prod.
 
 ## Migrations
 ### Set allowLinkSharing default on existing polls

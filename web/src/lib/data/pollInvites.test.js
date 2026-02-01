@@ -12,6 +12,7 @@ const firestoreMocks = {
   query: vi.fn((...args) => ({ queryArgs: args })),
   serverTimestamp: vi.fn(() => 'server-time'),
   updateDoc: vi.fn(),
+  waitForPendingWrites: vi.fn(),
   where: vi.fn((...args) => ({ whereArgs: args })),
 };
 
@@ -21,9 +22,13 @@ const functionsMocks = {
 };
 
 const notificationsMocks = {
-  createSessionJoinNotification: vi.fn(),
-  deleteNotification: vi.fn(),
-  pollInviteNotificationId: vi.fn((schedulerId) => `poll:${schedulerId}`),
+  emitNotificationEvent: vi.fn(),
+  dismissNotification: vi.fn(),
+  dismissNotificationsByResource: vi.fn(),
+  pollInviteNotificationId: vi.fn(
+    (schedulerId, email) => `dedupe:poll:${schedulerId}:invite:${email}`
+  ),
+  pollInviteLegacyNotificationId: vi.fn((schedulerId) => `pollInvite:${schedulerId}`),
 };
 
 const usersMocks = {
@@ -33,7 +38,15 @@ const usersMocks = {
 vi.mock('firebase/firestore', () => firestoreMocks);
 vi.mock('firebase/functions', () => functionsMocks);
 vi.mock('../firebase', () => ({ db: { name: 'db' } }));
-vi.mock('./notifications', () => notificationsMocks);
+vi.mock('./notification-events', () => notificationsMocks);
+vi.mock('./notifications', () => ({
+  dismissNotification: (...args) => notificationsMocks.dismissNotification(...args),
+  dismissNotificationsByResource: (...args) =>
+    notificationsMocks.dismissNotificationsByResource(...args),
+  pollInviteNotificationId: (...args) => notificationsMocks.pollInviteNotificationId(...args),
+  pollInviteLegacyNotificationId: (...args) =>
+    notificationsMocks.pollInviteLegacyNotificationId(...args),
+}));
 vi.mock('./users', () => ({ findUserIdByEmail: usersMocks.findUserIdByEmail }));
 
 let pollInvites;
@@ -104,40 +117,142 @@ describe('pollInvites', () => {
     const updates = firestoreMocks.updateDoc.mock.calls[0][1];
     expect(updates['pendingInviteMeta.user@example.com']).toEqual({ __deleteField: true });
 
-    expect(notificationsMocks.deleteNotification).toHaveBeenCalledWith(
-      'user1',
-      'poll:sched1'
-    );
-    expect(notificationsMocks.createSessionJoinNotification).toHaveBeenCalledWith(
-      'creator1',
+    expect(notificationsMocks.emitNotificationEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        schedulerId: 'sched1',
-        schedulerTitle: 'Session',
-        participantEmail: 'user@example.com',
-        participantUserId: 'user1',
+        eventType: 'POLL_INVITE_ACCEPTED',
+        resource: { type: 'poll', id: 'sched1', title: 'Session' },
+        actor: { uid: 'user1', email: 'user@example.com' },
+        recipients: { userIds: ['creator1'], emails: [] },
       })
+    );
+    expect(notificationsMocks.pollInviteNotificationId).toHaveBeenCalledWith(
+      'sched1',
+      'user@example.com'
+    );
+    expect(notificationsMocks.pollInviteLegacyNotificationId).toHaveBeenCalledWith('sched1');
+    expect(notificationsMocks.dismissNotification).toHaveBeenCalledWith(
+      'user1',
+      'dedupe:poll:sched1:invite:user@example.com'
+    );
+    expect(notificationsMocks.dismissNotification).toHaveBeenCalledWith(
+      'user1',
+      'pollInvite:sched1'
+    );
+    expect(notificationsMocks.dismissNotificationsByResource).toHaveBeenCalledWith(
+      'user1',
+      'sched1',
+      ['POLL_INVITE_SENT', 'POLL_INVITE']
     );
   });
 
-  test('declinePollInvite updates pending invite and deletes notification', async () => {
+  test('acceptPollInvite clears pending invite even when already participant', async () => {
+    const schedulerRef = { path: 'schedulers/sched1' };
+    firestoreMocks.doc.mockReturnValueOnce(schedulerRef);
+    firestoreMocks.getDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ creatorId: 'creator1', title: 'Session', participantIds: ['user1'] }),
+    });
+
+    await pollInvites.acceptPollInvite('sched1', 'User@Example.com', 'user1');
+
+    const updates = firestoreMocks.updateDoc.mock.calls[0][1];
+    expect(updates.pendingInvites).toEqual({ __arrayRemove: 'user@example.com' });
+    expect(updates.participantIds).toBeUndefined();
+    expect(notificationsMocks.pollInviteNotificationId).toHaveBeenCalledWith(
+      'sched1',
+      'user@example.com'
+    );
+    expect(notificationsMocks.pollInviteLegacyNotificationId).toHaveBeenCalledWith('sched1');
+    expect(notificationsMocks.dismissNotification).toHaveBeenCalledWith(
+      'user1',
+      'dedupe:poll:sched1:invite:user@example.com'
+    );
+    expect(notificationsMocks.dismissNotification).toHaveBeenCalledWith(
+      'user1',
+      'pollInvite:sched1'
+    );
+    expect(notificationsMocks.dismissNotificationsByResource).toHaveBeenCalledWith(
+      'user1',
+      'sched1',
+      ['POLL_INVITE_SENT', 'POLL_INVITE']
+    );
+  });
+
+  test('declinePollInvite removes votes, updates pending invite, and emits decline event', async () => {
     const schedulerRef = { path: 'schedulers/sched2' };
     firestoreMocks.doc.mockReturnValueOnce(schedulerRef);
+    firestoreMocks.getDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ creatorId: 'creator2', title: 'Session Two' }),
+    });
 
     await pollInvites.declinePollInvite('sched2', 'User@Example.com', 'user2');
 
+    expect(firestoreMocks.deleteDoc).toHaveBeenCalledWith({
+      path: 'schedulers/sched2/votes/user2',
+    });
     expect(firestoreMocks.updateDoc).toHaveBeenCalledWith(
       schedulerRef,
       expect.objectContaining({
         pendingInvites: { __arrayRemove: 'user@example.com' },
+        participantIds: { __arrayRemove: 'user2' },
         updatedAt: 'server-time',
       })
     );
     const updates = firestoreMocks.updateDoc.mock.calls[0][1];
     expect(updates['pendingInviteMeta.user@example.com']).toEqual({ __deleteField: true });
-    expect(notificationsMocks.deleteNotification).toHaveBeenCalledWith(
-      'user2',
-      'poll:sched2'
+    expect(firestoreMocks.deleteDoc.mock.invocationCallOrder[0]).toBeLessThan(
+      firestoreMocks.updateDoc.mock.invocationCallOrder[0]
     );
+    expect(notificationsMocks.emitNotificationEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'POLL_INVITE_DECLINED',
+        resource: { type: 'poll', id: 'sched2', title: 'Session Two' },
+        actor: { uid: 'user2', email: 'user@example.com' },
+        recipients: { userIds: ['creator2'], emails: [] },
+      })
+    );
+    expect(notificationsMocks.pollInviteNotificationId).toHaveBeenCalledWith(
+      'sched2',
+      'user@example.com'
+    );
+    expect(notificationsMocks.pollInviteLegacyNotificationId).toHaveBeenCalledWith('sched2');
+    expect(notificationsMocks.dismissNotification).toHaveBeenCalledWith(
+      'user2',
+      'dedupe:poll:sched2:invite:user@example.com'
+    );
+    expect(notificationsMocks.dismissNotification).toHaveBeenCalledWith(
+      'user2',
+      'pollInvite:sched2'
+    );
+    expect(notificationsMocks.dismissNotificationsByResource).toHaveBeenCalledWith(
+      'user2',
+      'sched2',
+      ['POLL_INVITE_SENT', 'POLL_INVITE']
+    );
+  });
+
+  test('declinePollInvite removes votes by email when userId missing', async () => {
+    const schedulerRef = { path: 'schedulers/sched3' };
+    firestoreMocks.doc.mockReturnValueOnce(schedulerRef);
+    firestoreMocks.getDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ creatorId: 'creator3', title: 'Session Three' }),
+    });
+    usersMocks.findUserIdByEmail.mockResolvedValueOnce(null);
+    firestoreMocks.getDocs.mockResolvedValueOnce({
+      docs: [{ ref: 'voteA' }, { ref: 'voteB' }],
+    });
+
+    await pollInvites.declinePollInvite('sched3', 'User@Example.com');
+
+    expect(firestoreMocks.getDocs).toHaveBeenCalled();
+    expect(firestoreMocks.deleteDoc).toHaveBeenCalledWith('voteA');
+    expect(firestoreMocks.deleteDoc).toHaveBeenCalledWith('voteB');
+    const updates = firestoreMocks.updateDoc.mock.calls[0][1];
+    expect(updates.pendingInvites).toEqual({ __arrayRemove: 'user@example.com' });
+    expect(updates.participantIds).toBeUndefined();
+    expect(notificationsMocks.dismissNotification).not.toHaveBeenCalled();
   });
 
   test('removeParticipantFromPoll removes user and votes by userId', async () => {
@@ -165,6 +280,9 @@ describe('pollInvites', () => {
     expect(firestoreMocks.deleteDoc).toHaveBeenCalledWith({
       path: 'schedulers/sched3/votes/user3',
     });
+    expect(firestoreMocks.deleteDoc.mock.invocationCallOrder[0]).toBeLessThan(
+      firestoreMocks.updateDoc.mock.invocationCallOrder[0]
+    );
   });
 
   test('removeParticipantFromPoll removes votes by email when userId missing', async () => {
@@ -178,5 +296,8 @@ describe('pollInvites', () => {
     expect(firestoreMocks.getDocs).toHaveBeenCalled();
     expect(firestoreMocks.deleteDoc).toHaveBeenCalledWith('vote1');
     expect(firestoreMocks.deleteDoc).toHaveBeenCalledWith('vote2');
+    expect(Math.min(...firestoreMocks.deleteDoc.mock.invocationCallOrder)).toBeLessThan(
+      firestoreMocks.updateDoc.mock.invocationCallOrder[0]
+    );
   });
 });

@@ -3,6 +3,7 @@ const admin = require("firebase-admin");
 const { Timestamp, FieldValue } = require("firebase-admin/firestore");
 const crypto = require("crypto");
 const { DISCORD_REGION, DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, APP_URL } = require("./config");
+const { normalizeEmail } = require("../utils/email");
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -246,8 +247,8 @@ exports.discordOAuthCallback = onRequest(
           if (discordEmail) {
             try {
               const authRecord = await admin.auth().getUser(uid);
-              const authEmail = String(authRecord.email || "").trim().toLowerCase();
-              if (authEmail && authEmail === String(discordEmail).toLowerCase()) {
+              const authEmail = normalizeEmail(authRecord.email);
+              if (authEmail && authEmail === normalizeEmail(discordEmail)) {
                 await admin.auth().updateUser(uid, { emailVerified: true });
               }
             } catch (err) {

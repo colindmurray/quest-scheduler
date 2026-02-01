@@ -11,5 +11,14 @@ if [[ -f "$ENV_FILE" ]]; then
   set +a
 fi
 
-firebase emulators:exec --only auth,firestore,functions,storage \
-  "node \"$ROOT_DIR/functions/scripts/seed-e2e-scheduler.js\" && npm --prefix \"$ROOT_DIR/web\" run test:e2e"
+NODE_OPTIONS="${NODE_OPTIONS:-}"
+if [[ "$NODE_OPTIONS" != *"--no-deprecation"* ]]; then
+  export NODE_OPTIONS="${NODE_OPTIONS} --no-deprecation"
+fi
+export NODE_NO_WARNINGS=1
+
+FILTER_PATTERN='Application Default Credentials detected|following emulators are not running|outdated version of firebase-functions|Loaded environment variables|Trying to access secret|callable-request-verification|DeprecationWarning: The `punycode` module|trace-deprecation|NO_COLOR|Using node@|Serving at port'
+
+firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT \
+  "node \"$ROOT_DIR/functions/scripts/seed-e2e-scheduler.js\" && npm --prefix \"$ROOT_DIR/web\" run test:e2e" \
+  2>&1 | sed -E "/$FILTER_PATTERN/d"

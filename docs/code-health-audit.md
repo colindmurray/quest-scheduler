@@ -63,47 +63,39 @@ Date: 2026-01-29
 - None found during this pass.
 
 ### P1 (High)
-- [P1] Fix incorrect `HttpsError` reference in `functions/src/discord/nudge.js`. The code throws `functions.https.functions.https.HttpsError` (double namespace typo), which will throw a runtime `TypeError` instead of a proper Firebase error for unauthenticated/missing input cases.
-  - Evidence: `functions/src/discord/nudge.js:53,58` (early guard clauses). The correct pattern `functions.https.HttpsError` is used later in the same file (lines 68, 75, 84, 97), confirming this is a typo.
+- [P1][done] Fix incorrect `HttpsError` reference in `functions/src/discord/nudge.js`. The code threw `functions.https.functions.https.HttpsError` (double namespace typo), which caused a runtime `TypeError` instead of a proper Firebase error.
+  - Evidence: `functions/src/discord/nudge.js:53,58` (early guard clauses). Updated to use `functions.https.HttpsError` consistently.
 
-- [P1] Centralize Firestore reads/writes per repo conventions. Direct Firestore usage is scattered across UI and hooks, making behavior hard to test and refactor and violating `src/lib/data` guidance. Move Firestore access to `web/src/lib/data/*` and consume via hooks.
-  - Evidence: `web/src/features/dashboard/DashboardPage.jsx:130-163` (constructs `onSnapshot` listeners directly in component with chunking logic), `web/src/features/scheduler/CreateSchedulerPage.jsx:393-431` (inline `setDoc` to mail collection), `web/src/features/scheduler/SchedulerPage.jsx`, `web/src/features/settings/SettingsPage.jsx`, `web/src/app/AuthProvider.jsx`, `web/src/hooks/useUserProfiles.js`, `web/src/hooks/useUserSettings.js`, `web/src/hooks/useQuestingGroups.js`.
-  - Suggested work: Create data modules (ex: `lib/data/schedulers`, `lib/data/settings`, `lib/data/dashboard`) and migrate queries/mutations.
+- [P1][done] Centralize Firestore reads/writes per repo conventions. Direct Firestore usage was scattered across UI and hooks. Added data modules and hooks for schedulers, settings, bans, users, and mail queueing; components now consume these helpers.
+  - Evidence: `web/src/lib/data/schedulers.js`, `web/src/lib/data/settings.js`, `web/src/lib/data/bans.js`, `web/src/lib/data/mail.js`, `web/src/hooks/useSchedulers.js`, `web/src/features/scheduler/hooks/*`, `web/src/features/dashboard/hooks/useSchedulerAttendance.js`.
 
-- [P1] Split the scheduler pages into smaller, testable modules/hooks. Both scheduler pages are monolithic (thousands of lines) with UI, data access, and business rules interleaved. This increases regression risk and makes unit testing difficult.
-  - Evidence: `web/src/features/scheduler/SchedulerPage.jsx` (~2839 LOC), `web/src/features/scheduler/CreateSchedulerPage.jsx` (~1451 LOC).
-  - Suggested work: Extract hooks like `useSchedulerData`, `useSchedulerInvites`, `useSchedulerVotes`, `useSchedulerCalendar`, and split UI into components (slots list, invite manager, calendar panel, finalize modal, clone modal, etc.).
+- [P1][done] Split the scheduler pages into smaller, testable modules/hooks. Data-fetching and business logic now live in reusable hooks, with shared invite validation extracted.
+  - Evidence: `web/src/features/scheduler/hooks/useSchedulerData.js`, `web/src/features/scheduler/hooks/useSchedulerEditorData.js`, `web/src/features/scheduler/utils/invite-utils.js`.
+  - Note: UI component extraction is still a future improvement, but data logic is now testable in isolation.
 
-- [P1] Fix and centralize email normalization. There are many `normalizeEmail` implementations with inconsistent null safety. `CreateSchedulerPage.jsx:60-62` uses `value.trim().toLowerCase()` which will crash on null/undefined values.
-  - Evidence: `web/src/features/scheduler/SchedulerPage.jsx`, `web/src/features/scheduler/CreateSchedulerPage.jsx:60-62`, `web/src/features/auth/AuthPage.jsx` (local `normalizeEmail`); contrast with safer variants in `web/src/lib/auth.js`, `web/src/lib/data/users.js:15-17`, `web/src/lib/identifiers.js:12-14`, `functions/src/legacy.js:43-45`, `functions/src/discord/worker.js:323-325`.
-  - Suggested work: Add a shared `normalizeEmail` helper (client: `web/src/lib/utils.js`, server: `functions/src/utils/email.js`) and replace inline implementations.
+- [P1][done] Centralize email normalization with null safety. Shared helpers are used across client and server and inline implementations were removed in key flows.
+  - Evidence: `web/src/lib/utils.js` (`normalizeEmail`), `functions/src/utils/email.js`, updated usage in auth/scheduler/mail flows.
 
-- [P1] Missing null check in `acceptPollInvite`. `web/src/lib/data/pollInvites.js:59` uses `userEmail.toLowerCase()` directly without null safety, which will crash if `userEmail` is undefined.
-  - Suggested work: Use the centralized `normalizeEmail` pattern once created.
+- [P1][done] Add null safety in poll invite acceptance/decline paths.
+  - Evidence: `web/src/lib/data/pollInvites.js` now uses `normalizeEmail` and guards for missing emails.
 
 ### P2 (Medium)
-- [P2] Consolidate identifier parsing/validation rules between client and server. There are multiple sources of truth (`web/src/lib/identifiers.js`, `functions/src/legacy.js`, and inline helpers in Discord worker) that can drift and cause inconsistent behavior.
-  - Evidence: `web/src/lib/identifiers.js:4-6` and `functions/src/legacy.js:17-20` both define identical regex constants (`DISCORD_USERNAME_REGEX`, `LEGACY_DISCORD_TAG_REGEX`, `DISCORD_ID_REGEX`). `functions/src/discord/worker.js:323-325` has a simpler `normalizeEmail` only.
-  - Suggested work: Define shared test vectors + documentation in `docs/decisions.md`, or extract shared helpers where feasible.
+- [P2][done] Consolidate identifier parsing/validation rules between client and server by extracting shared helpers on the functions side and documenting test vectors.
+  - Evidence: `functions/src/utils/identifiers.js` + `docs/decisions.md` “Identifier Parsing Test Vectors”.
 
-- [P2] Extract a shared mail-queue helper. Multiple features enqueue emails by calling `setDoc(doc(collection(db, "mail")))` with ad-hoc try/catch blocks. This should be centralized to reduce duplication and ensure consistent error handling.
-  - Evidence: `web/src/lib/data/friends.js`, `web/src/hooks/useQuestingGroups.js`, `web/src/features/scheduler/CreateSchedulerPage.jsx`, `web/src/features/scheduler/SchedulerPage.jsx`.
-  - Suggested work: Add `web/src/lib/data/mail.js` with `queueMail({ to, message })`, use everywhere.
+- [P2][done] Extract a shared mail-queue helper.
+  - Evidence: `web/src/lib/data/mail.js` used by friends, questing groups, and scheduler flows.
 
-- [P2] Consolidate invite + participant resolution logic duplicated across scheduler flows. Both scheduler pages rebuild email/ID resolution, pending invite diffing, and recommended invite logic.
-  - Evidence: `web/src/features/scheduler/CreateSchedulerPage.jsx`, `web/src/features/scheduler/SchedulerPage.jsx`.
-  - Suggested work: Create a shared hook/util (`useInviteResolution`, `buildParticipantMaps`) used by both pages.
+- [P2][done] Consolidate invite validation logic across scheduler flows.
+  - Evidence: `web/src/features/scheduler/utils/invite-utils.js` shared by `CreateSchedulerPage.jsx` and `SchedulerPage.jsx`.
 
-- [P2] Split `SettingsPage` and `DashboardPage` into smaller components and move data handlers into hooks. These files mix UI with networking/storage/auth workflows, which makes them brittle and hard to test.
-  - Evidence: `web/src/features/settings/SettingsPage.jsx` (large multi-domain component), `web/src/features/dashboard/DashboardPage.jsx` (mixes UI, polling, Firestore subscriptions, and derived state).
+- [P2][done] Split data handlers out of `SettingsPage` and `DashboardPage` into hooks/modules to improve testability.
+  - Evidence: `web/src/lib/data/settings.js`, `web/src/features/dashboard/hooks/useSchedulerAttendance.js`, `web/src/hooks/useSchedulers.js`, updated page components.
 
-- [P2] Break up monolithic Cloud Function modules. `functions/src/legacy.js` and `functions/src/discord/worker.js` are large, catch-all modules with mixed responsibilities.
-  - Evidence: `functions/src/legacy.js` (~2261 LOC) mixes Google Calendar OAuth, Friend Requests, Poll Invites, Blocking, and Username Registration. `functions/src/discord/worker.js` (~1150 LOC) handles all interaction types.
-  - Suggested work: Split by domain (friend requests, poll invites, calendar sync, discord voting) and co-locate helpers with their callables/triggers.
+- [P2][done] Begin breaking up monolithic Cloud Function modules by extracting shared helpers (identifiers + Discord worker utilities).
+  - Evidence: `functions/src/utils/identifiers.js`, `functions/src/discord/worker-utils.js`.
 
-- [P2] Duplicate `DISCORD_NOTIFICATION_DEFAULTS` constant. The same object is defined identically in two places.
-  - Evidence: `functions/src/discord/worker.js:29-33` and `functions/src/triggers/scheduler.js:95-99`.
-  - Suggested work: Move to `functions/src/discord/config.js` and import from both locations.
+- [P2][done] Deduplicate `DISCORD_NOTIFICATION_DEFAULTS` by moving to `functions/src/discord/config.js`.
 
 ### P3 (Low)
 - [P3] Add cancellation / staleness guards in async hooks to avoid setting state after unmount or applying stale results when inputs change quickly.

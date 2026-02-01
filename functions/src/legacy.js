@@ -1,11 +1,22 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
-const { FieldValue } = require("firebase-admin/firestore");
+const { FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { google } = require("googleapis");
 const { defineJsonSecret } = require("firebase-functions/params");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const { normalizeEmail, encodeEmailId } = require("./utils/email");
+const {
+  DISCORD_USERNAME_REGEX,
+  LEGACY_DISCORD_TAG_REGEX,
+  DISCORD_ID_REGEX,
+  QS_USERNAME_REGEX,
+  RESERVED_QS_USERNAMES,
+  isDiscordUsername,
+  isValidQsUsername,
+  parseIdentifier,
+} = require("./utils/identifiers");
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -14,18 +25,10 @@ if (!admin.apps.length) {
 const MAX_INVITE_ALLOWANCE = 50;
 const MAX_POLL_INVITES_PER_RECIPIENT = 3;
 const INVITE_BLOCK_PENALTY = 5;
-const DISCORD_USERNAME_REGEX = /^[a-z0-9_.]{2,32}$/i;
-const LEGACY_DISCORD_TAG_REGEX = /^.+#\d{4}$/;
-const DISCORD_ID_REGEX = /^\d{17,20}$/;
-const QS_USERNAME_REGEX = /^[a-z][a-z0-9_]{2,19}$/;
-const RESERVED_QS_USERNAMES = new Set([
-  "admin",
-  "support",
-  "help",
-  "system",
-  "quest",
-  "scheduler",
-]);
+const NOTIFICATION_EVENT_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
+const buildNotificationEventExpiry = () =>
+  Timestamp.fromDate(new Date(Date.now() + NOTIFICATION_EVENT_TTL_MS));
 
 const SCOPES = [
   "openid",
@@ -40,48 +43,6 @@ const functionsWithOAuthSecrets = functions.runWith({ secrets: [googleOAuthClien
 let cachedFileConfig = null;
 let fileConfigLoaded = false;
 
-function normalizeEmail(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function encodeEmailId(value) {
-  return encodeURIComponent(normalizeEmail(value));
-}
-
-function isDiscordUsername(value) {
-  if (!value) return false;
-  if (!DISCORD_USERNAME_REGEX.test(value)) return false;
-  if (value.startsWith(".") || value.endsWith(".")) return false;
-  if (value.includes("..")) return false;
-  return true;
-}
-
-function isValidQsUsername(value) {
-  if (!value) return false;
-  if (!QS_USERNAME_REGEX.test(value)) return false;
-  return !RESERVED_QS_USERNAMES.has(value);
-}
-
-function parseIdentifier(raw) {
-  const trimmed = String(raw || "").trim();
-  if (!trimmed) return { type: "unknown", value: "" };
-  if (trimmed.startsWith("@")) {
-    return { type: "qsUsername", value: trimmed.slice(1).toLowerCase() };
-  }
-  if (trimmed.includes("@") && !trimmed.startsWith("@") && trimmed.includes(".")) {
-    return { type: "email", value: normalizeEmail(trimmed) };
-  }
-  if (DISCORD_ID_REGEX.test(trimmed)) {
-    return { type: "discordId", value: trimmed };
-  }
-  if (LEGACY_DISCORD_TAG_REGEX.test(trimmed)) {
-    return { type: "legacyDiscordTag", value: trimmed };
-  }
-  if (isDiscordUsername(trimmed)) {
-    return { type: "discordUsername", value: trimmed.toLowerCase() };
-  }
-  return { type: "unknown", value: trimmed };
-}
 
 function friendRequestIdForEmails(fromEmail, toEmail) {
   return `friendRequest:${encodeURIComponent(`${fromEmail}__${toEmail}`)}`;
@@ -312,94 +273,6 @@ async function adjustInviteAllowance(userId, delta) {
 
     transaction.set(ref, updates, { merge: true });
   });
-}
-
-async function createFriendRequestNotification(userId, { requestId, fromEmail, fromUserId }) {
-  const ref = admin
-    .firestore()
-    .collection("users")
-    .doc(userId)
-    .collection("notifications")
-    .doc(`friendRequest:${requestId}`);
-
-  await ref.set(
-    {
-      type: "FRIEND_REQUEST",
-      title: "Friend Request",
-      body: `${fromEmail} sent you a friend request`,
-      actionUrl: `/friends?request=${requestId}`,
-      metadata: {
-        requestId,
-        fromEmail,
-        fromUserId: fromUserId || null,
-        actorUserId: fromUserId || null,
-        actorEmail: fromEmail || null,
-      },
-      read: false,
-      dismissed: false,
-      createdAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
-}
-
-async function createFriendAcceptedNotification(userId, { requestId, friendEmail, friendUserId }) {
-  const ref = admin
-    .firestore()
-    .collection("users")
-    .doc(userId)
-    .collection("notifications")
-    .doc();
-
-  await ref.set({
-    type: "FRIEND_ACCEPTED",
-    title: "Friend Request Accepted",
-    body: `${friendEmail} accepted your friend request`,
-    actionUrl: "/friends",
-    metadata: {
-      requestId,
-      friendEmail,
-      friendUserId: friendUserId || null,
-      actorUserId: friendUserId || null,
-      actorEmail: friendEmail || null,
-    },
-    read: false,
-    dismissed: false,
-    createdAt: FieldValue.serverTimestamp(),
-  });
-}
-
-async function createPollInviteNotification(
-  userId,
-  { schedulerId, schedulerTitle, inviterEmail, inviterUserId }
-) {
-  const ref = admin
-    .firestore()
-    .collection("users")
-    .doc(userId)
-    .collection("notifications")
-    .doc(`pollInvite:${schedulerId}`);
-
-  await ref.set(
-    {
-      type: "POLL_INVITE",
-      title: "Session Poll Invite",
-      body: `${inviterEmail} invited you to join "${schedulerTitle}"`,
-      actionUrl: `/scheduler/${schedulerId}`,
-      metadata: {
-        schedulerId,
-        schedulerTitle,
-        inviterEmail,
-        inviterUserId: inviterUserId || null,
-        actorUserId: inviterUserId || null,
-        actorEmail: inviterEmail || null,
-      },
-      read: false,
-      dismissed: false,
-      createdAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
 }
 
 async function getUserIdsByEmail(emails) {
@@ -866,7 +739,7 @@ exports.cloneSchedulerPoll = functions.https.onCall(async (data, context) => {
   const participantIds = Array.from(
     new Set(Object.values(participantIdsByEmail).filter(Boolean))
   );
-  const pendingInvites = inviteEmailsNormalized.filter((email) => !participantIdsByEmail[email]);
+  const pendingInvites = inviteEmailsNormalized.filter((email) => email !== creatorEmail);
 
   let groupNameToSave = null;
   let groupMemberIds = [];
@@ -1078,10 +951,7 @@ exports.sendFriendRequest = functions.https.onCall(async (data, context) => {
       inviterIdentifiers.qsUsernameLower
     )
   ) {
-    throw new functions.https.HttpsError(
-      "permission-denied",
-      "This user is not accepting new invites from you."
-    );
+    return { requestId: null, toUserId: null, suppressed: true };
   }
 
   const outstandingCount = await countOutstandingInvites(fromUserId);
@@ -1109,15 +979,114 @@ exports.sendFriendRequest = functions.https.onCall(async (data, context) => {
     createdAt: FieldValue.serverTimestamp(),
   });
 
-  if (toUserId) {
-    await createFriendRequestNotification(toUserId, {
-      requestId,
-      fromEmail,
-      fromUserId,
+  const sendEmail = data?.sendEmail !== false;
+  try {
+    const eventRef = db.collection("notificationEvents").doc();
+    await eventRef.set({
+      eventType: "FRIEND_REQUEST_SENT",
+      resource: { type: "friend", id: requestId, title: "Friend Request" },
+      actor: { uid: fromUserId, email: fromEmail, displayName: fromDisplayName || fromEmail },
+      payload: {
+        requestId,
+        fromEmail,
+        fromUserId,
+        toEmail,
+      },
+      recipients: {
+        userIds: toUserId ? [toUserId] : [],
+        emails: sendEmail ? [toEmail] : [],
+        pendingEmails: toUserId ? [] : [toEmail],
+      },
+      dedupeKey: `friend:${requestId}`,
+      source: "functions",
+      status: "queued",
+      createdAt: FieldValue.serverTimestamp(),
+      expiresAt: buildNotificationEventExpiry(),
+      createdBy: fromUserId,
     });
+  } catch (err) {
+    console.warn("Failed to emit friend request event:", err);
   }
 
   return { requestId, toUserId: toUserId || null };
+});
+
+exports.revokeFriendRequest = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Login required");
+  }
+
+  const requestId = String(data?.requestId || "").trim();
+  if (!requestId) {
+    throw new functions.https.HttpsError("invalid-argument", "Missing friend request id.");
+  }
+
+  const db = admin.firestore();
+  const requestRef = db.collection("friendRequests").doc(requestId);
+  const requestSnap = await requestRef.get();
+  if (!requestSnap.exists) {
+    throw new functions.https.HttpsError("not-found", "Friend request not found.");
+  }
+  const request = requestSnap.data() || {};
+  if (request.status !== "pending") {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Friend request is no longer pending."
+    );
+  }
+
+  const senderEmail = normalizeEmail(request.fromEmail);
+  const requesterEmail = normalizeEmail(context.auth.token.email);
+  const isSender =
+    (request.fromUserId && request.fromUserId === context.auth.uid) ||
+    (senderEmail && requesterEmail && senderEmail === requesterEmail);
+  if (!isSender) {
+    throw new functions.https.HttpsError("permission-denied", "Only the sender can revoke this request.");
+  }
+
+  const legacyIds = new Set();
+  if (request.fromEmail && request.toEmail) {
+    legacyIds.add(friendRequestIdForEmails(request.fromEmail, request.toEmail));
+    legacyIds.add(friendRequestIdForEmails(request.toEmail, request.fromEmail));
+  }
+  legacyIds.delete(requestId);
+
+  await Promise.allSettled([
+    requestRef.delete(),
+    ...Array.from(legacyIds).map((id) => db.collection("friendRequests").doc(id).delete()),
+  ]);
+
+  const inviteeUserId = request.toUserId || (await findUserIdByEmail(request.toEmail));
+  if (inviteeUserId) {
+    try {
+      const eventRef = db.collection("notificationEvents").doc();
+      await eventRef.set({
+        eventType: "FRIEND_REQUEST_DECLINED",
+        resource: { type: "friend", id: requestId, title: "Friend Request" },
+        actor: {
+          uid: inviteeUserId,
+          email: normalizeEmail(request.toEmail),
+          displayName: normalizeEmail(request.toEmail) || "Someone",
+        },
+        payload: {
+          requestId,
+        },
+        recipients: {
+          userIds: [],
+          emails: [],
+        },
+        source: "functions",
+        status: "queued",
+        createdAt: FieldValue.serverTimestamp(),
+        expiresAt: buildNotificationEventExpiry(),
+        createdBy: context.auth.uid,
+      });
+    } catch (err) {
+      console.warn("Failed to emit friend request revoked event:", err);
+    }
+  }
+
+  return { ok: true };
 });
 
 exports.acceptFriendInviteLink = functions.https.onCall(async (data, context) => {
@@ -1184,18 +1153,34 @@ exports.acceptFriendInviteLink = functions.https.onCall(async (data, context) =>
         toUserId: context.auth.uid,
         respondedAt: FieldValue.serverTimestamp(),
       });
-      await createFriendAcceptedNotification(senderDoc.id, {
-        requestId: existingDoc.id,
-        friendEmail: userEmail,
-        friendUserId: context.auth.uid,
-      });
-      await db
-        .collection("users")
-        .doc(context.auth.uid)
-        .collection("notifications")
-        .doc(`friendRequest:${existingDoc.id}`)
-        .delete()
-        .catch(() => undefined);
+      try {
+        const eventRef = db.collection("notificationEvents").doc();
+        await eventRef.set({
+          eventType: "FRIEND_REQUEST_ACCEPTED",
+          resource: { type: "friend", id: existingDoc.id, title: "Friend Request" },
+          actor: {
+            uid: context.auth.uid,
+            email: userEmail,
+            displayName: context.auth.token.name || userEmail,
+          },
+          payload: {
+            requestId: existingDoc.id,
+            friendEmail: userEmail,
+            friendUserId: context.auth.uid,
+          },
+          recipients: {
+            userIds: [senderDoc.id],
+            emails: [],
+          },
+          source: "functions",
+          status: "queued",
+          createdAt: FieldValue.serverTimestamp(),
+          expiresAt: buildNotificationEventExpiry(),
+          createdBy: context.auth.uid,
+        });
+      } catch (err) {
+        console.warn("Failed to emit friend request accepted event:", err);
+      }
       return {
         senderEmail,
         senderDisplayName: sender.displayName || senderEmail,
@@ -1217,11 +1202,34 @@ exports.acceptFriendInviteLink = functions.https.onCall(async (data, context) =>
     respondedAt: FieldValue.serverTimestamp(),
   });
 
-  await createFriendAcceptedNotification(senderDoc.id, {
-    requestId,
-    friendEmail: userEmail,
-    friendUserId: context.auth.uid,
-  });
+  try {
+    const eventRef = db.collection("notificationEvents").doc();
+    await eventRef.set({
+      eventType: "FRIEND_REQUEST_ACCEPTED",
+      resource: { type: "friend", id: requestId, title: "Friend Request" },
+      actor: {
+        uid: context.auth.uid,
+        email: userEmail,
+        displayName: context.auth.token.name || userEmail,
+      },
+      payload: {
+        requestId,
+        friendEmail: userEmail,
+        friendUserId: context.auth.uid,
+      },
+      recipients: {
+        userIds: [senderDoc.id],
+        emails: [],
+      },
+      source: "functions",
+      status: "queued",
+      createdAt: FieldValue.serverTimestamp(),
+      expiresAt: buildNotificationEventExpiry(),
+      createdBy: context.auth.uid,
+    });
+  } catch (err) {
+    console.warn("Failed to emit friend request accepted event:", err);
+  }
 
   return {
     senderEmail,
@@ -1242,7 +1250,8 @@ exports.sendPollInvites = functions.https.onCall(async (data, context) => {
 
   const inviterId = context.auth.uid;
   const inviterEmail = normalizeEmail(context.auth.token.email);
-  const schedulerRef = admin.firestore().collection("schedulers").doc(schedulerId);
+  const db = admin.firestore();
+  const schedulerRef = db.collection("schedulers").doc(schedulerId);
   const schedulerSnap = await schedulerRef.get();
   if (!schedulerSnap.exists) {
     throw new functions.https.HttpsError("not-found", "Session poll not found.");
@@ -1289,7 +1298,7 @@ exports.sendPollInvites = functions.https.onCall(async (data, context) => {
 
   for (const email of candidates) {
     const userId = userIdMap.get(email) || null;
-    if (userId && (participantIds.includes(userId) || groupMemberIds.includes(userId))) {
+    if (userId && groupMemberIds.includes(userId)) {
       continue;
     }
     if (
@@ -1332,26 +1341,47 @@ exports.sendPollInvites = functions.https.onCall(async (data, context) => {
       invitedAt: FieldValue.serverTimestamp(),
     };
   });
+  const nextParticipantIds = Array.from(
+    new Set([...participantIds, ...valid.map((item) => item.userId).filter(Boolean)])
+  );
 
   await schedulerRef.update({
     pendingInvites: nextPending,
     pendingInviteMeta: nextMeta,
+    participantIds: nextParticipantIds,
     updatedAt: FieldValue.serverTimestamp(),
   });
 
   const schedulerTitle = data?.schedulerTitle || scheduler.title || "Session Poll";
+  const inviterDisplayName = context.auth.token.name || inviterEmail || "Someone";
   await Promise.all(
     valid.map(async ({ email, userId }) => {
-      if (!userId) return;
       try {
-        await createPollInviteNotification(userId, {
-          schedulerId,
-          schedulerTitle,
-          inviterEmail,
-          inviterUserId: inviterId,
+        const eventRef = db.collection("notificationEvents").doc();
+        await eventRef.set({
+          eventType: "POLL_INVITE_SENT",
+          resource: { type: "poll", id: schedulerId, title: schedulerTitle },
+          actor: { uid: inviterId, email: inviterEmail, displayName: inviterDisplayName },
+          payload: {
+            pollTitle: schedulerTitle,
+            inviterEmail,
+            inviterUserId: inviterId,
+            inviteeEmail: email,
+          },
+          recipients: {
+            userIds: userId ? [userId] : [],
+            emails: [email],
+            pendingEmails: userId ? [] : [email],
+          },
+          dedupeKey: `poll:${schedulerId}:invite:${email}`,
+          source: "functions",
+          status: "queued",
+          createdAt: FieldValue.serverTimestamp(),
+          expiresAt: buildNotificationEventExpiry(),
+          createdBy: inviterId,
         });
       } catch (err) {
-        console.warn("Failed to create poll invite notification:", err);
+        console.warn("Failed to emit poll invite event:", err);
       }
     })
   );
@@ -1442,6 +1472,7 @@ exports.revokePollInvite = functions.https.onCall(async (data, context) => {
   if (!schedulerId || !inviteeEmail) {
     throw new functions.https.HttpsError("invalid-argument", "Missing scheduler or invitee email.");
   }
+  const inviterEmail = normalizeEmail(context.auth.token.email);
 
   const db = admin.firestore();
   const schedulerRef = db.collection("schedulers").doc(schedulerId);
@@ -1469,13 +1500,37 @@ exports.revokePollInvite = functions.https.onCall(async (data, context) => {
 
   const inviteeUserId = await findUserIdByEmail(inviteeEmail);
   if (inviteeUserId) {
-    await db
-      .collection("users")
-      .doc(inviteeUserId)
-      .collection("notifications")
-      .doc(`pollInvite:${schedulerId}`)
-      .delete()
-      .catch(() => undefined);
+    try {
+      const eventRef = db.collection("notificationEvents").doc();
+      const schedulerTitle = scheduler.title || "Session Poll";
+      await eventRef.set({
+        eventType: "POLL_INVITE_REVOKED",
+        resource: { type: "poll", id: schedulerId, title: schedulerTitle },
+        actor: {
+          uid: context.auth.uid,
+          email: inviterEmail,
+          displayName: context.auth.token.name || inviterEmail || "Someone",
+        },
+        payload: {
+          pollTitle: schedulerTitle,
+          inviterEmail,
+          inviterUserId: context.auth.uid,
+          inviteeEmail,
+        },
+        recipients: {
+          userIds: [inviteeUserId],
+          emails: [],
+        },
+        dedupeKey: `poll:${schedulerId}:invite:${inviteeEmail}:revoked`,
+        source: "functions",
+        status: "queued",
+        createdAt: FieldValue.serverTimestamp(),
+        expiresAt: buildNotificationEventExpiry(),
+        createdBy: context.auth.uid,
+      });
+    } catch (err) {
+      console.warn("Failed to emit poll invite revoked event:", err);
+    }
   }
 
   return { ok: true };
@@ -1552,6 +1607,39 @@ exports.sendGroupInvite = functions.https.onCall(async (data, context) => {
     updatedAt: FieldValue.serverTimestamp(),
   });
 
+  try {
+    const eventRef = db.collection("notificationEvents").doc();
+    await eventRef.set({
+      eventType: "GROUP_INVITE_SENT",
+      resource: { type: "group", id: groupId, title: group.name || "Questing Group" },
+      actor: {
+        uid: inviterId,
+        email: inviterEmail,
+        displayName: context.auth.token.name || inviterEmail,
+      },
+      payload: {
+        groupId,
+        groupName: group.name || "Questing Group",
+        inviterEmail,
+        inviterUserId: inviterId,
+        inviteeEmail,
+      },
+      recipients: {
+        userIds: inviteeUserId ? [inviteeUserId] : [],
+        emails: [inviteeEmail],
+        pendingEmails: inviteeUserId ? [] : [inviteeEmail],
+      },
+      dedupeKey: `group:${groupId}:invite:${inviteeEmail}`,
+      source: "functions",
+      status: "queued",
+      createdAt: FieldValue.serverTimestamp(),
+      expiresAt: buildNotificationEventExpiry(),
+      createdBy: inviterId,
+    });
+  } catch (err) {
+    console.warn("Failed to emit group invite event:", err);
+  }
+
   return { added: true, inviteeUserId: inviteeUserId || null };
 });
 
@@ -1596,13 +1684,61 @@ exports.revokeGroupInvite = functions.https.onCall(async (data, context) => {
 
   const inviteeUserId = await findUserIdByEmail(inviteeEmail);
   if (inviteeUserId) {
-    await db
+    const notificationsRef = db
       .collection("users")
       .doc(inviteeUserId)
-      .collection("notifications")
-      .doc(`groupInvite:${groupId}`)
-      .delete()
-      .catch(() => undefined);
+      .collection("notifications");
+    const inviteNotificationIds = [
+      `dedupe:group:${groupId}:invite:${inviteeEmail}`,
+      `groupInvite:${groupId}`,
+    ];
+    await Promise.allSettled(
+      inviteNotificationIds.map((id) =>
+        notificationsRef.doc(id).update({ dismissed: true, autoCleared: true })
+      )
+    );
+    const inviteTypes = new Set(["GROUP_INVITE_SENT", "GROUP_INVITE"]);
+    const inviteSnapshot = await notificationsRef.where("resource.id", "==", groupId).get();
+    if (!inviteSnapshot.empty) {
+      const batch = db.batch();
+      inviteSnapshot.docs.forEach((docSnap) => {
+        const data = docSnap.data() || {};
+        if (!inviteTypes.has(data.type)) return;
+        batch.update(docSnap.ref, { dismissed: true, autoCleared: true });
+      });
+      await batch.commit();
+    }
+    try {
+      const eventRef = db.collection("notificationEvents").doc();
+      await eventRef.set({
+        eventType: "GROUP_INVITE_DECLINED",
+        resource: { type: "group", id: groupId, title: group.name || "Questing Group" },
+        actor: {
+          uid: inviteeUserId,
+          email: inviteeEmail,
+          displayName: inviteeEmail,
+        },
+        payload: {
+          groupId,
+          groupName: group.name || "Questing Group",
+          inviterEmail,
+          inviterUserId: inviterId,
+          inviteeEmail,
+        },
+        recipients: {
+          userIds: [],
+          emails: [],
+        },
+        dedupeKey: `group:${groupId}:invite:${inviteeEmail}:revoked`,
+        source: "functions",
+        status: "queued",
+        createdAt: FieldValue.serverTimestamp(),
+        expiresAt: buildNotificationEventExpiry(),
+        createdBy: inviterId,
+      });
+    } catch (err) {
+      console.warn("Failed to emit group invite revoked event:", err);
+    }
   }
 
   return { ok: true };
@@ -1666,22 +1802,10 @@ exports.removeGroupMemberFromPolls = functions.https.onCall(async (data, context
     }
   };
 
-  const notificationDeletes = [];
-  if (memberUid) {
-    pollDocs.forEach((pollDoc) => {
-      notificationDeletes.push(
-        db
-          .collection("users")
-          .doc(memberUid)
-          .collection("notifications")
-          .doc(`pollInvite:${pollDoc.id}`)
-          .delete()
-          .catch(() => undefined)
-      );
-    });
-  }
+  const pollInviteEvents = [];
 
   for (const pollDoc of pollDocs) {
+    const pollData = pollDoc.data() || {};
     await pollDoc.ref.update({
       ...(memberUid ? { participantIds: FieldValue.arrayRemove(memberUid) } : {}),
       pendingInvites: FieldValue.arrayRemove(memberEmail),
@@ -1689,10 +1813,44 @@ exports.removeGroupMemberFromPolls = functions.https.onCall(async (data, context
       updatedAt: FieldValue.serverTimestamp(),
     });
     await deleteVoteDocs(pollDoc.ref);
+
+    if (memberUid) {
+      pollInviteEvents.push(
+        db
+          .collection("notificationEvents")
+          .doc()
+          .set({
+            eventType: "POLL_INVITE_REVOKED",
+            resource: { type: "poll", id: pollDoc.id, title: pollData.title || "Session Poll" },
+            actor: {
+              uid: requesterUid,
+              email: requesterEmail,
+              displayName: context.auth.token.name || requesterEmail || "Someone",
+            },
+            payload: {
+              pollTitle: pollData.title || "Session Poll",
+              inviterEmail: requesterEmail,
+              inviterUserId: requesterUid,
+              inviteeEmail: memberEmail,
+            },
+            recipients: {
+              userIds: [memberUid],
+              emails: [],
+            },
+            dedupeKey: `poll:${pollDoc.id}:invite:${memberEmail}:revoked`,
+            source: "functions",
+            status: "queued",
+            createdAt: FieldValue.serverTimestamp(),
+            expiresAt: buildNotificationEventExpiry(),
+            createdBy: requesterUid,
+          })
+          .catch(() => undefined)
+      );
+    }
   }
 
-  if (notificationDeletes.length > 0) {
-    await Promise.all(notificationDeletes);
+  if (pollInviteEvents.length > 0) {
+    await Promise.all(pollInviteEvents);
   }
 
   return { ok: true, polls: pollDocs.length };
@@ -2094,7 +2252,7 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
   let step = "init";
   try {
     const uid = context.auth.uid;
-    const email = (context.auth.token.email || "").toLowerCase();
+    const email = normalizeEmail(context.auth.token.email);
     if (!email) {
       throw new functions.https.HttpsError("failed-precondition", "User email not available");
     }

@@ -4,19 +4,22 @@ import {
   createQuestingGroup,
   acceptGroupInvitation,
   declineGroupInvitation,
+  revokeGroupInvite,
   removeMemberFromGroup,
+  leaveGroup,
   getDefaultGroupColor,
   getPollsUsingGroup,
   removeMemberFromGroupPolls,
 } from "./questingGroups";
-import {
-  createGroupInviteNotification,
-  createGroupMemberChangeNotification,
-  createGroupInviteAcceptedNotification,
-  deleteNotification,
-} from "./notifications";
 import { httpsCallable } from "firebase/functions";
-import { getDocs, getDoc, updateDoc, setDoc } from "firebase/firestore";
+import { getDocs, getDoc, getDocFromServer, updateDoc, setDoc } from "firebase/firestore";
+import {
+  dismissNotification,
+  dismissNotificationsByResource,
+  deleteNotification,
+  groupInviteNotificationId,
+  groupInviteLegacyNotificationId,
+} from "./notifications";
 
 vi.mock("firebase/firestore", () => ({
   collection: vi.fn(),
@@ -31,18 +34,31 @@ vi.mock("firebase/firestore", () => ({
   arrayRemove: vi.fn((value) => ({ __arrayRemove: value })),
   getDocs: vi.fn(),
   getDoc: vi.fn(),
+  getDocFromServer: vi.fn().mockResolvedValue({
+    exists: () => true,
+    data: () => ({ pendingInvites: [] }),
+  }),
   deleteField: vi.fn(() => "deleteField"),
+  waitForPendingWrites: vi.fn().mockResolvedValue(),
 }));
 
 vi.mock("../firebase", () => ({ db: {} }));
 
+const emitNotificationEventMock = vi.fn();
+const buildNotificationActorMock = vi.fn((user) => user);
+vi.mock("./notification-events", () => ({
+  emitNotificationEvent: (...args) => emitNotificationEventMock(...args),
+  buildNotificationActor: (...args) => buildNotificationActorMock(...args),
+}));
+
 vi.mock("./notifications", () => ({
-  createGroupInviteNotification: vi.fn(),
-  createGroupMemberChangeNotification: vi.fn(),
-  ensureGroupInviteNotification: vi.fn(),
-  createGroupInviteAcceptedNotification: vi.fn(),
+  dismissNotification: vi.fn(),
+  dismissNotificationsByResource: vi.fn(),
   deleteNotification: vi.fn(),
-  groupInviteNotificationId: vi.fn((groupId) => `groupInvite:${groupId}`),
+  groupInviteNotificationId: vi.fn(
+    (groupId, email) => `dedupe:group:${groupId}:invite:${email}`
+  ),
+  groupInviteLegacyNotificationId: vi.fn((groupId) => `groupInvite:${groupId}`),
 }));
 
 vi.mock("./users", () => ({
@@ -55,14 +71,17 @@ vi.mock("firebase/functions", () => ({
 }));
 
 describe("inviteMemberToGroup", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+beforeEach(() => {
+  vi.clearAllMocks();
+  getDocFromServer.mockResolvedValue({
+    exists: () => true,
+    data: () => ({ pendingInvites: [] }),
   });
+});
 
-  it("creates in-app notification when invite succeeds", async () => {
-    httpsCallable.mockReturnValue(async () => ({
-      data: { added: true, inviteeUserId: "user_123" },
-    }));
+  it("invokes the group invite callable", async () => {
+    const callable = vi.fn().mockResolvedValue({ data: { added: true, inviteeUserId: "user_123" } });
+    httpsCallable.mockReturnValue(callable);
 
     await inviteMemberToGroup(
       "group_1",
@@ -72,18 +91,16 @@ describe("inviteMemberToGroup", () => {
       "user_123"
     );
 
-    expect(createGroupInviteNotification).toHaveBeenCalledWith("user_123", {
+    expect(httpsCallable).toHaveBeenCalledWith(undefined, "sendGroupInvite");
+    expect(callable).toHaveBeenCalledWith({
       groupId: "group_1",
-      groupName: "The Heroes",
-      inviterEmail: "inviter@example.com",
-      inviterUserId: null,
+      inviteeEmail: "invitee@example.com",
     });
   });
 
-  it("skips notification when invitee user id is missing", async () => {
-    httpsCallable.mockReturnValue(async () => ({
-      data: { added: true, inviteeUserId: null },
-    }));
+  it("handles invite when invitee user id is missing", async () => {
+    const callable = vi.fn().mockResolvedValue({ data: { added: true, inviteeUserId: null } });
+    httpsCallable.mockReturnValue(callable);
 
     await inviteMemberToGroup(
       "group_1",
@@ -92,24 +109,45 @@ describe("inviteMemberToGroup", () => {
       "invitee@example.com",
       null
     );
-
-    expect(createGroupInviteNotification).not.toHaveBeenCalled();
+    expect(callable).toHaveBeenCalledWith({
+      groupId: "group_1",
+      inviteeEmail: "invitee@example.com",
+    });
   });
 
-  it("throws when invite is blocked", async () => {
+  it("suppresses blocked invites without throwing", async () => {
     httpsCallable.mockReturnValue(async () => ({
       data: { added: false, reason: "blocked" },
     }));
 
-    await expect(
-      inviteMemberToGroup(
-        "group_1",
-        "The Heroes",
-        "inviter@example.com",
-        "invitee@example.com",
-        null
-      )
-    ).rejects.toThrow("This user is not accepting new invites from you.");
+    const result = await inviteMemberToGroup(
+      "group_1",
+      "The Heroes",
+      "inviter@example.com",
+      "invitee@example.com",
+      null
+    );
+
+    expect(result).toEqual({ suppressed: true });
+  });
+});
+
+describe("revokeGroupInvite", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("calls the revoke group invite callable", async () => {
+    const callable = vi.fn().mockResolvedValue({ data: { ok: true } });
+    httpsCallable.mockReturnValue(callable);
+
+    await revokeGroupInvite("group_1", "Invitee@Example.com");
+
+    expect(httpsCallable).toHaveBeenCalledWith(undefined, "revokeGroupInvite");
+    expect(callable).toHaveBeenCalledWith({
+      groupId: "group_1",
+      inviteeEmail: "invitee@example.com",
+    });
   });
 });
 
@@ -151,29 +189,113 @@ describe("questing group helpers", () => {
     await acceptGroupInvitation("group_1", "member@example.com", "member_1");
 
     expect(updateDoc).toHaveBeenCalled();
-    expect(deleteNotification).toHaveBeenCalled();
-    expect(createGroupInviteAcceptedNotification).toHaveBeenCalledWith("leader_1", {
-      groupId: "group_1",
-      groupName: "Heroes",
-      memberEmail: "member@example.com",
-      memberUserId: "member_1",
+    expect(buildNotificationActorMock).toHaveBeenCalledWith({
+      uid: "member_1",
+      email: "member@example.com",
     });
+    expect(emitNotificationEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "GROUP_INVITE_ACCEPTED",
+        resource: { type: "group", id: "group_1", title: "Heroes" },
+        recipients: { userIds: ["leader_1"], emails: [] },
+      })
+    );
+    expect(groupInviteNotificationId).toHaveBeenCalledWith("group_1", "member@example.com");
+    expect(groupInviteLegacyNotificationId).toHaveBeenCalledWith("group_1");
+    expect(dismissNotification).toHaveBeenCalledWith(
+      "member_1",
+      "dedupe:group:group_1:invite:member@example.com"
+    );
+    expect(dismissNotification).toHaveBeenCalledWith("member_1", "groupInvite:group_1");
+    expect(deleteNotification).toHaveBeenCalledWith(
+      "member_1",
+      "dedupe:group:group_1:invite:member@example.com"
+    );
+    expect(deleteNotification).toHaveBeenCalledWith("member_1", "groupInvite:group_1");
+    expect(dismissNotificationsByResource).toHaveBeenCalledWith("member_1", "group_1", [
+      "GROUP_INVITE_SENT",
+      "GROUP_INVITE",
+    ]);
   });
 
   it("declines group invitation and removes notification", async () => {
+    getDoc.mockResolvedValue({
+      exists: () => true,
+      data: () => ({
+        pendingInvites: ["member@example.com"],
+        pendingInviteMeta: {
+          "member@example.com": { invitedByEmail: "leader@example.com" },
+        },
+      }),
+    });
+
     await declineGroupInvitation("group_1", "member@example.com", "member_1");
     expect(updateDoc).toHaveBeenCalled();
-    expect(deleteNotification).toHaveBeenCalled();
+    expect(emitNotificationEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "GROUP_INVITE_DECLINED",
+        resource: { type: "group", id: "group_1", title: "Questing Group" },
+      })
+    );
+    expect(groupInviteNotificationId).toHaveBeenCalledWith("group_1", "member@example.com");
+    expect(groupInviteLegacyNotificationId).toHaveBeenCalledWith("group_1");
+    expect(dismissNotification).toHaveBeenCalledWith(
+      "member_1",
+      "dedupe:group:group_1:invite:member@example.com"
+    );
+    expect(dismissNotification).toHaveBeenCalledWith("member_1", "groupInvite:group_1");
+    expect(deleteNotification).toHaveBeenCalledWith(
+      "member_1",
+      "dedupe:group:group_1:invite:member@example.com"
+    );
+    expect(deleteNotification).toHaveBeenCalledWith("member_1", "groupInvite:group_1");
+    expect(dismissNotificationsByResource).toHaveBeenCalledWith("member_1", "group_1", [
+      "GROUP_INVITE_SENT",
+      "GROUP_INVITE",
+    ]);
   });
 
   it("removes a member and sends change notification", async () => {
-    await removeMemberFromGroup("group_1", "Heroes", "member@example.com", "member_1");
+    await removeMemberFromGroup(
+      "group_1",
+      "Heroes",
+      "member@example.com",
+      "member_1",
+      { uid: "admin_1", email: "admin@example.com" }
+    );
     expect(updateDoc).toHaveBeenCalled();
-    expect(createGroupMemberChangeNotification).toHaveBeenCalledWith("member_1", {
-      groupId: "group_1",
-      groupName: "Heroes",
-      action: "removed",
+    expect(buildNotificationActorMock).toHaveBeenCalledWith({
+      uid: "admin_1",
+      email: "admin@example.com",
     });
+    expect(emitNotificationEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "GROUP_MEMBER_REMOVED",
+        resource: { type: "group", id: "group_1", title: "Heroes" },
+        recipients: { userIds: ["member_1"], emails: [] },
+      })
+    );
+  });
+
+  it("sends a member left notification to the group owner", async () => {
+    getDoc.mockResolvedValue({
+      exists: () => true,
+      data: () => ({ name: "Heroes", creatorId: "leader_1" }),
+    });
+
+    await leaveGroup("group_1", "member@example.com", "member_1", {
+      uid: "member_1",
+      email: "member@example.com",
+    });
+
+    expect(updateDoc).toHaveBeenCalled();
+    expect(emitNotificationEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "GROUP_MEMBER_LEFT",
+        resource: { type: "group", id: "group_1", title: "Heroes" },
+        recipients: { userIds: ["leader_1"], emails: [] },
+      })
+    );
   });
 
   it("returns default group color", () => {

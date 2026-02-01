@@ -6,13 +6,21 @@ import {
   removeFriend,
   ensureFriendInviteCode,
   acceptFriendInviteLink,
-  syncFriendRequestNotifications,
+  revokeFriendRequest,
   normalizeFriendRequestId,
 } from "./friends";
 import { setDoc, updateDoc, getDoc, deleteDoc } from "firebase/firestore";
-import { createFriendAcceptedNotification } from "./notifications";
 import { findUserIdByEmail } from "./users";
 import { resolveIdentifier } from "../identifiers";
+import { emitNotificationEvent } from "./notification-events";
+import {
+  dismissNotification,
+  dismissNotificationsByResource,
+  deleteNotification,
+  friendRequestNotificationId,
+  friendRequestLegacyNotificationId,
+} from "./notifications";
+import { httpsCallable } from "firebase/functions";
 
 vi.mock("firebase/firestore", () => ({
   collection: vi.fn(),
@@ -25,6 +33,7 @@ vi.mock("firebase/firestore", () => ({
   deleteDoc: vi.fn(),
   getDoc: vi.fn(),
   getDocs: vi.fn(),
+  waitForPendingWrites: vi.fn().mockResolvedValue(),
 }));
 
 vi.mock("firebase/functions", () => {
@@ -37,11 +46,19 @@ vi.mock("firebase/functions", () => {
 
 vi.mock("../firebase", () => ({ db: {} }));
 
+vi.mock("./notification-events", () => ({
+  emitNotificationEvent: vi.fn(),
+  buildNotificationActor: vi.fn((user) => user),
+}));
+
 vi.mock("./notifications", () => ({
-  createFriendAcceptedNotification: vi.fn(),
-  ensureFriendRequestNotification: vi.fn(),
+  dismissNotification: vi.fn(),
+  dismissNotificationsByResource: vi.fn(),
   deleteNotification: vi.fn(),
-  friendRequestNotificationId: vi.fn((requestId) => `friendRequest:${requestId}`),
+  friendRequestNotificationId: vi.fn((requestId) => `dedupe:friend:${requestId}`),
+  friendRequestLegacyNotificationId: vi.fn(
+    (requestId) => `friendRequest:${requestId}`
+  ),
 }));
 
 vi.mock("./users", () => ({
@@ -82,7 +99,27 @@ describe("friends data helpers", () => {
       fromDisplayName: "Sender",
     });
 
-    expect(setDoc).toHaveBeenCalled();
+    expect(httpsCallable).toHaveBeenCalledWith(undefined, "sendFriendRequest");
+    const callable = httpsCallable.mock.results[0]?.value;
+    expect(callable).toHaveBeenCalledWith({
+      toEmail: "friend@example.com",
+      fromDisplayName: "Sender",
+      sendEmail: true,
+    });
+  });
+
+  it("returns null when friend request is suppressed", async () => {
+    const callable = vi.fn().mockResolvedValueOnce({ data: { suppressed: true } });
+    httpsCallable.mockReturnValueOnce(callable);
+
+    const result = await createFriendRequest({
+      fromUserId: "user_1",
+      fromEmail: "Sender@Example.com",
+      toEmail: "blocked@example.com",
+      fromDisplayName: "Sender",
+    });
+
+    expect(result).toBeNull();
   });
 
   it("throws when trying to friend yourself", async () => {
@@ -111,7 +148,10 @@ describe("friends data helpers", () => {
       { sendEmail: false }
     );
 
-    expect(setDoc).not.toHaveBeenCalled();
+    const callable = httpsCallable.mock.results[0]?.value;
+    expect(callable).toHaveBeenCalledWith(
+      expect.objectContaining({ sendEmail: false })
+    );
   });
 
   it("accepts a pending friend request and notifies sender", async () => {
@@ -131,11 +171,23 @@ describe("friends data helpers", () => {
     });
 
     expect(updateDoc).toHaveBeenCalled();
-    expect(createFriendAcceptedNotification).toHaveBeenCalledWith("sender_1", {
-      requestId: "req_1",
-      friendEmail: "friend@example.com",
-      friendUserId: "friend_1",
-    });
+    expect(emitNotificationEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "FRIEND_REQUEST_ACCEPTED",
+        resource: { type: "friend", id: "req_1", title: "Friend Request" },
+        recipients: { userIds: ["sender_1"], emails: [] },
+      })
+    );
+    expect(friendRequestNotificationId).toHaveBeenCalledWith("req_1");
+    expect(friendRequestLegacyNotificationId).toHaveBeenCalledWith("req_1");
+    expect(dismissNotification).toHaveBeenCalledWith("friend_1", "dedupe:friend:req_1");
+    expect(dismissNotification).toHaveBeenCalledWith("friend_1", "friendRequest:req_1");
+    expect(deleteNotification).toHaveBeenCalledWith("friend_1", "dedupe:friend:req_1");
+    expect(deleteNotification).toHaveBeenCalledWith("friend_1", "friendRequest:req_1");
+    expect(dismissNotificationsByResource).toHaveBeenCalledWith("friend_1", "req_1", [
+      "FRIEND_REQUEST_SENT",
+      "FRIEND_REQUEST",
+    ]);
   });
 
   it("accepts request by resolving sender id when missing", async () => {
@@ -154,11 +206,13 @@ describe("friends data helpers", () => {
       userEmail: "friend@example.com",
     });
 
-    expect(createFriendAcceptedNotification).toHaveBeenCalledWith("sender_2", {
-      requestId: "req_2",
-      friendEmail: "friend@example.com",
-      friendUserId: "friend_1",
-    });
+    expect(emitNotificationEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "FRIEND_REQUEST_ACCEPTED",
+        resource: { type: "friend", id: "req_2", title: "Friend Request" },
+        recipients: { userIds: ["sender_2"], emails: [] },
+      })
+    );
   });
 
   it("declines request and removes notification", async () => {
@@ -179,6 +233,22 @@ describe("friends data helpers", () => {
       expect.anything(),
       expect.objectContaining({ status: "declined" })
     );
+    expect(emitNotificationEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "FRIEND_REQUEST_DECLINED",
+        resource: { type: "friend", id: "req_3", title: "Friend Request" },
+      })
+    );
+    expect(friendRequestNotificationId).toHaveBeenCalledWith("req_3");
+    expect(friendRequestLegacyNotificationId).toHaveBeenCalledWith("req_3");
+    expect(dismissNotification).toHaveBeenCalledWith("friend_1", "dedupe:friend:req_3");
+    expect(dismissNotification).toHaveBeenCalledWith("friend_1", "friendRequest:req_3");
+    expect(deleteNotification).toHaveBeenCalledWith("friend_1", "dedupe:friend:req_3");
+    expect(deleteNotification).toHaveBeenCalledWith("friend_1", "friendRequest:req_3");
+    expect(dismissNotificationsByResource).toHaveBeenCalledWith("friend_1", "req_3", [
+      "FRIEND_REQUEST_SENT",
+      "FRIEND_REQUEST",
+    ]);
   });
 
   it("removes accepted friend requests and legacy ids", async () => {
@@ -218,17 +288,14 @@ describe("friends data helpers", () => {
     expect(setDoc).not.toHaveBeenCalled();
   });
 
-  it("syncs friend request notifications for pending requests", async () => {
-    await syncFriendRequestNotifications("user_1", [
-      { id: "req_1", fromEmail: "sender@example.com", fromUserId: "sender_1" },
-    ]);
+  it("revokes a friend request via callable", async () => {
+    const callable = vi.fn().mockResolvedValueOnce({ data: { ok: true } });
+    httpsCallable.mockReturnValueOnce(callable);
 
-    const { ensureFriendRequestNotification } = await import("./notifications");
-    expect(ensureFriendRequestNotification).toHaveBeenCalledWith("user_1", {
-      requestId: "req_1",
-      fromEmail: "sender@example.com",
-      fromUserId: "sender_1",
-    });
+    await revokeFriendRequest("req_9");
+
+    expect(httpsCallable).toHaveBeenCalledWith(undefined, "revokeFriendRequest");
+    expect(callable).toHaveBeenCalledWith({ requestId: "req_9" });
   });
 
   it("normalizes legacy friend request ids", () => {

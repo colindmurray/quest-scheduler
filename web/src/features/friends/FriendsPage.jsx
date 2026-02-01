@@ -7,6 +7,7 @@ import { useBlockedUsers } from "../../hooks/useBlockedUsers";
 import { normalizeFriendRequestId } from "../../lib/data/friends";
 import { resolveIdentifier } from "../../lib/identifiers";
 import { APP_URL } from "../../lib/config";
+import { normalizeEmail } from "../../lib/utils";
 import { useUserProfiles } from "../../hooks/useUserProfiles";
 import { QuestingGroupsTab } from "../settings/components/QuestingGroupsTab";
 import { UserAvatar } from "../../components/ui/avatar";
@@ -14,15 +15,17 @@ import { LoadingState } from "../../components/ui/spinner";
 import { UserIdentity } from "../../components/UserIdentity";
 import { useAuth } from "../../app/useAuth";
 import { useNotifications } from "../../hooks/useNotifications";
-import { friendRequestNotificationId } from "../../lib/data/notifications";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../../components/ui/dialog";
+  friendRequestNotificationId,
+  friendRequestLegacyNotificationId,
+} from "../../lib/data/notifications";
+import {
+  SimpleModal,
+  SimpleModalDescription,
+  SimpleModalFooter,
+  SimpleModalHeader,
+  SimpleModalTitle,
+} from "../../components/ui/simple-modal";
 
 function TabButton({ active, onClick, children }) {
   return (
@@ -61,6 +64,7 @@ export default function FriendsPage() {
     sendFriendRequest,
     acceptFriendRequest,
     declineFriendRequest,
+    revokeFriendRequest,
     removeFriend,
     getInviteCode,
     acceptInviteLink,
@@ -120,7 +124,8 @@ export default function FriendsPage() {
     const set = new Set();
     blockedUsers.forEach((entry) => {
       if (entry?.email) {
-        set.add(entry.email.toLowerCase());
+        const normalized = normalizeEmail(entry.email);
+        if (normalized) set.add(normalized);
       }
     });
     return set;
@@ -128,7 +133,7 @@ export default function FriendsPage() {
 
   const resolveProfile = (email) => {
     if (!email) return null;
-    const normalized = String(email).toLowerCase();
+    const normalized = normalizeEmail(email);
     return profileMap[normalized] || { email };
   };
 
@@ -221,7 +226,7 @@ export default function FriendsPage() {
       setError(err.message || "Enter a valid email or Discord username.");
       return;
     }
-    const normalized = resolved.email.toLowerCase();
+    const normalized = normalizeEmail(resolved.email);
     if (friends.includes(normalized)) {
       setError("You are already friends.");
       return;
@@ -276,8 +281,8 @@ export default function FriendsPage() {
       setBlockError(err.message || "Enter a valid email or username.");
       return;
     }
-    const normalized = resolved.email.toLowerCase();
-    if (normalized === user?.email?.toLowerCase()) {
+    const normalized = normalizeEmail(resolved.email);
+    if (normalized && normalized === normalizeEmail(user?.email)) {
       setBlockError("You cannot block yourself.");
       return;
     }
@@ -318,7 +323,12 @@ export default function FriendsPage() {
     try {
       await acceptFriendRequest(request.id);
       toast.success("Friend request accepted");
-      removeNotification(friendRequestNotificationId(request.id));
+      [
+        friendRequestNotificationId(request.id),
+        friendRequestLegacyNotificationId(request.id),
+      ]
+        .filter(Boolean)
+        .forEach((id) => removeNotification(id));
       if (request.id === normalizedRequestId) {
         handleRequestModalChange(false);
       }
@@ -336,13 +346,32 @@ export default function FriendsPage() {
     try {
       await declineFriendRequest(request.id);
       toast.success("Friend request declined");
-      removeNotification(friendRequestNotificationId(request.id));
+      [
+        friendRequestNotificationId(request.id),
+        friendRequestLegacyNotificationId(request.id),
+      ]
+        .filter(Boolean)
+        .forEach((id) => removeNotification(id));
       if (request.id === normalizedRequestId) {
         handleRequestModalChange(false);
       }
     } catch (err) {
       console.error("Failed to decline friend request:", err);
       toast.error(err.message || "Failed to decline friend request");
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const handleRevoke = async (request) => {
+    if (!request?.id) return;
+    setProcessing(request.id);
+    try {
+      await revokeFriendRequest(request.id);
+      toast.success("Friend request cancelled");
+    } catch (err) {
+      console.error("Failed to cancel friend request:", err);
+      toast.error(err.message || "Failed to cancel friend request");
     } finally {
       setProcessing(null);
     }
@@ -555,9 +584,20 @@ export default function FriendsPage() {
                     <span className="text-slate-500 dark:text-slate-400">
                       Waiting for <UserIdentity user={resolveProfile(request.toEmail)} /> to accept
                     </span>
-                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                      Pending
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                        Pending
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRevoke(request)}
+                        disabled={processing === request.id}
+                        className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                      >
+                        <X className="h-3 w-3" />
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -683,11 +723,11 @@ export default function FriendsPage() {
         </div>
       )}
 
-      <Dialog open={requestModalOpen} onOpenChange={handleRequestModalChange}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Welcome to Quest Scheduler</DialogTitle>
-            <DialogDescription>
+      <SimpleModal open={requestModalOpen} onOpenChange={handleRequestModalChange}>
+        <div className="max-w-md">
+          <SimpleModalHeader>
+            <SimpleModalTitle>Welcome to Quest Scheduler</SimpleModalTitle>
+            <SimpleModalDescription>
               {highlightedRequest ? (
                 <>
                   <UserIdentity user={resolveProfile(highlightedRequest.fromEmail)} /> sent you a
@@ -702,8 +742,8 @@ export default function FriendsPage() {
               ) : (
                 "This friend request is intended for another account or has already been handled."
               )}
-            </DialogDescription>
-          </DialogHeader>
+            </SimpleModalDescription>
+          </SimpleModalHeader>
 
           {highlightedRequest && (
             <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-900/20 dark:text-emerald-300">
@@ -711,7 +751,7 @@ export default function FriendsPage() {
             </div>
           )}
 
-          <DialogFooter className="mt-6">
+          <SimpleModalFooter className="mt-6">
             {highlightedRequest ? (
               <>
                 <button
@@ -732,23 +772,23 @@ export default function FriendsPage() {
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                onClick={() => handleRequestModalChange(false)}
-                className="rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90"
-              >
-                Got it
-              </button>
+                <button
+                  type="button"
+                  onClick={() => handleRequestModalChange(false)}
+                  className="rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90"
+                >
+                  Got it
+                </button>
             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SimpleModalFooter>
+        </div>
+      </SimpleModal>
 
-      <Dialog open={removeFriendOpen} onOpenChange={setRemoveFriendOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Remove friend</DialogTitle>
-            <DialogDescription>
+      <SimpleModal open={removeFriendOpen} onOpenChange={setRemoveFriendOpen}>
+        <div className="max-w-md">
+          <SimpleModalHeader>
+            <SimpleModalTitle>Remove friend</SimpleModalTitle>
+            <SimpleModalDescription>
               Are you sure you want to remove{" "}
               {removeFriendEmail ? (
                 <UserIdentity user={resolveProfile(removeFriendEmail)} />
@@ -756,10 +796,10 @@ export default function FriendsPage() {
                 "this friend"
               )}{" "}
               from your friends list?
-            </DialogDescription>
-          </DialogHeader>
+            </SimpleModalDescription>
+          </SimpleModalHeader>
 
-          <DialogFooter className="mt-6">
+          <SimpleModalFooter className="mt-6">
             <button
               type="button"
               onClick={() => setRemoveFriendOpen(false)}
@@ -775,9 +815,9 @@ export default function FriendsPage() {
             >
               {processing ? "Removing..." : "Remove"}
             </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SimpleModalFooter>
+        </div>
+      </SimpleModal>
     </div>
   );
 }

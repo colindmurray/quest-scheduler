@@ -1,3 +1,5 @@
+import { normalizeEmail } from "../../../lib/utils";
+
 export function buildAttendanceSummary({
   status,
   winningSlotId,
@@ -21,8 +23,7 @@ export function buildAttendanceSummary({
   };
 
   (voteDocs || []).forEach((voteDoc) => {
-    const email =
-      voteDoc.userEmail?.toLowerCase() || participantEmailById?.get(voteDoc.id);
+    const email = normalizeEmail(voteDoc.userEmail || participantEmailById?.get(voteDoc.id));
     if (!email) return;
 
     let statusValue = "unavailable";

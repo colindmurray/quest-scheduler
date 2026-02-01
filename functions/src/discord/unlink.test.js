@@ -69,7 +69,14 @@ describe('discord unlink', () => {
       },
     };
     require.cache[require.resolve('./config')] = {
-      exports: { DISCORD_REGION: 'us-central1' },
+      exports: {
+        DISCORD_REGION: 'us-central1',
+        DISCORD_NOTIFICATION_DEFAULTS: {
+          finalizationEvents: true,
+          slotChanges: true,
+          voteSubmitted: false,
+        },
+      },
     };
 
     const unlinkModule = await import('./unlink');

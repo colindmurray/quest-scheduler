@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 
-import { AvatarBubble, AvatarStack } from './voter-avatars';
+import { AvatarBubble, AvatarStack, VotingAvatarStack } from './voter-avatars';
 
 describe('AvatarBubble', () => {
   test('renders image when avatar provided', () => {
@@ -30,6 +30,18 @@ describe('AvatarStack', () => {
         max={2}
       />
     );
+
+    expect(screen.getByText('+1')).toBeTruthy();
+  });
+});
+
+describe('VotingAvatarStack', () => {
+  test('defaults to showing 10 before overflow', () => {
+    const users = Array.from({ length: 11 }, (_, index) => ({
+      email: `user${index}@example.com`,
+    }));
+
+    render(<VotingAvatarStack users={users} />);
 
     expect(screen.getByText('+1')).toBeTruthy();
   });

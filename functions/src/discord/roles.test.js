@@ -30,9 +30,19 @@ describe('discord roles listing', () => {
       exports: {
         DISCORD_REGION: 'us-central1',
         DISCORD_BOT_TOKEN: { value: () => 'token' },
+        DISCORD_NOTIFICATION_DEFAULTS: {
+          finalizationEvents: true,
+          slotChanges: true,
+          voteSubmitted: false,
+        },
         default: {
           DISCORD_REGION: 'us-central1',
           DISCORD_BOT_TOKEN: { value: () => 'token' },
+          DISCORD_NOTIFICATION_DEFAULTS: {
+            finalizationEvents: true,
+            slotChanges: true,
+            voteSubmitted: false,
+          },
         },
       },
     };

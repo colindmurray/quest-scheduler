@@ -1,5 +1,16 @@
-import { collection, doc, query, where, orderBy, serverTimestamp, setDoc, updateDoc, deleteDoc, writeBatch } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  query,
+  where,
+  orderBy,
+  updateDoc,
+  deleteDoc,
+  writeBatch,
+  getDocs,
+} from "firebase/firestore";
 import { db } from "../firebase";
+import { normalizeEmail } from "../utils";
 
 // Collection references
 export const userNotificationsRef = (userId) =>
@@ -38,283 +49,107 @@ export const NOTIFICATION_TYPES = {
   SESSION_FINALIZED: "SESSION_FINALIZED",
   SESSION_JOINED: "SESSION_JOINED",
   GROUP_MEMBER_CHANGE: "GROUP_MEMBER_CHANGE",
+  POLL_CREATED: "POLL_CREATED",
+  POLL_INVITE_SENT: "POLL_INVITE_SENT",
+  POLL_INVITE_ACCEPTED: "POLL_INVITE_ACCEPTED",
+  POLL_INVITE_DECLINED: "POLL_INVITE_DECLINED",
+  POLL_INVITE_REVOKED: "POLL_INVITE_REVOKED",
+  POLL_READY_TO_FINALIZE: "POLL_READY_TO_FINALIZE",
+  POLL_FINALIZED: "POLL_FINALIZED",
+  POLL_REOPENED: "POLL_REOPENED",
+  POLL_CANCELLED: "POLL_CANCELLED",
+  POLL_RESTORED: "POLL_RESTORED",
+  POLL_DELETED: "POLL_DELETED",
+  SLOT_CHANGED: "SLOT_CHANGED",
+  DISCORD_NUDGE_SENT: "DISCORD_NUDGE_SENT",
+  FRIEND_REQUEST_SENT: "FRIEND_REQUEST_SENT",
+  FRIEND_REQUEST_ACCEPTED: "FRIEND_REQUEST_ACCEPTED",
+  FRIEND_REQUEST_DECLINED: "FRIEND_REQUEST_DECLINED",
+  FRIEND_REMOVED: "FRIEND_REMOVED",
+  GROUP_INVITE_SENT: "GROUP_INVITE_SENT",
+  GROUP_INVITE_DECLINED: "GROUP_INVITE_DECLINED",
+  GROUP_MEMBER_REMOVED: "GROUP_MEMBER_REMOVED",
+  GROUP_MEMBER_LEFT: "GROUP_MEMBER_LEFT",
+  GROUP_DELETED: "GROUP_DELETED",
 };
 
-// Create a notification
-export async function createNotification(userId, notification) {
-  const notificationId = crypto.randomUUID();
-  const ref = notificationRef(userId, notificationId);
+export const NOTIFICATION_TYPE_ALIASES = {
+  [NOTIFICATION_TYPES.FRIEND_REQUEST_SENT]: NOTIFICATION_TYPES.FRIEND_REQUEST,
+  [NOTIFICATION_TYPES.FRIEND_REQUEST_ACCEPTED]: NOTIFICATION_TYPES.FRIEND_ACCEPTED,
+  [NOTIFICATION_TYPES.POLL_INVITE_SENT]: NOTIFICATION_TYPES.POLL_INVITE,
+  [NOTIFICATION_TYPES.POLL_INVITE_ACCEPTED]: NOTIFICATION_TYPES.SESSION_JOINED,
+  [NOTIFICATION_TYPES.POLL_FINALIZED]: NOTIFICATION_TYPES.SESSION_FINALIZED,
+  [NOTIFICATION_TYPES.GROUP_INVITE_SENT]: NOTIFICATION_TYPES.GROUP_INVITE,
+  [NOTIFICATION_TYPES.GROUP_INVITE_ACCEPTED]: NOTIFICATION_TYPES.GROUP_INVITE_ACCEPTED,
+  [NOTIFICATION_TYPES.GROUP_MEMBER_REMOVED]: NOTIFICATION_TYPES.GROUP_MEMBER_CHANGE,
+  [NOTIFICATION_TYPES.GROUP_MEMBER_LEFT]: NOTIFICATION_TYPES.GROUP_MEMBER_CHANGE,
+};
 
-  await setDoc(ref, {
-    ...notification,
-    read: false,
-    dismissed: false,
-    createdAt: serverTimestamp(),
-  });
+export function normalizeNotificationType(type) {
+  return NOTIFICATION_TYPE_ALIASES[type] || type;
+}
 
-  return notificationId;
+export function notificationDedupeId(dedupeKey) {
+  if (!dedupeKey) return null;
+  return `dedupe:${dedupeKey}`;
 }
 
 export function friendRequestNotificationId(requestId) {
+  if (!requestId) return null;
+  return notificationDedupeId(`friend:${requestId}`);
+}
+
+export function friendRequestLegacyNotificationId(requestId) {
+  if (!requestId) return null;
   return `friendRequest:${requestId}`;
 }
 
-export async function ensureFriendRequestNotification(
-  userId,
-  { requestId, fromEmail, fromUserId }
-) {
-  const notificationId = friendRequestNotificationId(requestId);
-  const ref = notificationRef(userId, notificationId);
-  await setDoc(ref, {
-    type: NOTIFICATION_TYPES.FRIEND_REQUEST,
-    title: "Friend Request",
-    body: `${fromEmail} sent you a friend request`,
-    actionUrl: `/friends?request=${requestId}`,
-    metadata: {
-      requestId,
-      fromEmail,
-      fromUserId: fromUserId || null,
-      actorUserId: fromUserId || null,
-      actorEmail: fromEmail || null,
-    },
-    read: false,
-    dismissed: false,
-    createdAt: serverTimestamp(),
-  }, { merge: true });
-
-  return notificationId;
+export function pollInviteNotificationId(schedulerId, inviteeEmail) {
+  const normalizedEmail = normalizeEmail(inviteeEmail);
+  if (!schedulerId || !normalizedEmail) return null;
+  return notificationDedupeId(`poll:${schedulerId}:invite:${normalizedEmail}`);
 }
 
-export async function createFriendRequestNotification(userId, { requestId, fromEmail, fromUserId }) {
-  return ensureFriendRequestNotification(userId, { requestId, fromEmail, fromUserId });
-}
-
-export async function createFriendAcceptedNotification(
-  userId,
-  { requestId, friendEmail, friendUserId }
-) {
-  return createNotification(userId, {
-    type: NOTIFICATION_TYPES.FRIEND_ACCEPTED,
-    title: "Friend Request Accepted",
-    body: `${friendEmail} accepted your friend request`,
-    actionUrl: "/friends",
-    metadata: {
-      requestId,
-      friendEmail,
-      friendUserId: friendUserId || null,
-      actorUserId: friendUserId || null,
-      actorEmail: friendEmail || null,
-    },
-  });
-}
-
-export function pollInviteNotificationId(schedulerId) {
+export function pollInviteLegacyNotificationId(schedulerId) {
+  if (!schedulerId) return null;
   return `pollInvite:${schedulerId}`;
 }
 
-export async function ensurePollInviteNotification(
-  userId,
-  { schedulerId, schedulerTitle, inviterEmail, inviterUserId }
-) {
-  const notificationId = pollInviteNotificationId(schedulerId);
-  const ref = notificationRef(userId, notificationId);
-  await setDoc(ref, {
-    type: NOTIFICATION_TYPES.POLL_INVITE,
-    title: "Session Poll Invite",
-    body: `${inviterEmail} invited you to join "${schedulerTitle}"`,
-    actionUrl: `/scheduler/${schedulerId}`,
-    metadata: {
-      schedulerId,
-      schedulerTitle,
-      inviterEmail,
-      inviterUserId: inviterUserId || null,
-      actorUserId: inviterUserId || null,
-      actorEmail: inviterEmail || null,
-    },
-    read: false,
-    dismissed: false,
-    createdAt: serverTimestamp(),
-  }, { merge: true });
-
-  return notificationId;
+export function groupInviteNotificationId(groupId, inviteeEmail) {
+  const normalizedEmail = normalizeEmail(inviteeEmail);
+  if (!groupId || !normalizedEmail) return null;
+  return notificationDedupeId(`group:${groupId}:invite:${normalizedEmail}`);
 }
 
-export async function createPollInviteNotification(
-  userId,
-  { schedulerId, schedulerTitle, inviterEmail, inviterUserId }
-) {
-  return ensurePollInviteNotification(userId, {
-    schedulerId,
-    schedulerTitle,
-    inviterEmail,
-    inviterUserId,
-  });
-}
-
-export async function createGroupInviteAcceptedNotification(
-  userId,
-  { groupId, groupName, memberEmail, memberUserId }
-) {
-  return createNotification(userId, {
-    type: NOTIFICATION_TYPES.GROUP_INVITE_ACCEPTED,
-    title: "Group Invite Accepted",
-    body: `${memberEmail} accepted your invite to "${groupName}"`,
-    actionUrl: "/friends?tab=groups",
-    metadata: {
-      groupId,
-      groupName,
-      memberEmail,
-      memberUserId: memberUserId || null,
-      actorUserId: memberUserId || null,
-      actorEmail: memberEmail || null,
-    },
-  });
-}
-
-export function groupInviteNotificationId(groupId) {
+export function groupInviteLegacyNotificationId(groupId) {
+  if (!groupId) return null;
   return `groupInvite:${groupId}`;
 }
 
-export async function ensureGroupInviteNotification(
+export async function dismissNotificationsByResource(
   userId,
-  { groupId, groupName, inviterEmail, inviterUserId }
+  resourceId,
+  allowedTypes = null
 ) {
-  const notificationId = groupInviteNotificationId(groupId);
-  const ref = notificationRef(userId, notificationId);
-  await setDoc(ref, {
-    type: NOTIFICATION_TYPES.GROUP_INVITE,
-    title: "Group Invitation",
-    body: `${inviterEmail} invited you to join "${groupName}"`,
-    actionUrl: "/friends?tab=groups",
-    metadata: {
-      groupId,
-      groupName,
-      inviterEmail,
-      inviterUserId: inviterUserId || null,
-      actorUserId: inviterUserId || null,
-      actorEmail: inviterEmail || null,
-    },
-    read: false,
-    dismissed: false,
-    createdAt: serverTimestamp(),
-  }, { merge: true });
+  if (!userId || !resourceId) return;
+  const snapshot = await getDocs(
+    query(userNotificationsRef(userId), where("resource.id", "==", resourceId))
+  );
+  if (snapshot.empty) return;
 
-  return notificationId;
-}
-
-// Create group invitation notification
-export async function createGroupInviteNotification(
-  userId,
-  { groupId, groupName, inviterEmail, inviterUserId }
-) {
-  return ensureGroupInviteNotification(userId, { groupId, groupName, inviterEmail, inviterUserId });
-}
-
-// Create session finalized notification
-export async function createSessionFinalizedNotification(
-  userId,
-  { schedulerId, schedulerTitle, winningDate }
-) {
-  return createNotification(userId, {
-    type: NOTIFICATION_TYPES.SESSION_FINALIZED,
-    title: "Session Finalized",
-    body: `"${schedulerTitle}" has been finalized for ${winningDate}`,
-    actionUrl: `/scheduler/${schedulerId}`,
-    metadata: {
-      schedulerId,
-      schedulerTitle,
-    },
+  const batch = writeBatch(db);
+  let updates = 0;
+  snapshot.docs.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+    if (Array.isArray(allowedTypes) && allowedTypes.length > 0) {
+      if (!allowedTypes.includes(data.type)) return;
+    }
+    batch.update(docSnap.ref, { dismissed: true });
+    updates += 1;
   });
-}
-
-export async function createSessionInviteNotification(
-  userId,
-  { schedulerId, schedulerTitle, inviterEmail, inviterUserId }
-) {
-  return createNotification(userId, {
-    type: NOTIFICATION_TYPES.SESSION_INVITE,
-    title: "Session Poll Invitation",
-    body: `${inviterEmail} invited you to vote on "${schedulerTitle}"`,
-    actionUrl: `/scheduler/${schedulerId}`,
-    metadata: {
-      schedulerId,
-      schedulerTitle,
-      inviterEmail,
-      inviterUserId: inviterUserId || null,
-      actorUserId: inviterUserId || null,
-      actorEmail: inviterEmail || null,
-    },
-  });
-}
-
-export async function createVoteSubmittedNotification(
-  userId,
-  { schedulerId, schedulerTitle, voterEmail, voterUserId }
-) {
-  return createNotification(userId, {
-    type: NOTIFICATION_TYPES.VOTE_SUBMITTED,
-    title: "New Vote Submitted",
-    body: `${voterEmail} updated votes for "${schedulerTitle}"`,
-    actionUrl: `/scheduler/${schedulerId}`,
-    metadata: {
-      schedulerId,
-      schedulerTitle,
-      voterEmail,
-      voterUserId: voterUserId || null,
-      actorUserId: voterUserId || null,
-      actorEmail: voterEmail || null,
-    },
-  });
-}
-
-export async function createSessionJoinNotification(
-  userId,
-  { schedulerId, schedulerTitle, participantEmail, participantUserId }
-) {
-  return createNotification(userId, {
-    type: NOTIFICATION_TYPES.SESSION_JOINED,
-    title: "New Participant",
-    body: `${participantEmail} joined "${schedulerTitle}"`,
-    actionUrl: `/scheduler/${schedulerId}`,
-    metadata: {
-      schedulerId,
-      schedulerTitle,
-      participantEmail,
-      participantUserId: participantUserId || null,
-      actorUserId: participantUserId || null,
-      actorEmail: participantEmail || null,
-    },
-  });
-}
-
-// Create vote reminder notification
-export async function createVoteReminderNotification(userId, { schedulerId, schedulerTitle }) {
-  return createNotification(userId, {
-    type: NOTIFICATION_TYPES.VOTE_REMINDER,
-    title: "Vote Needed",
-    body: `"${schedulerTitle}" is waiting for your vote`,
-    actionUrl: `/scheduler/${schedulerId}`,
-    metadata: {
-      schedulerId,
-      schedulerTitle,
-    },
-  });
-}
-
-// Create group member change notification
-export async function createGroupMemberChangeNotification(userId, { groupId, groupName, action }) {
-  const actionText = action === "added" ? "added to" : "removed from";
-  return createNotification(userId, {
-    type: NOTIFICATION_TYPES.GROUP_MEMBER_CHANGE,
-    title: "Group Update",
-    body: `You were ${actionText} "${groupName}"`,
-    actionUrl: "/settings?tab=groups",
-    metadata: {
-      groupId,
-      groupName,
-      action,
-    },
-  });
+  if (updates > 0) {
+    await batch.commit();
+  }
 }
 
 // Mark notification as read

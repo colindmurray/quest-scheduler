@@ -43,7 +43,14 @@ describe('discord client', () => {
       },
     };
     require.cache[require.resolve('./config')] = {
-      exports: { DISCORD_BOT_TOKEN: { value: () => 'token' } },
+      exports: {
+        DISCORD_BOT_TOKEN: { value: () => 'token' },
+        DISCORD_NOTIFICATION_DEFAULTS: {
+          finalizationEvents: true,
+          slotChanges: true,
+          voteSubmitted: false,
+        },
+      },
     };
 
     discordClient = await import('./discord-client');

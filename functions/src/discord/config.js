@@ -12,6 +12,12 @@ const DISCORD_SCHEDULER_TASK_QUEUE =
   process.env.DISCORD_SCHEDULER_TASK_QUEUE || "processDiscordSchedulerUpdate";
 const APP_URL = process.env.QS_APP_URL || "https://questscheduler.cc";
 
+const DISCORD_NOTIFICATION_DEFAULTS = {
+  finalizationEvents: true,
+  slotChanges: true,
+  voteSubmitted: false,
+};
+
 module.exports = {
   DISCORD_APPLICATION_ID,
   DISCORD_PUBLIC_KEY,
@@ -22,4 +28,5 @@ module.exports = {
   DISCORD_TASK_QUEUE,
   DISCORD_SCHEDULER_TASK_QUEUE,
   APP_URL,
+  DISCORD_NOTIFICATION_DEFAULTS,
 };

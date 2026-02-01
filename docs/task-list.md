@@ -1,72 +1,72 @@
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint
-- Last Completed: 2026-01-29 — Expanded functions coverage with Discord worker branch tests, error-message coverage, and legacy deleteUserAccount failure paths. Re-ran `npm --prefix functions run test -- --coverage` (overall 80.14%; worker 82.13; legacy 72.94; triggers 80.3).
-- Next Step: Continue lifting legacy.js and oauth.js coverage (still below 80%) and consider un-skipping the worker integration test by running the emulator suite.
-- Open Issues: Vitest run still emits `punycode` deprecation warnings; one worker integration test remains skipped.
-- Last Updated (YYYY-MM-DD): 2026-01-29
-
-## Automated Testing Overhaul (Unit / Integration / E2E)
-### P0 — Foundations + Critical Coverage
-- [x] 2026-01-28: Add `web/vitest.config.js` with jsdom, setup file, and coverage reporting.
-- [x] 2026-01-28: Create `web/src/__tests__/setup.js` for RTL cleanup + Firebase module mocks.
-- [x] 2026-01-28: Install web test deps: `@testing-library/react`, `@testing-library/jest-dom`, `msw`, `@playwright/test`.
-- [x] 2026-01-28: Add Firebase Emulator config in `firebase.json` (auth, firestore, storage, functions) + npm scripts.
-- [x] 2026-01-28: Add Firestore + Storage rules tests with `@firebase/rules-unit-testing` (tests run with JDK 21).
-- [x] 2026-01-28: Add unit tests for `web/src/lib/identifiers.js` and `web/src/lib/identity.js`.
-- [x] 2026-01-28: Add unit tests for `web/src/lib/auth.js` (Google + Discord token flows).
-- [x] 2026-01-28: Add unit tests for new data modules (`pollInvites`, `blocks`, `discord`, `usernames`).
-- [x] 2026-01-28: Add Playwright E2E scaffold + critical flows (Discord + UID-only polling) (12/12 passing with emulator + seed).
-
-### P1 — Functions + Hooks
-- [x] 2026-01-28: Add `vitest` + `firebase-functions-test` to `functions/package.json` with `functions/vitest.config.js`.
-- [x] 2026-01-28: Add Cloud Functions unit tests for Discord modules (oauth, worker, link-codes, nudge, roles) (1 skipped: roles mapping needs bot token/REST stub).
-- [x] 2026-01-28: Add tests for legacy callables in `functions/src/legacy.js`.
-- [x] 2026-01-28: Add hook tests in `web/src/hooks/` (useUserSettings, useQuestingGroups, usePollInvites, useBlockedUsers).
-
-### P2 — UI Components
-- [x] 2026-01-28: Add RTL component tests for Settings + Auth UI surfaces (`AuthPage`, `SettingsPage`).
+- Last Completed: P3.1 Discord routing + rate limits
+- Next Step: Complete
+- Open Issues: None
+- Last Updated (YYYY-MM-DD): 2026-01-31
 
 ## Progress Notes
-- 2026-01-30: Replaced Radix dropdown menus in the app header (account + notifications) with simple popovers to address post-modal navigation freezes.
-- 2026-01-30: Stabilized user profile hooks + questing group invite email memoization to prevent continuous re-render loops on groups tab.
-- 2026-01-30: Kept Discord interaction ingress warm with `minInstances: 1` to prevent first-click “interaction failed” on vote button.
-- 2026-01-30: Added scheduled warmup ping for Discord interactions (`discordWarmup`) and warmup query support to avoid cold-start failures without minInstances.
-- 2026-01-30: Added shared calendar navigation + auto-scroll helpers for dashboard and scheduler calendars (jump controls, event highlighting, and smart scroll-to-time).
-- 2026-01-30: Enabled auto-scroll re-mount on week/day navigation + jump controls by wiring `enableAutoScroll` and keyed calendars.
-- 2026-01-29: Added TS migration protocol to `AGENTS.md`, created `docs/typescript-migration-state.md`, and added `ts-migration-chunk` skill.
-- 2026-01-29: Added `docs/typescript_migraiton_plan.md` with a phased, file-by-file TypeScript migration plan.
-- 2026-01-29: Allow poll creators to update vote docs for slot removals by permitting limited creator vote updates in Firestore rules.
-- 2026-01-29: Add poll descriptions and use them to prefill calendar event details; remove default calendar title/description settings.
-- 2026-01-29: Ran `npm --prefix web run test` and `npm --prefix functions run test`; deploy of `functions:cloneSchedulerPoll` blocked with "operation in progress" error.
-- 2026-01-29: Move session poll list/calendar view toggle below participants so it sits above the list/calendar block.
-- 2026-01-29: Fix finalized dashboard attendance summary to normalize vote values and prevent feasible-only votes from being miscounted as unavailable.
-- 2026-01-29: Add questing group Discord alert settings (finalization/reschedule + vote submissions) and wire function-side notification gates.
-- 2026-01-29: Include confirmed attendance count in Discord finalization messages; tests run via `npm --prefix functions run test` (warnings: `punycode` deprecation, one integration test skipped).
-- 2026-01-29: Add Discord slot-change notifications (default on) with added/removed summaries; tests run via `npm --prefix functions run test` (warnings: `punycode` deprecation, one integration test skipped).
-- 2026-01-29: Replace Discord alert toggles with simple switches to avoid settings modal crash on the groups tab.
-- 2026-01-29: Replace questing group member-managed toggle with simple switch to avoid settings modal crash.
-- 2026-01-29: Replace create-group member-managed toggle with simple switch to avoid settings modal crash.
-- 2026-01-29: Swap questing group modals to SimpleModal to avoid React ref loop crashes.
-- 2026-01-29: Add attendance summary unit tests and rerun web test suite (40 files, 166 tests).
-- 2026-01-29: Built and deployed hosting for attendance summary fix.
-- 2026-01-29: Add attendance summary edge-case tests (missing winner/participant map) and rerun web test suite (40 files, 168 tests).
-- 2026-01-29: Added `docs/code-health-audit.md` with prioritized code health findings.
-- 2026-01-29: Expanded `docs/code-health-audit.md` with a pass-2 core business logic checklist and added findings.
-- 2026-01-29: Addressed P1/P2 audit items (centralized Firestore access into data modules, added scheduler data/attendance hooks, extracted Discord worker utils and identifier helpers, added mail queue helper, normalized email utilities) and updated tests; ran `npm --prefix web run test` and `npm --prefix functions run test`.
-- 2026-01-29: Expanded functions test coverage (Discord worker branches, error messages, legacy deleteUserAccount errors) and re-ran `npm --prefix functions run test -- --coverage` (overall 80.14%).
-- 2026-01-29: Added shared invite validation helper for scheduler flows, normalized poll invite email handling, deduped Discord notification defaults, and documented identifier test vectors; updated `docs/code-health-audit.md`.
-- 2026-01-29: Re-ran `npm --prefix web run test` (40 files, 168 tests) and `npm --prefix functions run test` (23 files, 159 tests, 1 skipped); functions tests emitted existing stderr logs and `punycode` deprecation warnings.
-- 2026-01-29: Extracted shared scheduler invite panel UI, normalized remaining email lowercasing to `normalizeEmail`, updated server email normalization, and re-ran web/functions tests (all passing; 1 integration test still skipped, deprecation warnings persist).
-- 2026-01-29: Split scheduler/dashboard views into smaller components (group select, form header, pending votes/finalize/clone dialogs, pending invite dialog, past sessions section) and normalized remaining email handling; re-ran web/functions tests (all passing; 1 integration test still skipped, deprecation warnings persist).
-- 2026-01-29: Extracted remaining scheduler modals into dedicated components (vote, reopen, delete, invite prompt, leave, remove participant, revoke invite) and wired clone dialog to shared invite panel + group select; re-ran web tests (40/168 passing).
-- 2026-01-29: Unified dashboard poll cards (pending range + finalized date), added status chips (pending/all votes in/finalized/cancelled/rescheduled/archived), and shared poll-card utils tests. Ran `npm --prefix web run test -- --run web/src/features/dashboard/lib/poll-card-utils.test.js` (no test files found); reran `npm --prefix web run test -- --run src/features/dashboard/lib/poll-card-utils.test.js` (1 file, 6 tests passing).
-- 2026-01-29: Fixed dashboard normalizedEmail crash and guarded questingGroupRef in scheduler hook; added `useSchedulerData` hook tests. Ran `npm --prefix web run test -- --run src/features/scheduler/hooks/useSchedulerData.test.js` (1 file, 2 tests passing).
-- 2026-01-29: Redeployed hosting after dashboard/scheduler fixes. Ran `npm --prefix web run build` and `firebase deploy --only hosting --project studio-473406021-87ead` (predeploy `npm --prefix web run build:dev`).
-- 2026-01-29: Added shared VoteToggle component for scheduler list + dialog, fixed missing import, and added test coverage. Ran `npm --prefix web run test -- --run src/features/scheduler/components/vote-toggle.test.jsx` (1 file, 1 test passing); initial JSX parse error in `.test.js` resolved by renaming to `.test.jsx`.
-- 2026-01-29: Redeployed hosting after VoteToggle fix. Ran `npm --prefix web run build` and `firebase deploy --only hosting --project studio-473406021-87ead` (predeploy `npm --prefix web run build:dev`).
-- 2026-01-29: Added `VotingAvatarStack` (default max 10) and used it for dashboard pending voters + scheduler list-view vote stacks; updated avatar stack tests. Ran `npm --prefix web run test -- --run src/components/ui/voter-avatars.test.jsx` (1 file, 4 tests passing).
-- 2026-01-29: Redeployed hosting after voting avatar stack changes. Ran `npm --prefix web run build` and `firebase deploy --only hosting --project studio-473406021-87ead` (predeploy `npm --prefix web run build:dev`).
-- 2026-01-29: Expanded dashboard attendance avatar stacks (confirmed/unavailable/unresponded) to use `VotingAvatarStack` (max 10). Ran `npm --prefix web run test -- --run src/components/ui/voter-avatars.test.jsx` (1 file, 4 tests passing).
-- 2026-01-29: Redeployed hosting after dashboard attendance avatar stack update. Ran `npm --prefix web run build` and `firebase deploy --only hosting --project studio-473406021-87ead` (predeploy `npm --prefix web run build:dev`).
-- 2026-01-29: Added cancel session flow and dashboard cancelled tab; ran `npm --prefix web run test` (43 files, 178 tests passing) and deployed hosting.
+- 2026-01-31: Archived prior task list to docs/task-list-archive-unified-notification-overhaul-2026-01-31.md.
+- 2026-01-31: Ran Claude + Gemini reviews for the plan and task list; incorporated feedback into docs/unified-notification-overhaul.md and docs/decisions.md.
+- 2026-01-31: Created docs/plan-execution/unified-notification-overhaul-task-list.md and the execute-plan-unified-notification-overhaul skill.
+- 2026-01-31: Tests not run (docs-only changes).
+- 2026-01-31: Completed P0.1 (notification constants + alias resolver + rules skeleton). Tests: `npm --prefix functions run test` (pass, 1 skipped).
+- 2026-01-31: Completed P0.2 (Firestore rules + rules tests; adjusted pendingNotifications path). Tests: `npm --prefix web run test:rules` (pass).
+- 2026-01-31: Completed P0.3 (emitNotificationEvent callable + web wrapper + tests). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass).
+- 2026-01-31: Completed P0.4 (notification type normalization + UI compatibility). Tests: `npm --prefix web run test` (pass).
+- 2026-01-31: Completed P1.1 (template module + poll invite templates). Tests: `npm --prefix functions run test` (pass, 1 skipped).
+- 2026-01-31: Completed P1.2 (router trigger + in-app/email delivery for poll invites + tests). Tests: `npm --prefix functions run test` (pass, 1 skipped).
+- 2026-01-31: Completed P1.3 (auto-clear rules + dedupe support + tests). Tests: `npm --prefix functions run test` (pass, 1 skipped).
+- 2026-01-31: Completed P1.4 (pending notification reconciliation + callable + web hook). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass).
+- 2026-01-31: Completed P2.1 (poll invite flow now emits events; router handles email/in-app). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass), `npm --prefix web run test:e2e:emulators` (pass).
+- 2026-01-31: Completed P2.2 (vote/finalize/reopen/slot change emit events + new templates). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass), `npm --prefix web run test:e2e:emulators` (pass).
+- 2026-01-31: Completed P2.3 (friend/group invites emit events; removed legacy sync + emails). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass).
+- 2026-01-31: Completed P2.4 (notification settings UI + preference-aware router). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass).
+- 2026-01-31: Completed P2.5 (notificationEvents TTL + expiresAt + client-side email opt-out removal). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass).
+- 2026-01-31: Added staging Firebase config overrides + build script + runbook updates. Tests: `npm --prefix web run test` (pass).
+- 2026-01-31: Added `web/.env.staging` with staging Firebase config. Tests not run (env-only change).
+- 2026-01-31: Ignored staging OAuth client secret file in `.gitignore`. Tests not run (config change only).
+- 2026-01-31: Set `QS_GOOGLE_OAUTH_CLIENT_JSON` Secret Manager value for staging (version 1). Tests not run (infra change only).
+- 2026-01-31: Deploy attempt failed; missing secret `DISCORD_APPLICATION_ID` for staging. Need value before retry.
+- 2026-01-31: Set staging Discord secrets `DISCORD_PUBLIC_KEY`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_APPLICATION_ID` (v1). Missing `DISCORD_BOT_TOKEN` to deploy.
+- 2026-01-31: Set staging `DISCORD_BOT_TOKEN` (v1). Deploy succeeded for hosting/rules/extensions, but some 2nd-gen functions failed due to Eventarc service agent propagation; retry needed.
+- 2026-01-31: Updated Discord OAuth tests to read env client values when present. Tests: `npm --prefix functions run test` (pass; 1 skipped: worker integration requires emulator).
+- 2026-01-31: Ran functions tests with Firestore emulator. Tests: `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npm --prefix functions run test` (pass).
+- 2026-01-31: Deployed staging (hosting/functions/firestore/storage/extensions). Follow-up: set Functions artifacts cleanup policy in us-central1.
+- 2026-01-31: Re-deployed hosting to finalize live release. Hosting URL live at https://quest-scheduler-stg.web.app (and firebaseapp.com alias).
+- 2026-01-31: Set staging Google OAuth client ID in `web/.env.staging` and re-deployed hosting. Tests not run (env-only change + deploy).
+- 2026-01-31: Allowed Discord (custom provider) to pass email verification check in Firestore rules. Tests: `npm --prefix web run test:rules` (pass).
+- 2026-01-31: Deployed updated Firestore rules to staging project.
+- 2026-01-31: Granted `roles/iam.serviceAccountTokenCreator` to quest-scheduler-stg@appspot.gserviceaccount.com for Discord custom token signing.
+- 2026-01-31: Completed P3.2 (removed legacy notification writes in web/functions; emit events for group member removed/left and poll invite revokes; added in-app templates + preference gating). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass).
+- 2026-01-31: Completed P3.1 (router Discord delivery, discord message builder + tests; removed direct Discord sends in scheduler triggers). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass).
+- 2026-01-31: Re-ran function tests after Timestamp expiry fix in legacy functions. Tests: `npm --prefix functions run test` (pass, 1 skipped).
+- 2026-01-31: Ran E2E emulator suite. Tests: `npm --prefix web run test:e2e:emulators` (pass).
+- 2026-01-31: Quieted emulator/deprecation noise in `scripts/run-e2e.sh` and re-ran E2E suite. Tests: `npm --prefix web run test:e2e:emulators` (pass).
+- 2026-01-31: Added composite Firestore indexes for notification queries and deployed to staging. Tests not run (index-only change).
+- 2026-01-31: Fixed `userVoteRef` undefined in scheduler voting flow by returning it from `useSchedulerData`. Tests: `npm --prefix web run test` (pass).
+- 2026-01-31: Deployed staging hosting with the `userVoteRef` fix. Tests: `npm --prefix web run test` (pass).
+- 2026-01-31: Ran coverage. Tests: `npm --prefix web run test:coverage` (pass), `npm --prefix functions run test -- --coverage` (pass, 1 skipped).
+- 2026-01-31: Enabled Discord worker integration test by auto-starting Firestore emulator when needed. Tests: `npm --prefix functions run test -- --coverage` (pass).
+- 2026-01-31: Fixed leave poll flow to delete votes before removing participant; added call-order assertions. Tests: `npm --prefix web run test -- pollInvites.test.js` (pass).
+- 2026-01-31: Added account dropdown feedback form + feedback data layer, Firestore/Storage rules, and tests. Tests: `npm --prefix web run test -- feedback` (pass), `npm --prefix web run test:rules` (pass).
+- 2026-01-31: Switched feedback flow to modal launched from account dropdown. Tests: `npm --prefix web run test -- feedback` (pass).
+- 2026-01-31: Deployed feedback modal + rules to staging. Deploy: `firebase deploy --project staging --only hosting,firestore:rules,storage` (success).
+- 2026-01-31: Re-deployed staging hosting with `VITE_BUILD_MODE=staging` to fix Google OAuth origin mismatch. Deploy: `VITE_BUILD_MODE=staging firebase deploy --project staging --only hosting` (success).
+- 2026-01-31: Added `scripts/deploy-staging.sh` and `scripts/deploy-prod.sh` to enforce build mode; updated runbook. Tests not run (script/docs change).
+- 2026-01-31: Updated poll invite flow so pending invites are participants, declines remove votes/participants, and UI now distinguishes pending invites; excluded pending invites from active dashboard lists. Tests: `npm --prefix web run test -- pollInvites.test.js` (pass), `npm --prefix web run test:rules` (pass; emulator warnings), `npm --prefix functions run test -- legacy.callables.test.js` (pass; legacy stderr logged).
+- 2026-01-31: Fixed dashboard pending invite filtering fallback, forced invite modal open when pending, and normalized auth email in Firestore rules. Tests: `npm --prefix web run test:rules` (pass; emulator warnings).
+- 2026-01-31: Added dashboard quick accept/decline buttons for pending invites and covered with tests. Tests: `npm --prefix web run test -- DashboardPage.test.jsx` (pass; JSX transform warning).
+- 2026-01-31: Adjusted poll invite creation/edit/clone to treat all invitees as pending, updated clone callable pendingInvites, and kept dashboard quick actions. Tests: `npm --prefix functions run test -- legacy.clone.test.js` (pass), `npm --prefix web run test -- DashboardPage.test.jsx` (pass; JSX transform warning).
+- 2026-01-31: Reworked poll invite saving/creation to send all invites as pending, adjusted cloneSchedulerPoll pendingInvites, and redeployed staging (hosting + functions). Tests: `npm --prefix functions run test -- legacy.clone.test.js` (pass), `npm --prefix web run test -- DashboardPage.test.jsx` (pass; JSX transform warning).
+- 2026-01-31: Fixed sendPollInvites to keep pending invites even when invitees are already participants (non-group), expanded e2e seed data for poll invite scenarios, and added poll-invite flow e2e coverage (chromium-only, stateful). Tests: `npm --prefix functions run test -- legacy.callables.test.js` (pass), `npm --prefix web run test:e2e:emulators` (pass; poll-invite-flow skipped on firefox/mobile).
+- 2026-01-31: Deployed updated functions (sendPollInvites pending-invite fix) to staging. Deploy: `firebase deploy --only functions --project quest-scheduler-stg` (success).
+- 2026-01-31: Added edge-case coverage updates (poll invite e2e pending-session assertions, decline-by-email unit test, invitee-accept rules test). Tests pending.
+- 2026-01-31: Edge-case pass tests. Tests: `npm --prefix web run test -- pollInvites.test.js` (pass), `npm --prefix web run test:rules` (pass; emulator permission warnings), `npm --prefix web run test:e2e:emulators` (pass; poll-invite-flow skipped on firefox/mobile).
+- 2026-01-31: Added auto-dismiss of poll invite notifications on accept/decline, e2e check for auto-clear on decline, and function coverage for email-only invites. Tests pending.
+- 2026-01-31: Auto-clear notifications on poll invite accept/decline implemented + coverage. Tests: `npm --prefix functions run test -- legacy.callables.test.js` (pass), `npm --prefix web run test -- pollInvites.test.js` (pass), `npm --prefix web run test:rules` (pass; emulator permission warnings), `npm --prefix web run test:e2e:emulators` (pass; poll-invite-flow skipped on firefox/mobile).
+- 2026-01-31: Added friend/group invite auto-dismiss handling (accept/decline), suppressed blocked group invites, added friend request revoke callable + outgoing cancel UI, and expanded auto-clear coverage. Tests: `npm --prefix web run test -- friends.test.js questingGroups.test.js` (pass), `npm --prefix functions run test -- legacy.callables.test.js notifications/auto-clear.test.js` (pass; legacy stderr logged).
+- 2026-01-31: Hardened invite notification clearing (delete fallback + waitForPendingWrites), verified pending invite persistence, and stabilized friend/group invite e2e selectors/timing (modal targeting + invite button scoping). Tests: `npm --prefix web run test -- pollInvites.test.js` (pass), `npm --prefix web run test -- friends.test.js` (pass), `npm --prefix web run test -- questingGroups.test.js` (pass), `npm --prefix web run test:e2e:emulators` (pass).
+- 2026-01-31: Sanity run all test suites (web/functions/unit/rules/e2e/coverage). Tests: `npm --prefix web run test` (pass), `npm --prefix functions run test` (pass), `npm --prefix web run test:rules` (pass; emulator permission warnings), `npm --prefix web run test:e2e:emulators` (pass; 20 skipped), `npm --prefix web run test:coverage` (pass), `npm --prefix functions run test -- --coverage` (pass).
+- 2026-01-31: Deployed staging (hosting + firestore rules/indexes + storage rules) with `VITE_BUILD_MODE=staging`. Deploy: `scripts/deploy-staging.sh` (success; rules ternary type warning).

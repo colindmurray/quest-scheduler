@@ -66,6 +66,11 @@ describe('discord ingress', () => {
         DISCORD_PUBLIC_KEY: { value: () => process.env.DISCORD_PUBLIC_KEY },
         DISCORD_REGION: 'us-central1',
         DISCORD_TASK_QUEUE: 'processDiscordInteraction',
+        DISCORD_NOTIFICATION_DEFAULTS: {
+          finalizationEvents: true,
+          slotChanges: true,
+          voteSubmitted: false,
+        },
       },
     };
     const adminMock = {

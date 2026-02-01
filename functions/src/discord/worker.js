@@ -1,240 +1,42 @@
 const { onTaskDispatched } = require("firebase-functions/v2/tasks");
 const { logger } = require("firebase-functions");
 const admin = require("firebase-admin");
-const { InteractionType, ComponentType } = require("discord-api-types/v10");
+const { InteractionType } = require("discord-api-types/v10");
 const {
   DISCORD_APPLICATION_ID,
   DISCORD_BOT_TOKEN,
   DISCORD_REGION,
   APP_URL,
+  DISCORD_NOTIFICATION_DEFAULTS,
 } = require("./config");
+const { normalizeEmail } = require("../utils/email");
 const { hashLinkCode } = require("./link-utils");
 const { ERROR_MESSAGES, buildUserNotLinkedMessage } = require("./error-messages");
 const {
   editOriginalInteractionResponse,
   fetchChannel,
 } = require("./discord-client");
+const {
+  parseSnowflakeTimestamp,
+  isTokenExpired,
+  getDiscordUserId,
+  hasLinkPermissions,
+  clampPageIndex,
+  getVotePage,
+  formatVoteContent,
+  buildSessionId,
+  formatSlotLabel,
+  buildVoteComponents,
+} = require("./worker-utils");
 
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-const DISCORD_EPOCH = 1420070400000n;
 const INTERACTION_TTL_MINUTES = 60;
 const VOTE_SESSION_TTL_MINUTES = 15;
-const MAX_SELECT_OPTIONS = 25;
-const PERMISSION_ADMIN = 0x8n;
-const PERMISSION_MANAGE_CHANNELS = 0x10n;
-
-const DISCORD_NOTIFICATION_DEFAULTS = {
-  finalizationEvents: true,
-  slotChanges: true,
-  voteSubmitted: false,
-};
 
 const db = admin.firestore();
-
-function parseSnowflakeTimestamp(id) {
-  try {
-    return Number((BigInt(id) >> 22n) + DISCORD_EPOCH);
-  } catch (err) {
-    return null;
-  }
-}
-
-function isTokenExpired(interactionId) {
-  const timestamp = parseSnowflakeTimestamp(interactionId);
-  if (!timestamp) return false;
-  return Date.now() - timestamp > 15 * 60 * 1000;
-}
-
-function getDiscordUserId(interaction) {
-  return interaction?.member?.user?.id || interaction?.user?.id || null;
-}
-
-function hasLinkPermissions(memberPermissions) {
-  if (!memberPermissions) return false;
-  try {
-    const perms = BigInt(memberPermissions);
-    return (perms & PERMISSION_ADMIN) === PERMISSION_ADMIN ||
-      (perms & PERMISSION_MANAGE_CHANNELS) === PERMISSION_MANAGE_CHANNELS;
-  } catch (err) {
-    return false;
-  }
-}
-
-function clampPageIndex(pageIndex, pageCount) {
-  if (pageCount <= 0) return 0;
-  if (pageIndex < 0) return 0;
-  if (pageIndex >= pageCount) return pageCount - 1;
-  return pageIndex;
-}
-
-function getVotePage(slots, pageIndex) {
-  const pageCount = Math.max(1, Math.ceil(slots.length / MAX_SELECT_OPTIONS));
-  const safeIndex = clampPageIndex(pageIndex || 0, pageCount);
-  const start = safeIndex * MAX_SELECT_OPTIONS;
-  const pageSlots = slots.slice(start, start + MAX_SELECT_OPTIONS);
-  return { pageIndex: safeIndex, pageCount, pageSlots };
-}
-
-function formatVoteContent(base, pageIndex, pageCount) {
-  if (pageCount > 1) {
-    return `${base} (Page ${pageIndex + 1} of ${pageCount})`;
-  }
-  return base;
-}
-
-function buildSessionId(schedulerId, discordUserId) {
-  return `${schedulerId}:${discordUserId}`;
-}
-
-function formatSlotLabel(startIso, endIso, timezone) {
-  const start = new Date(startIso);
-  const end = new Date(endIso);
-  const dateOptions = {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  };
-  const timeOptions = {
-    hour: "numeric",
-    minute: "2-digit",
-  };
-  if (timezone) {
-    dateOptions.timeZone = timezone;
-    timeOptions.timeZone = timezone;
-  }
-  const datePart = start.toLocaleDateString("en-US", dateOptions);
-  const timePart = `${start.toLocaleTimeString("en-US", timeOptions)} - ${end.toLocaleTimeString("en-US", timeOptions)}`;
-  return `${datePart} ${timePart}`;
-}
-
-function buildVoteComponents({
-  schedulerId,
-  slots,
-  preferredIds,
-  feasibleIds,
-  timezone,
-  pageIndex,
-  pageCount,
-}) {
-  const options = slots.map((slot) => ({
-    label: formatSlotLabel(slot.start, slot.end, timezone),
-    value: slot.id,
-  }));
-
-  const preferredSet = new Set(preferredIds || []);
-  const feasibleSet = new Set(feasibleIds || []);
-
-  const preferredOptions = options.map((option) => ({
-    ...option,
-    default: preferredSet.has(option.value),
-  }));
-
-  const feasibleOptions = options.map((option) => ({
-    ...option,
-    default: feasibleSet.has(option.value),
-  }));
-
-  const showPagination = pageCount > 1;
-  const actionButtons = [];
-  if (showPagination) {
-    actionButtons.push(
-      {
-        type: ComponentType.Button,
-        custom_id: `page_prev:${schedulerId}`,
-        style: 2,
-        label: "Previous",
-        disabled: pageIndex <= 0,
-      },
-      {
-        type: ComponentType.Button,
-        custom_id: `page_next:${schedulerId}`,
-        style: 2,
-        label: "Next",
-        disabled: pageIndex >= pageCount - 1,
-      }
-    );
-  }
-  actionButtons.push(
-    {
-      type: ComponentType.Button,
-      custom_id: `submit_vote:${schedulerId}`,
-      style: 1,
-      label: "Submit",
-    },
-    {
-      type: ComponentType.Button,
-      custom_id: `clear_votes:${schedulerId}`,
-      style: 2,
-      label: "Clear my votes",
-    },
-    {
-      type: ComponentType.Button,
-      custom_id: `none_work:${schedulerId}`,
-      style: 4,
-      label: "None work for me",
-    }
-  );
-
-  return [
-    {
-      type: 1,
-      components: [
-        {
-          type: ComponentType.Button,
-          custom_id: `label_pref:${schedulerId}`,
-          style: 2,
-          label: "Preferred times",
-          disabled: true,
-        },
-      ],
-    },
-    {
-      type: 1,
-      components: [
-        {
-          type: ComponentType.StringSelect,
-          custom_id: `vote_pref:${schedulerId}`,
-          placeholder: "Select preferred times",
-          min_values: 0,
-          max_values: options.length,
-          options: preferredOptions,
-        },
-      ],
-    },
-    {
-      type: 1,
-      components: [
-        {
-          type: ComponentType.Button,
-          custom_id: `label_feasible:${schedulerId}`,
-          style: 2,
-          label: "Feasible times",
-          disabled: true,
-        },
-      ],
-    },
-    {
-      type: 1,
-      components: [
-        {
-          type: ComponentType.StringSelect,
-          custom_id: `vote_feasible:${schedulerId}`,
-          placeholder: "Select feasible times",
-          min_values: 0,
-          max_values: options.length,
-          options: feasibleOptions,
-        },
-      ],
-    },
-    {
-      type: 1,
-      components: actionButtons,
-    },
-  ];
-}
 
 async function acquireInteractionLock(interactionId) {
   const ref = db.collection("discordInteractionIds").doc(interactionId);
@@ -318,10 +120,6 @@ async function getLinkedUser(discordUserId) {
   } catch (err) {
     return null;
   }
-}
-
-function normalizeEmail(value) {
-  return String(value || "").trim().toLowerCase();
 }
 
 async function getParticipationDecision(scheduler, linkedUser) {

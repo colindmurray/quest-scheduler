@@ -50,12 +50,12 @@ exports.nudgeDiscordParticipants = functions
   .runWith({ secrets: [DISCORD_BOT_TOKEN] })
   .https.onCall(async (data, context) => {
     if (!context.auth) {
-      throw new functions.https.functions.https.HttpsError("unauthenticated", "Login required");
+      throw new functions.https.HttpsError("unauthenticated", "Login required");
     }
 
     const schedulerId = (data?.schedulerId || "").trim();
     if (!schedulerId) {
-      throw new functions.https.functions.https.HttpsError("invalid-argument", "Missing schedulerId");
+      throw new functions.https.HttpsError("invalid-argument", "Missing schedulerId");
     }
 
     const userId = context.auth.uid;

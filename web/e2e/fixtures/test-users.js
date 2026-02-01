@@ -11,4 +11,16 @@ export const testUsers = {
     password: process.env.E2E_PARTICIPANT_PASSWORD || 'password',
     displayName: 'Participant',
   },
+  revokee: {
+    uid: process.env.E2E_REVOKE_UID || 'test-revokee',
+    email: process.env.E2E_REVOKE_EMAIL || 'revokee@example.com',
+    password: process.env.E2E_REVOKE_PASSWORD || 'password',
+    displayName: 'Revokee',
+  },
+  blocked: {
+    uid: process.env.E2E_BLOCKED_UID || 'test-blocked',
+    email: process.env.E2E_BLOCKED_EMAIL || 'blocked@example.com',
+    password: process.env.E2E_BLOCKED_PASSWORD || 'password',
+    displayName: 'Blocked',
+  },
 };

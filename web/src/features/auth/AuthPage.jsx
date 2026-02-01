@@ -11,6 +11,7 @@ import {
 } from "../../lib/auth";
 import { APP_NAME, GOOGLE_OAUTH_CLIENT_ID } from "../../lib/config";
 import { startDiscordLogin } from "../../lib/data/discord";
+import { normalizeEmail } from "../../lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -59,10 +60,6 @@ function loadGoogleScript() {
     document.head.appendChild(script);
   });
   return googleScriptPromise;
-}
-
-function normalizeEmail(email) {
-  return String(email || "").trim().toLowerCase();
 }
 
 function getAuthErrorMessage(error) {

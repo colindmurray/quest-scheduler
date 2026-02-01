@@ -7,6 +7,7 @@ let txSetMock;
 let schedulerGetMock;
 let schedulerUpdateMock;
 let notificationDeleteMock;
+let notificationUpdateMock;
 let groupGetMock;
 let groupUpdateMock;
 let usersPublicByIdDoc;
@@ -16,7 +17,9 @@ let userSetMock;
 let friendRequestSetMock;
 let friendRequestDeleteMock;
 let friendRequestUpdateMock;
+let friendRequestGetMock;
 let notificationSetMock;
+let notificationEventSetMock;
 let friendRequestDocs;
 let schedulerDocs;
 let discordLinkCodeDocs;
@@ -40,6 +43,7 @@ let usersPublicDeleteMock;
 let userSecretsDeleteMock;
 let groupDeleteMock;
 let batchDeleteDocMock;
+let batchUpdateMock;
 let batchCommitMock;
 let blockedDocsByEmail;
 let blockedDocsByUid;
@@ -48,6 +52,7 @@ let blockedDocsByQs;
 let blockedLegacyExists;
 
 let usersPublicDocs;
+let notificationQueryDocs;
 
 const buildFirestoreMock = () => {
   const makeRef = (path) => ({ path });
@@ -86,7 +91,11 @@ const buildFirestoreMock = () => {
   return {
     runTransaction: async (fn) => fn({ get: txGetMock, set: txSetMock }),
     recursiveDelete: recursiveDeleteMock,
-    batch: () => ({ delete: batchDeleteDocMock, commit: batchCommitMock }),
+    batch: () => ({
+      delete: batchDeleteDocMock,
+      update: batchUpdateMock,
+      commit: batchCommitMock,
+    }),
     collectionGroup: (name) => ({
       where: (field) => ({
         get: async () => {
@@ -118,7 +127,19 @@ const buildFirestoreMock = () => {
             set: userSetMock,
             collection: (sub) => {
               if (sub === 'notifications') {
-                return { doc: () => ({ set: notificationSetMock, delete: notificationDeleteMock }) };
+                return {
+                  doc: () => ({
+                    set: notificationSetMock,
+                    delete: notificationDeleteMock,
+                    update: notificationUpdateMock,
+                  }),
+                  where: () => ({
+                    get: async () => ({
+                      empty: notificationQueryDocs.length === 0,
+                      docs: notificationQueryDocs,
+                    }),
+                  }),
+                };
               }
               if (sub === 'blockedUsers') {
                 return {
@@ -180,7 +201,12 @@ const buildFirestoreMock = () => {
       if (name === 'friendRequests') {
         return {
           where: () => friendRequestQuery,
-          doc: () => ({ id: 'req1', set: friendRequestSetMock, delete: friendRequestDeleteMock }),
+          doc: () => ({
+            id: 'req1',
+            get: friendRequestGetMock,
+            set: friendRequestSetMock,
+            delete: friendRequestDeleteMock,
+          }),
         };
       }
       if (name === 'discordUserLinks') {
@@ -203,6 +229,11 @@ const buildFirestoreMock = () => {
             delete: groupDeleteMock,
           }),
           where: (field) => questingGroupQuery(field),
+        };
+      }
+      if (name === 'notificationEvents') {
+        return {
+          doc: () => ({ set: notificationEventSetMock }),
         };
       }
       if (name === 'schedulers') {
@@ -240,7 +271,9 @@ describe('legacy callables success paths', () => {
     friendRequestSetMock = vi.fn();
     friendRequestDeleteMock = vi.fn().mockResolvedValue(undefined);
     friendRequestUpdateMock = vi.fn().mockResolvedValue(undefined);
+    friendRequestGetMock = vi.fn().mockResolvedValue({ exists: false });
     notificationSetMock = vi.fn();
+    notificationEventSetMock = vi.fn();
     friendRequestDocs = [];
     schedulerDocs = [];
     discordLinkCodeDocs = [];
@@ -253,6 +286,7 @@ describe('legacy callables success paths', () => {
     pendingPollDocs = [];
     notificationDocsFromEmail = [];
     notificationDocsInviter = [];
+    notificationQueryDocs = [];
     voteDocsById = [];
     voteDocsByEmail = [];
     bannedEmailSetMock = vi.fn();
@@ -264,20 +298,24 @@ describe('legacy callables success paths', () => {
     userSecretsDeleteMock = vi.fn().mockResolvedValue(undefined);
     groupDeleteMock = vi.fn().mockResolvedValue(undefined);
     batchDeleteDocMock = vi.fn();
+    batchUpdateMock = vi.fn();
     batchCommitMock = vi.fn().mockResolvedValue(undefined);
+    notificationUpdateMock = vi.fn().mockResolvedValue(undefined);
     blockedDocsByEmail = [];
     blockedDocsByUid = [];
     blockedDocsByDiscord = [];
     blockedDocsByQs = [];
     blockedLegacyExists = false;
 
+    const firestoreMock = buildFirestoreMock();
     const adminMock = {
       apps: [],
       initializeApp: vi.fn(),
-      firestore: () => buildFirestoreMock(),
+      firestore: () => firestoreMock,
       auth: () => ({ deleteUser: authDeleteMock }),
     };
     adminMock.firestore.FieldPath = { documentId: () => 'documentId' };
+    adminMock.firestore.Timestamp = { fromDate: vi.fn(() => 'expires-at') };
 
     const functionsMock = {
       https: {
@@ -311,6 +349,7 @@ describe('legacy callables success paths', () => {
           arrayUnion: vi.fn((value) => ({ arrayUnion: value })),
           arrayRemove: vi.fn((value) => ({ arrayRemove: value })),
         },
+        Timestamp: { fromDate: vi.fn(() => 'expires-at') },
       },
     };
     require.cache[require.resolve('firebase-functions/v1')] = { exports: functionsMock };
@@ -344,7 +383,7 @@ describe('legacy callables success paths', () => {
     expect(txSetMock).toHaveBeenCalled();
   });
 
-  test('revokePollInvite updates pending list and deletes notification', async () => {
+  test('revokePollInvite updates pending list and emits revoked event', async () => {
     schedulerGetMock.mockResolvedValueOnce({
       exists: true,
       data: () => ({
@@ -367,7 +406,9 @@ describe('legacy callables success paths', () => {
         pendingInviteMeta: {},
       })
     );
-    expect(notificationDeleteMock).toHaveBeenCalled();
+    expect(notificationEventSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'POLL_INVITE_REVOKED' })
+    );
   });
 
   test('sendGroupInvite updates pending invites for managers', async () => {
@@ -393,9 +434,39 @@ describe('legacy callables success paths', () => {
         pendingInvites: expect.objectContaining({ arrayUnion: 'invitee@example.com' }),
       })
     );
+    expect(notificationEventSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'GROUP_INVITE_SENT' })
+    );
+    expect(notificationEventSetMock.mock.calls[0][0].recipients.pendingEmails).toEqual([
+      'invitee@example.com',
+    ]);
   });
 
-  test('revokeGroupInvite removes pending invite and deletes notification', async () => {
+  test('sendGroupInvite returns blocked without notifying invitee', async () => {
+    groupGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        creatorId: 'creator1',
+        memberIds: [],
+        pendingInvites: [],
+        memberManaged: false,
+      }),
+    });
+    usersPublicByIdDoc = { discordUsernameLower: 'discord', qsUsernameLower: 'qs' };
+    usersPublicDocs = [{ id: 'inviteeId', data: () => ({ email: 'invitee@example.com' }) }];
+    blockedLegacyExists = true;
+
+    const result = await legacy.sendGroupInvite.run(
+      { groupId: 'group1', inviteeEmail: 'invitee@example.com' },
+      { auth: { uid: 'creator1', token: { email: 'creator@example.com' } } }
+    );
+
+    expect(result).toEqual({ added: false, reason: 'blocked' });
+    expect(groupUpdateMock).not.toHaveBeenCalled();
+    expect(notificationEventSetMock).not.toHaveBeenCalled();
+  });
+
+  test('revokeGroupInvite removes pending invite and emits revoked event', async () => {
     groupGetMock.mockResolvedValueOnce({
       exists: true,
       data: () => ({
@@ -417,7 +488,9 @@ describe('legacy callables success paths', () => {
         pendingInvites: expect.objectContaining({ arrayRemove: 'invitee@example.com' }),
       })
     );
-    expect(notificationDeleteMock).toHaveBeenCalled();
+    expect(notificationEventSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'GROUP_INVITE_DECLINED' })
+    );
   });
 
   test('sendFriendRequest creates request and notification', async () => {
@@ -439,7 +512,72 @@ describe('legacy callables success paths', () => {
         status: 'pending',
       })
     );
-    expect(notificationSetMock).toHaveBeenCalled();
+    expect(notificationEventSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'FRIEND_REQUEST_SENT' })
+    );
+  });
+
+  test('sendFriendRequest handles email-only recipients', async () => {
+    userDocExists = true;
+    userDocData = { inviteAllowance: 5, suspended: false };
+    usersPublicByIdDoc = { discordUsernameLower: 'discord', qsUsernameLower: 'qs' };
+    usersPublicDocs = [];
+
+    const result = await legacy.sendFriendRequest.run(
+      { toEmail: 'invitee@example.com' },
+      { auth: { uid: 'sender1', token: { email: 'sender@example.com', name: 'Sender' } } }
+    );
+
+    expect(result).toEqual({ requestId: 'req1', toUserId: null });
+    expect(notificationEventSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'FRIEND_REQUEST_SENT',
+        recipients: expect.objectContaining({
+          pendingEmails: ['invitee@example.com'],
+        }),
+      })
+    );
+  });
+
+  test('sendFriendRequest suppresses blocked recipients without notifying', async () => {
+    userDocExists = true;
+    userDocData = { inviteAllowance: 5, suspended: false };
+    usersPublicByIdDoc = { discordUsernameLower: 'discord', qsUsernameLower: 'qs' };
+    usersPublicDocs = [{ id: 'inviteeId', data: () => ({ email: 'invitee@example.com' }) }];
+    blockedLegacyExists = true;
+
+    const result = await legacy.sendFriendRequest.run(
+      { toEmail: 'invitee@example.com' },
+      { auth: { uid: 'sender1', token: { email: 'sender@example.com', name: 'Sender' } } }
+    );
+
+    expect(result).toEqual({ requestId: null, toUserId: null, suppressed: true });
+    expect(friendRequestSetMock).not.toHaveBeenCalled();
+    expect(notificationEventSetMock).not.toHaveBeenCalled();
+  });
+
+  test('revokeFriendRequest deletes pending request and emits auto-clear event', async () => {
+    friendRequestGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        status: 'pending',
+        fromUserId: 'sender1',
+        fromEmail: 'sender@example.com',
+        toEmail: 'invitee@example.com',
+        toUserId: 'inviteeId',
+      }),
+    });
+
+    const result = await legacy.revokeFriendRequest.run(
+      { requestId: 'req1' },
+      { auth: { uid: 'sender1', token: { email: 'sender@example.com' } } }
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(friendRequestDeleteMock).toHaveBeenCalled();
+    expect(notificationEventSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'FRIEND_REQUEST_DECLINED' })
+    );
   });
 
   test('acceptFriendInviteLink accepts pending request', async () => {
@@ -465,8 +603,9 @@ describe('legacy callables success paths', () => {
     expect(friendRequestUpdateMock).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'accepted', toUserId: 'receiver1' })
     );
-    expect(notificationSetMock).toHaveBeenCalled();
-    expect(notificationDeleteMock).toHaveBeenCalled();
+    expect(notificationEventSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'FRIEND_REQUEST_ACCEPTED' })
+    );
     expect(result).toEqual({
       senderEmail: 'sender@example.com',
       senderDisplayName: 'Sender',
@@ -584,10 +723,77 @@ describe('legacy callables success paths', () => {
     });
     expect(schedulerUpdateMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        participantIds: ['inviteeId'],
         pendingInvites: ['invitee@example.com'],
       })
     );
-    expect(notificationSetMock).toHaveBeenCalled();
+    expect(notificationEventSetMock).toHaveBeenCalled();
+  });
+
+  test('sendPollInvites supports email-only invitees (no user id)', async () => {
+    userDocExists = true;
+    userDocData = { inviteAllowance: 5, suspended: false };
+    usersPublicByIdDoc = { discordUsernameLower: 'discord', qsUsernameLower: 'qs' };
+    usersPublicDocs = [];
+    schedulerGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        creatorId: 'creator1',
+        participantIds: [],
+        pendingInvites: [],
+        title: 'Session',
+      }),
+    });
+
+    const result = await legacy.sendPollInvites.run(
+      { schedulerId: 'sched1', invitees: ['unknown@example.com'] },
+      { auth: { uid: 'creator1', token: { email: 'creator@example.com' } } }
+    );
+
+    expect(result).toEqual({
+      added: ['unknown@example.com'],
+      rejected: [],
+    });
+    expect(schedulerUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pendingInvites: ['unknown@example.com'],
+      })
+    );
+    const call = notificationEventSetMock.mock.calls.at(-1)?.[0];
+    expect(call?.recipients?.pendingEmails).toEqual(['unknown@example.com']);
+  });
+
+  test('sendPollInvites adds pending invite even when invitee is already a participant', async () => {
+    userDocExists = true;
+    userDocData = { inviteAllowance: 5, suspended: false };
+    usersPublicByIdDoc = { discordUsernameLower: 'discord', qsUsernameLower: 'qs' };
+    usersPublicDocs = [{ id: 'inviteeId', data: () => ({ email: 'invitee@example.com' }) }];
+    schedulerGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        creatorId: 'creator1',
+        participantIds: ['inviteeId'],
+        pendingInvites: [],
+        title: 'Session',
+      }),
+    });
+
+    const result = await legacy.sendPollInvites.run(
+      { schedulerId: 'sched1', invitees: ['invitee@example.com'] },
+      { auth: { uid: 'creator1', token: { email: 'creator@example.com' } } }
+    );
+
+    expect(result).toEqual({
+      added: ['invitee@example.com'],
+      rejected: [],
+    });
+    expect(schedulerUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        participantIds: ['inviteeId'],
+        pendingInvites: ['invitee@example.com'],
+      })
+    );
+    expect(notificationEventSetMock).toHaveBeenCalled();
   });
 
   test('blockUser removes pending friend request and penalizes offender', async () => {

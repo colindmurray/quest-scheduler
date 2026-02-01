@@ -1,12 +1,18 @@
 {
   "projects": {
-    "default": "studio-473406021-87ead"
+    "default": "studio-473406021-87ead",
+    "staging": "quest-scheduler-stg"
   },
   "targets": {},
   "etags": {
     "studio-473406021-87ead": {
       "extensionInstances": {
         "firestore-send-email": "2c16d3e400439838239b0b7735fbc058f3b1dd7febac9fad0ebea5ed17a48d61"
+      }
+    },
+    "quest-scheduler-stg": {
+      "extensionInstances": {
+        "firestore-send-email": "74e6344be7b1b750da85a5c6d98aa1501c7d1a2f461cf7eb538dcc7e426b4059"
       }
     }
   }

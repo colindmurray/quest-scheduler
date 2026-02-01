@@ -62,7 +62,17 @@ This file is the working contract for all agents (including Codex) contributing 
 - **Keep docs updated** as decisions are made.
 - Use `docs/decisions.md` to record key architectural choices.
 - Update `docs/task-list.md` as work progresses.
+- Archive `docs/task-list.md` before starting a new long-running plan so it contains only the current plan’s tasks.
 - Use `docs/testing.md` as the source of truth for local test commands and emulator setup.
+
+### Task List Archive Process
+- Before a new long-running task begins, move the current `docs/task-list.md` contents to an archive file:
+  - `docs/task-list-archive-YYYY-MM-DD.md` (or `docs/task-list-archive-<plan-stem>-YYYY-MM-DD.md`).
+- Create a fresh `docs/task-list.md` with:
+  - The standard header
+  - A new checkpoint block
+  - A clean Progress Notes section
+- Keep archives in `docs/` (never delete).
 
 ## Testing
 - Follow `docs/testing.md` for setup, env files, and emulator steps.
@@ -101,6 +111,21 @@ This file is the working contract for all agents (including Codex) contributing 
 - Operate autonomously and continue through the test plan without interruption unless blocked by missing credentials, conflicting instructions, or destructive risk.
 - Resolve routine decisions independently and document assumptions in `docs/decisions.md` when needed.
 - If a bug is discovered during this process, commit the current state before fixing it, then fix the bug, run tests, and commit again once tests pass.
+
+### 5.3 TypeScript Migration Protocol (CLI-Focused)
+- Follow `docs/typescript_migraiton_plan.md` for the staged migration order.
+- Maintain durable state in `docs/typescript-migration-state.md` (update after every chunk).
+- Prefer small, reviewable chunks (one folder or <= 20 files).
+- Use the `ts-migration-chunk` skill for ongoing conversions.
+- Gate each chunk with typecheck + lint + relevant tests before marking progress.
+- Record new typing conventions or tsconfig decisions in `docs/decisions.md`.
+
+## Long-Running Plan: Unified Notification Overhaul
+- Plan doc: `docs/unified-notification-overhaul.md`
+- Task list: `docs/plan-execution/unified-notification-overhaul-task-list.md`
+- Execution skill: `execute-plan-unified-notification-overhaul`
+- Autonomy: Continue without interruption; stop only when blocked or complete.
+- Test gate: Update/add tests, run relevant suites, and record results in `docs/task-list.md` and `docs/plan-execution/unified-notification-overhaul-task-list.md` progress notes.
 
 ## 6) Deployment Notes
 - Target Firebase Hosting for frontend.

@@ -79,6 +79,7 @@ describe('legacy cloneSchedulerPoll', () => {
       firestore: () => firestoreMock,
     };
     adminMock.firestore.FieldValue = { serverTimestamp: vi.fn(() => 'server-time') };
+    adminMock.firestore.Timestamp = { fromDate: vi.fn(() => 'expires-at') };
 
     const functionsMock = {
       https: {
@@ -107,6 +108,7 @@ describe('legacy cloneSchedulerPoll', () => {
     require.cache[require.resolve('firebase-admin/firestore')] = {
       exports: {
         FieldValue: adminMock.firestore.FieldValue,
+        Timestamp: { fromDate: vi.fn(() => 'expires-at') },
       },
     };
     require.cache[require.resolve('firebase-functions/v1')] = { exports: functionsMock };
@@ -168,7 +170,11 @@ describe('legacy cloneSchedulerPoll', () => {
     );
 
     expect(result).toEqual({ schedulerId: 'new-sched' });
-    expect(newSchedulerSetMock).toHaveBeenCalled();
+    expect(newSchedulerSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pendingInvites: ['member@example.com'],
+      })
+    );
     expect(newSlotsSetMock).toHaveBeenCalled();
     expect(newVotesSetMock).toHaveBeenCalled();
 

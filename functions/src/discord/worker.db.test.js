@@ -85,6 +85,11 @@ describe('discord worker data helpers', () => {
         DISCORD_BOT_TOKEN: { value: () => 'token' },
         DISCORD_REGION: 'us-central1',
         APP_URL: 'https://app.example.com',
+        DISCORD_NOTIFICATION_DEFAULTS: {
+          finalizationEvents: true,
+          slotChanges: true,
+          voteSubmitted: false,
+        },
       },
     };
     require.cache[require.resolve('./link-utils')] = {
