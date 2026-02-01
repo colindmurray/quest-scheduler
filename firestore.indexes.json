@@ -1,6 +1,22 @@
 {
   "indexes": [
     {
+      "collectionGroup": "schedulers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "creatorEmail", "order": "ASCENDING" },
+        { "fieldPath": "pendingInvites", "arrayConfig": "CONTAINS" }
+      ]
+    },
+    {
+      "collectionGroup": "schedulers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "creatorId", "order": "ASCENDING" },
+        { "fieldPath": "pendingInvites", "arrayConfig": "CONTAINS" }
+      ]
+    },
+    {
       "collectionGroup": "notifications",
       "queryScope": "COLLECTION",
       "fields": [
