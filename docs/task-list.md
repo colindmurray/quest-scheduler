@@ -99,4 +99,5 @@
 - 2026-02-02: Ran full test suite for avatar/identity consolidation + Discord worker fix. Tests: `npm --prefix web run test` (pass), `npm --prefix functions run test` (pass), `npm --prefix web run test:rules` (pass), `npm --prefix web run test:e2e:emulators` (pass; 36 skipped).
 - 2026-02-02: Deployed staging (hosting/functions/firestore/storage) with `DEPLOY_ONLY=hosting,functions,firestore,storage scripts/deploy-staging.sh` (success).
 - 2026-02-02: Deployed production (hosting/functions/firestore/storage) with `DEPLOY_ONLY=hosting,functions,firestore,storage scripts/deploy-prod.sh` (success).
+- 2026-02-02: Ignored local env + Gemini settings files in `.gitignore`. Tests not run (ignore-only change).
 - 2026-02-02: Centralized avatar + identity rendering for user bubbles across scheduler/friends/groups/invites; updated identity helpers and avatar components. Tests: `npm --prefix web run test -- --run src/lib/identity.test.js src/components/UserIdentity.test.jsx src/components/ui/avatar.test.jsx src/components/ui/voter-avatars.test.jsx` (pass).
