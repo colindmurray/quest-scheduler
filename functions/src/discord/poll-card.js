@@ -1,15 +1,10 @@
 const { APP_URL } = require("./config");
-
-function unixSeconds(iso) {
-  if (!iso) return null;
-  const value = new Date(iso).getTime();
-  if (Number.isNaN(value)) return null;
-  return Math.floor(value / 1000);
-}
+const { formatDateTime, formatDateTimeRange } = require("./time-utils");
 
 function buildPollCard({ schedulerId, scheduler, slots, voteCount, totalParticipants }) {
   const title = scheduler.title || "Quest Session";
   const description = `Vote in Quest Scheduler: ${APP_URL}/scheduler/${schedulerId}`;
+  const pollTimeZone = scheduler.timezone || null;
 
   const sortedSlots = [...slots].sort((a, b) => new Date(a.start) - new Date(b.start));
   const firstSlot = sortedSlots[0];
@@ -38,23 +33,22 @@ function buildPollCard({ schedulerId, scheduler, slots, voteCount, totalParticip
   }
 
   if (firstSlot && lastSlot) {
-    const startUnix = unixSeconds(firstSlot.start);
-    const endUnix = unixSeconds(lastSlot.end);
-    if (startUnix && endUnix) {
+    const rangeLabel = formatDateTimeRange(firstSlot.start, lastSlot.end, pollTimeZone);
+    if (rangeLabel) {
       fields.push({
         name: "Range",
-        value: `<t:${startUnix}:F> -> <t:${endUnix}:F>`,
+        value: rangeLabel,
       });
     }
   }
 
   if (scheduler.status === "FINALIZED" && scheduler.winningSlotId) {
     const winning = sortedSlots.find((slot) => slot.id === scheduler.winningSlotId);
-    const winUnix = unixSeconds(winning?.start);
-    if (winUnix) {
+    const winLabel = formatDateTime(winning?.start, pollTimeZone);
+    if (winLabel) {
       fields.push({
         name: "Winning slot",
-        value: `<t:${winUnix}:F>`,
+        value: winLabel,
       });
     }
   }

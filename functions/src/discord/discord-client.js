@@ -21,6 +21,11 @@ async function editChannelMessage({ channelId, messageId, body }) {
   return rest.patch(Routes.channelMessage(channelId, messageId), { body });
 }
 
+async function deleteChannelMessage({ channelId, messageId }) {
+  const rest = createDiscordRestClient();
+  return rest.delete(Routes.channelMessage(channelId, messageId));
+}
+
 async function fetchChannel({ channelId }) {
   const rest = createDiscordRestClient();
   return rest.get(Routes.channel(channelId));
@@ -36,6 +41,7 @@ module.exports = {
   editOriginalInteractionResponse,
   createChannelMessage,
   editChannelMessage,
+  deleteChannelMessage,
   fetchChannel,
   fetchGuildRoles,
 };

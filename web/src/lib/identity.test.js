@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { buildPublicIdentifier } from './identity';
+import { buildPublicIdentifier, getUserAvatarUrl, getUserIdentity, getUserLabel } from './identity';
 
 describe('buildPublicIdentifier', () => {
   test('returns publicIdentifier when provided', () => {
@@ -43,5 +43,63 @@ describe('buildPublicIdentifier', () => {
 
   test('returns empty string when no data is provided', () => {
     expect(buildPublicIdentifier()).toBe('');
+  });
+});
+
+describe('getUserIdentity', () => {
+  test('uses display name when distinct from public identifier', () => {
+    expect(
+      getUserIdentity({
+        displayName: 'Cora',
+        publicIdentifierType: 'qsUsername',
+        qsUsername: 'cora',
+        email: 'cora@example.com',
+      }).label
+    ).toBe('Cora');
+  });
+
+  test('falls back to public identifier when display name missing', () => {
+    expect(
+      getUserIdentity({
+        publicIdentifierType: 'discordUsername',
+        discordUsername: 'quester',
+        email: 'quester@example.com',
+      }).label
+    ).toBe('quester');
+  });
+
+  test('avoids duplicate display name and public identifier', () => {
+    expect(
+      getUserIdentity({
+        displayName: 'user@example.com',
+        publicIdentifierType: 'email',
+        email: 'user@example.com',
+      }).label
+    ).toBe('user@example.com');
+  });
+});
+
+describe('getUserLabel', () => {
+  test('returns empty string when no identity data', () => {
+    expect(getUserLabel()).toBe('');
+  });
+});
+
+describe('getUserAvatarUrl', () => {
+  test('prefers explicit avatar fields', () => {
+    expect(
+      getUserAvatarUrl({
+        avatar: 'https://example.com/primary.png',
+        photoURL: 'https://example.com/fallback.png',
+      })
+    ).toBe('https://example.com/primary.png');
+  });
+
+  test('falls back to photo URL when avatar missing', () => {
+    expect(
+      getUserAvatarUrl({
+        photoURL: 'https://example.com/fallback.png',
+      })
+    ).toBe('https://example.com/fallback.png');
   });
 });

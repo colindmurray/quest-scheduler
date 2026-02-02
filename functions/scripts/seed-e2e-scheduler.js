@@ -44,6 +44,9 @@ async function seed() {
   const blockedId = process.env.E2E_BLOCKED_UID || "test-blocked";
   const blockedEmail = process.env.E2E_BLOCKED_EMAIL || "blocked@example.com";
   const blockedPassword = process.env.E2E_BLOCKED_PASSWORD || "password";
+  const notifierId = process.env.E2E_NOTIFICATION_UID || "test-notifier";
+  const notifierEmail = process.env.E2E_NOTIFICATION_EMAIL || "notifier@example.com";
+  const notifierPassword = process.env.E2E_NOTIFICATION_PASSWORD || "password";
 
   const auth = admin.auth();
   const ensureUser = async ({ uid, email, password, displayName }) => {
@@ -94,6 +97,12 @@ async function seed() {
     password: blockedPassword,
     displayName: "Blocked",
   });
+  await ensureUser({
+    uid: notifierId,
+    email: notifierEmail,
+    password: notifierPassword,
+    displayName: "Notifier",
+  });
 
   const now = new Date();
   const slotStart = new Date(now.getTime() + 60 * 60 * 1000);
@@ -141,10 +150,86 @@ async function seed() {
     { merge: true }
   );
 
+  await db.doc(`usersPublic/${notifierId}`).set(
+    {
+      email: notifierEmail.toLowerCase(),
+      displayName: "Notifier",
+      emailNotifications: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  const notificationPreferenceEvents = [
+    "POLL_CREATED",
+    "POLL_INVITE_SENT",
+    "POLL_INVITE_ACCEPTED",
+    "POLL_INVITE_DECLINED",
+    "POLL_INVITE_REVOKED",
+    "VOTE_SUBMITTED",
+    "VOTE_REMINDER",
+    "POLL_READY_TO_FINALIZE",
+    "POLL_ALL_VOTES_IN",
+    "POLL_FINALIZED",
+    "POLL_REOPENED",
+    "POLL_CANCELLED",
+    "POLL_RESTORED",
+    "POLL_DELETED",
+    "SLOT_CHANGED",
+    "DISCORD_NUDGE_SENT",
+    "FRIEND_REQUEST_SENT",
+    "FRIEND_REQUEST_ACCEPTED",
+    "FRIEND_REQUEST_DECLINED",
+    "FRIEND_REMOVED",
+    "GROUP_INVITE_SENT",
+    "GROUP_INVITE_ACCEPTED",
+    "GROUP_INVITE_DECLINED",
+    "GROUP_MEMBER_REMOVED",
+    "GROUP_MEMBER_LEFT",
+    "GROUP_DELETED",
+  ];
+  const buildNotificationPreferences = () =>
+    Object.fromEntries(notificationPreferenceEvents.map((eventType) => [eventType, "inApp"]));
+
+  const seedUserSettings = async ({ uid, email, displayName }) => {
+    await db.doc(`users/${uid}`).set(
+      {
+        email: email.toLowerCase(),
+        displayName: displayName || null,
+        settings: {
+          notificationMode: "advanced",
+          notificationPreferences: buildNotificationPreferences(),
+          emailNotifications: true,
+        },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  };
+
+  await seedUserSettings({
+    uid: participantId,
+    email: participantEmail,
+    displayName: "Owner",
+  });
+
+  await seedUserSettings({
+    uid: inviteeId,
+    email: inviteeEmail,
+    displayName: "Participant",
+  });
+
+  await seedUserSettings({
+    uid: notifierId,
+    email: notifierEmail,
+    displayName: "Notifier",
+  });
+
   const ownerEmailLower = participantEmail.toLowerCase();
   const inviteeEmailLower = inviteeEmail.toLowerCase();
   const revokeeEmailLower = revokeeEmail.toLowerCase();
   const blockedEmailLower = blockedEmail.toLowerCase();
+  const notifierEmailLower = notifierEmail.toLowerCase();
 
   await db
     .doc(
@@ -155,21 +240,29 @@ async function seed() {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-  const seedScheduler = async ({ id, title }) => {
+  const seedScheduler = async ({
+    id,
+    title,
+    pendingEmails = [inviteeEmailLower],
+    participantIds = [participantId, inviteeId],
+  }) => {
+    const pendingInviteMeta = {};
+    pendingEmails.forEach((email) => {
+      if (!email) return;
+      pendingInviteMeta[email] = {
+        invitedByEmail: ownerEmailLower,
+        invitedByUserId: participantId,
+        invitedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+    });
     await db.doc(`schedulers/${id}`).set({
       title,
       creatorId: participantId,
       creatorEmail: participantEmail,
       status: "OPEN",
-      participantIds: [participantId, inviteeId],
-      pendingInvites: [inviteeEmail.toLowerCase()],
-      pendingInviteMeta: {
-        [inviteeEmail.toLowerCase()]: {
-          invitedByEmail: participantEmail.toLowerCase(),
-          invitedByUserId: participantId,
-          invitedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-      },
+      participantIds,
+      pendingInvites: pendingEmails,
+      pendingInviteMeta,
       allowLinkSharing: false,
       timezone: "UTC",
       timezoneMode: "utc",
@@ -328,6 +421,24 @@ async function seed() {
   await seedScheduler({ id: schedulerId, title: "E2E Scheduler Poll" });
   await seedScheduler({ id: schedulerDeclineId, title: "E2E Scheduler Poll Decline" });
   await seedScheduler({ id: schedulerNotificationId, title: "E2E Scheduler Poll Notification" });
+  await seedScheduler({
+    id: "auto-poll-invite-accepted",
+    title: "Auto Poll Invite Accepted",
+    pendingEmails: [notifierEmailLower],
+    participantIds: [participantId, notifierId],
+  });
+  await seedScheduler({
+    id: "auto-poll-invite-declined",
+    title: "Auto Poll Invite Declined",
+    pendingEmails: [notifierEmailLower],
+    participantIds: [participantId, notifierId],
+  });
+  await seedScheduler({
+    id: "auto-poll-cancelled",
+    title: "Auto Poll Cancelled",
+    pendingEmails: [notifierEmailLower],
+    participantIds: [participantId, notifierId],
+  });
 
   await seedFriendRequest({
     id: friendAcceptId,
@@ -354,6 +465,14 @@ async function seed() {
     fromDisplayName: "Owner",
     toEmail: revokeeEmail,
     toUserId: revokeeId,
+  });
+  await seedFriendRequest({
+    id: "auto-friend-accepted",
+    fromEmail: participantEmail,
+    fromUserId: participantId,
+    fromDisplayName: "Owner",
+    toEmail: notifierEmail,
+    toUserId: notifierId,
   });
 
   await seedFriendNotification({
@@ -396,6 +515,21 @@ async function seed() {
     pendingEmail: revokeeEmail,
   });
   await seedGroup({ id: groupOwnerId, name: groupOwnerName, pendingEmail: null });
+  await seedGroup({
+    id: "auto-group-accepted",
+    name: "Auto Group Accepted",
+    pendingEmail: notifierEmail,
+  });
+  await seedGroup({
+    id: "auto-group-declined",
+    name: "Auto Group Declined",
+    pendingEmail: notifierEmail,
+  });
+  await seedGroup({
+    id: "auto-group-deleted",
+    name: "Auto Group Deleted",
+    pendingEmail: notifierEmail,
+  });
 
   await seedGroupNotification({
     userId: inviteeId,

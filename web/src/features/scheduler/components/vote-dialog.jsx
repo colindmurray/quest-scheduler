@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import { formatZonedTime, getTimeZoneAbbr } from "../../../lib/time";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +16,8 @@ export function VoteDialog({
   onOpenChange,
   modalDate,
   slots = [],
+  displayTimeZone = null,
+  showTimeZone = true,
   noTimesWork = false,
   canVote = false,
   onToggleNoTimesWork,
@@ -22,12 +25,17 @@ export function VoteDialog({
   pastSlotIds = new Set(),
   onSetVote,
 }) {
+  const tzLabel = showTimeZone
+    ? getTimeZoneAbbr(modalDate || new Date(), displayTimeZone)
+    : "";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>
             Vote for {modalDate ? format(modalDate, "MMM d") : ""}
+            {tzLabel ? ` ${tzLabel}` : ""}
           </DialogTitle>
           <DialogDescription>
             Toggle Feasible or Preferred for each slot.
@@ -60,7 +68,9 @@ export function VoteDialog({
                 }`}
               >
                 <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                  {format(new Date(slot.start), "h:mm a")}
+                  {formatZonedTime(new Date(slot.start), displayTimeZone, "h:mm a", {
+                    showTimeZone,
+                  })}
                 </p>
                 <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                   <span>Feasible</span>

@@ -1,27 +1,34 @@
 import { format, formatDistanceToNow, isToday, isTomorrow, isThisWeek } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { Calendar, ChevronRight } from "lucide-react";
+import { formatZonedTime, getTimeZoneAbbr, toDisplayDate } from "../../../lib/time";
 
 function groupSessionsByDate(sessions) {
   const groups = {};
 
   sessions.forEach((session) => {
-    const date = session.winningSlot?.start
+    const sourceDate = session.winningSlot?.start
       ? new Date(session.winningSlot.start)
       : session.firstSlot?.start
         ? new Date(session.firstSlot.start)
         : null;
 
-    if (!date) return;
+    if (!sourceDate) return;
 
-    const dateKey = format(date, "yyyy-MM-dd");
+    const displayDate = toDisplayDate(sourceDate, session.displayTimeZone) || sourceDate;
+    const dateKey = format(displayDate, "yyyy-MM-dd");
     if (!groups[dateKey]) {
       groups[dateKey] = {
-        date,
+        date: displayDate,
+        sortDate: sourceDate,
         sessions: [],
       };
     }
-    groups[dateKey].sessions.push({ ...session, sortDate: date });
+    groups[dateKey].sessions.push({
+      ...session,
+      sortDate: sourceDate,
+      displayDate,
+    });
   });
 
   // Sort sessions within each group by time
@@ -30,14 +37,18 @@ function groupSessionsByDate(sessions) {
   });
 
   // Sort groups by date
-  return Object.values(groups).sort((a, b) => a.date - b.date);
+  return Object.values(groups).sort((a, b) => a.sortDate - b.sortDate);
 }
 
-function getDateLabel(date) {
-  if (isToday(date)) return "Today";
-  if (isTomorrow(date)) return "Tomorrow";
-  if (isThisWeek(date)) return format(date, "EEEE");
-  return format(date, "EEEE, MMM d");
+function getDateLabel(displayDate, rawDate, timeZone, showTimeZone) {
+  let baseLabel = null;
+  if (isToday(displayDate)) baseLabel = "Today";
+  if (!baseLabel && isTomorrow(displayDate)) baseLabel = "Tomorrow";
+  if (!baseLabel && isThisWeek(displayDate)) baseLabel = format(displayDate, "EEEE");
+  if (!baseLabel) baseLabel = format(displayDate, "EEEE, MMM d");
+  const shouldShow = showTimeZone !== false;
+  const abbr = shouldShow ? getTimeZoneAbbr(rawDate || displayDate, timeZone) : "";
+  return abbr ? `${baseLabel} ${abbr}` : baseLabel;
 }
 
 function AgendaItem({ session, groupColor, showVoteNeeded }) {
@@ -47,6 +58,7 @@ function AgendaItem({ session, groupColor, showVoteNeeded }) {
     : session.firstSlot?.start
       ? new Date(session.firstSlot.start)
       : null;
+  const displayDate = date ? toDisplayDate(date, session.displayTimeZone) || date : null;
 
   const handleOpen = () => {
     const target = `/scheduler/${session.id}`;
@@ -73,7 +85,13 @@ function AgendaItem({ session, groupColor, showVoteNeeded }) {
           {session.title || "Untitled"}
         </p>
         <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-          {date && <span>{format(date, "h:mm a")}</span>}
+          {date && (
+            <span>
+              {formatZonedTime(date, session.displayTimeZone, "h:mm a", {
+                showTimeZone: session.showTimeZone,
+              })}
+            </span>
+          )}
           {session.status === "OPEN" && showVoteNeeded && (
             <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
               Vote needed
@@ -107,14 +125,19 @@ export function MobileAgendaView({ sessions = [], getGroupColor = () => null, ne
 
   return (
     <div className="space-y-4">
-      {groupedSessions.map((group) => (
+              {groupedSessions.map((group) => (
         <div key={format(group.date, "yyyy-MM-dd")}>
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              {getDateLabel(group.date)}
+              {getDateLabel(
+                group.date,
+                group.sortDate,
+                group.sessions?.[0]?.displayTimeZone,
+                group.sessions?.[0]?.showTimeZone
+              )}
             </p>
             <p className="text-xs text-slate-400 dark:text-slate-500">
-              {formatDistanceToNow(group.date, { addSuffix: true })}
+              {formatDistanceToNow(group.sortDate, { addSuffix: true })}
             </p>
           </div>
           <div className="space-y-2">

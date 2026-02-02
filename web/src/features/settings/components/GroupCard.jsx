@@ -41,6 +41,7 @@ const DEFAULT_DISCORD_ALERTS = {
   finalizationEvents: true,
   slotChanges: true,
   voteSubmitted: false,
+  allVotesIn: false,
 };
 
 export function GroupCard({
@@ -81,7 +82,7 @@ export function GroupCard({
     [members, pendingInvites]
   );
   const colorMap = buildColorMap(members);
-  const { enrichUsers, getAvatar } = useUserProfiles(profileEmails);
+  const { enrichUsers } = useUserProfiles(profileEmails);
   const enrichedMembers = enrichUsers(members);
   const pendingInviteUsers = enrichUsers(pendingInvites);
   const memberToRemoveProfile = useMemo(
@@ -274,12 +275,7 @@ export function GroupCard({
               key={member.email}
               className="group flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 py-1 pl-1 pr-2 text-xs dark:border-slate-700 dark:bg-slate-800"
             >
-              <AvatarBubble
-                email={member.email}
-                avatar={getAvatar(member.email)}
-                size={18}
-                colorMap={colorMap}
-              />
+              <AvatarBubble user={member} size={18} colorMap={colorMap} />
               <span className="text-slate-600 dark:text-slate-300">
                 <UserIdentity user={member} showIdentifier={false} />
               </span>
@@ -464,6 +460,10 @@ export function GroupCard({
                     Run /qs link-group {discordCode} in the target Discord channel.
                   </p>
                 )}
+                <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-300">
+                  Private channels require adding the Quest Scheduler bot role to the channel or
+                  category and allowing View Channel, Send Messages, and Embed Links.
+                </p>
                 {group.discord?.channelId && notifyRoleName && (
                   <div className="mt-4">
                     <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -510,6 +510,23 @@ export function GroupCard({
                           checked={discordAlertSettings.finalizationEvents}
                           onCheckedChange={(value) =>
                             handleDiscordAlertChange("finalizationEvents", value)
+                          }
+                          disabled={discordAlertSaving}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 px-4 py-3 dark:border-slate-700">
+                        <div>
+                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                            All votes are in
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                            Posts when every participant has voted.
+                          </p>
+                        </div>
+                        <SimpleToggle
+                          checked={discordAlertSettings.allVotesIn}
+                          onCheckedChange={(value) =>
+                            handleDiscordAlertChange("allVotesIn", value)
                           }
                           disabled={discordAlertSaving}
                         />

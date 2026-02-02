@@ -23,4 +23,10 @@ export const testUsers = {
     password: process.env.E2E_BLOCKED_PASSWORD || 'password',
     displayName: 'Blocked',
   },
+  notifier: {
+    uid: process.env.E2E_NOTIFICATION_UID || 'test-notifier',
+    email: process.env.E2E_NOTIFICATION_EMAIL || 'notifier@example.com',
+    password: process.env.E2E_NOTIFICATION_PASSWORD || 'password',
+    displayName: 'Notifier',
+  },
 };

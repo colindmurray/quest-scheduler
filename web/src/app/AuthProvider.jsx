@@ -44,6 +44,17 @@ export function AuthProvider({ children }) {
           return;
         }
 
+        setUser(nextUser);
+        setLoading(false);
+
+        let profileReadySet = false;
+        const profileTimeout = setTimeout(() => {
+          if (!isMounted || profileReadySet) return;
+          profileReadySet = true;
+          console.warn("Profile sync taking too long; continuing without it.");
+          setProfileReady(true);
+        }, 2000);
+
         const email = normalizeEmail(nextUser?.email);
         if (email) {
           const banned = await fetchBannedEmail(email);
@@ -55,6 +66,7 @@ export function AuthProvider({ children }) {
             setUser(null);
             setProfileReady(false);
             setLoading(false);
+            clearTimeout(profileTimeout);
             return;
           }
         }
@@ -69,13 +81,15 @@ export function AuthProvider({ children }) {
           } catch (err) {
             console.warn("Failed to reconcile pending notifications:", err);
           }
-          setProfileReady(true);
         } catch (err) {
           console.error("Failed to ensure user profile:", err);
-          setProfileReady(true);
+        } finally {
+          if (!profileReadySet) {
+            clearTimeout(profileTimeout);
+            profileReadySet = true;
+            setProfileReady(true);
+          }
         }
-        setUser(nextUser);
-        setLoading(false);
       };
       run().catch((err) => {
         console.error("Auth state check failed:", err);

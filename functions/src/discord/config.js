@@ -16,6 +16,7 @@ const DISCORD_NOTIFICATION_DEFAULTS = {
   finalizationEvents: true,
   slotChanges: true,
   voteSubmitted: false,
+  allVotesIn: false,
 };
 
 module.exports = {

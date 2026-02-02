@@ -144,11 +144,11 @@ test.describe.serial('Friend & group invite flows', () => {
 
     await ownerPage.goto('/friends?tab=groups');
     const groupCard = ownerPage
-      .locator('div', { has: ownerPage.getByText(groupRevokeName, { exact: true }) })
-      .first();
+      .getByRole('heading', { name: groupRevokeName })
+      .locator('xpath=ancestor::div[contains(@class, "rounded-2xl")][1]');
     const revokeChip = groupCard.getByText(testUsers.revokee.displayName, { exact: true });
     await revokeChip.hover();
-    await groupCard.getByTitle('Remove invite').click({ force: true });
+    await groupCard.locator('button').filter({ hasText: '×' }).first().click({ force: true });
     await ownerPage.getByRole('button', { name: /Remove invite/i }).click();
     await expect(
       groupCard.getByText(testUsers.revokee.displayName, { exact: true })

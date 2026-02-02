@@ -43,6 +43,10 @@ export default defineConfig({
       use: { ...devices['Desktop Firefox'] },
     },
     {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+    },
+    {
       name: 'mobile',
       use: { ...devices['Pixel 5'] },
     },
@@ -54,7 +58,7 @@ export default defineConfig({
     env: {
       ...process.env,
       VITE_USE_EMULATORS: 'true',
-      VITE_EMULATOR_HOST: process.env.VITE_EMULATOR_HOST || '127.0.0.1',
+      VITE_EMULATOR_HOST: process.env.VITE_EMULATOR_HOST || 'localhost',
       VITE_AUTH_EMULATOR_PORT: process.env.VITE_AUTH_EMULATOR_PORT || '9099',
       VITE_FIRESTORE_EMULATOR_PORT: process.env.VITE_FIRESTORE_EMULATOR_PORT || '8080',
       VITE_STORAGE_EMULATOR_PORT: process.env.VITE_STORAGE_EMULATOR_PORT || '9199',

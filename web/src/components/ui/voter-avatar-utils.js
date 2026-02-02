@@ -40,7 +40,9 @@ export function getColorForEmail(email) {
 
 export function getInitial(email) {
   if (!email) return "?";
-  return email.trim()[0]?.toUpperCase() || "?";
+  const trimmed = email.trim();
+  const normalized = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
+  return normalized[0]?.toUpperCase() || "?";
 }
 
 export function uniqueUsers(users) {

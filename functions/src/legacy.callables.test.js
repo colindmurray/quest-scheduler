@@ -53,6 +53,7 @@ let blockedLegacyExists;
 
 let usersPublicDocs;
 let notificationQueryDocs;
+let pendingNotificationDocs;
 
 const buildFirestoreMock = () => {
   const makeRef = (path) => ({ path });
@@ -236,6 +237,18 @@ const buildFirestoreMock = () => {
           doc: () => ({ set: notificationEventSetMock }),
         };
       }
+      if (name === 'pendingNotifications') {
+        return {
+          doc: () => ({
+            collection: () => ({
+              get: async () => ({
+                empty: pendingNotificationDocs.length === 0,
+                docs: pendingNotificationDocs,
+              }),
+            }),
+          }),
+        };
+      }
       if (name === 'schedulers') {
         return {
           doc: () => ({
@@ -287,6 +300,7 @@ describe('legacy callables success paths', () => {
     notificationDocsFromEmail = [];
     notificationDocsInviter = [];
     notificationQueryDocs = [];
+    pendingNotificationDocs = [];
     voteDocsById = [];
     voteDocsByEmail = [];
     bannedEmailSetMock = vi.fn();
@@ -393,6 +407,19 @@ describe('legacy callables success paths', () => {
       }),
     });
     usersPublicDocs = [{ id: 'inviteeId', data: () => ({ email: 'invitee@example.com' }) }];
+    notificationQueryDocs = [
+      { ref: { id: 'pollNotif' }, data: () => ({ type: 'POLL_INVITE_SENT' }) },
+    ];
+    pendingNotificationDocs = [
+      {
+        ref: { id: 'pendingPoll' },
+        data: () => ({
+          dedupeKey: 'poll:sched1:invite:invitee@example.com',
+          eventType: 'POLL_INVITE_SENT',
+          resource: { type: 'poll', id: 'sched1' },
+        }),
+      },
+    ];
 
     const result = await legacy.revokePollInvite.run(
       { schedulerId: 'sched1', inviteeEmail: 'invitee@example.com' },
@@ -406,9 +433,52 @@ describe('legacy callables success paths', () => {
         pendingInviteMeta: {},
       })
     );
+    expect(notificationUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dismissed: true, autoCleared: true })
+    );
+    expect(batchDeleteDocMock).toHaveBeenCalled();
+    expect(batchCommitMock).toHaveBeenCalled();
     expect(notificationEventSetMock).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: 'POLL_INVITE_REVOKED' })
     );
+  });
+
+  test('revokePollInvite clears pending email notifications for email-only invite', async () => {
+    schedulerGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        creatorId: 'creator1',
+        pendingInvites: ['invitee@example.com'],
+        pendingInviteMeta: { 'invitee@example.com': { invitedAt: 1 } },
+      }),
+    });
+    usersPublicDocs = [];
+    pendingNotificationDocs = [
+      {
+        ref: { id: 'pendingPoll' },
+        data: () => ({
+          dedupeKey: 'poll:sched1:invite:invitee@example.com',
+          eventType: 'POLL_INVITE_SENT',
+          resource: { type: 'poll', id: 'sched1' },
+        }),
+      },
+    ];
+
+    const result = await legacy.revokePollInvite.run(
+      { schedulerId: 'sched1', inviteeEmail: 'invitee@example.com' },
+      { auth: { uid: 'creator1', token: { email: 'creator@example.com' } } }
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(schedulerUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pendingInvites: [],
+        pendingInviteMeta: {},
+      })
+    );
+    expect(batchDeleteDocMock).toHaveBeenCalled();
+    expect(batchCommitMock).toHaveBeenCalled();
+    expect(notificationEventSetMock).not.toHaveBeenCalled();
   });
 
   test('sendGroupInvite updates pending invites for managers', async () => {
@@ -476,6 +546,16 @@ describe('legacy callables success paths', () => {
       }),
     });
     usersPublicDocs = [{ id: 'inviteeId', data: () => ({ email: 'invitee@example.com' }) }];
+    pendingNotificationDocs = [
+      {
+        ref: { id: 'pendingGroup' },
+        data: () => ({
+          dedupeKey: 'group:group1:invite:invitee@example.com',
+          eventType: 'GROUP_INVITE_SENT',
+          resource: { type: 'group', id: 'group1' },
+        }),
+      },
+    ];
 
     const result = await legacy.revokeGroupInvite.run(
       { groupId: 'group1', inviteeEmail: 'invitee@example.com' },
@@ -488,9 +568,48 @@ describe('legacy callables success paths', () => {
         pendingInvites: expect.objectContaining({ arrayRemove: 'invitee@example.com' }),
       })
     );
+    expect(batchDeleteDocMock).toHaveBeenCalled();
+    expect(batchCommitMock).toHaveBeenCalled();
     expect(notificationEventSetMock).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: 'GROUP_INVITE_DECLINED' })
     );
+  });
+
+  test('revokeGroupInvite clears pending email notifications for email-only invite', async () => {
+    groupGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        creatorId: 'creator1',
+        memberIds: [],
+        memberManaged: false,
+      }),
+    });
+    usersPublicDocs = [];
+    pendingNotificationDocs = [
+      {
+        ref: { id: 'pendingGroup' },
+        data: () => ({
+          dedupeKey: 'group:group1:invite:invitee@example.com',
+          eventType: 'GROUP_INVITE_SENT',
+          resource: { type: 'group', id: 'group1' },
+        }),
+      },
+    ];
+
+    const result = await legacy.revokeGroupInvite.run(
+      { groupId: 'group1', inviteeEmail: 'invitee@example.com' },
+      { auth: { uid: 'creator1', token: { email: 'creator@example.com' } } }
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(groupUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pendingInvites: expect.objectContaining({ arrayRemove: 'invitee@example.com' }),
+      })
+    );
+    expect(batchDeleteDocMock).toHaveBeenCalled();
+    expect(batchCommitMock).toHaveBeenCalled();
+    expect(notificationEventSetMock).not.toHaveBeenCalled();
   });
 
   test('sendFriendRequest creates request and notification', async () => {
@@ -567,6 +686,19 @@ describe('legacy callables success paths', () => {
         toUserId: 'inviteeId',
       }),
     });
+    notificationQueryDocs = [
+      { ref: { id: 'notif1' }, data: () => ({ type: 'FRIEND_REQUEST_SENT' }) },
+    ];
+    pendingNotificationDocs = [
+      {
+        ref: { id: 'pending1' },
+        data: () => ({
+          dedupeKey: 'friend:req1',
+          eventType: 'FRIEND_REQUEST_SENT',
+          resource: { type: 'friend', id: 'req1' },
+        }),
+      },
+    ];
 
     const result = await legacy.revokeFriendRequest.run(
       { requestId: 'req1' },
@@ -575,9 +707,48 @@ describe('legacy callables success paths', () => {
 
     expect(result).toEqual({ ok: true });
     expect(friendRequestDeleteMock).toHaveBeenCalled();
+    expect(notificationUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dismissed: true, autoCleared: true })
+    );
+    expect(batchDeleteDocMock).toHaveBeenCalled();
+    expect(batchCommitMock).toHaveBeenCalled();
     expect(notificationEventSetMock).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: 'FRIEND_REQUEST_DECLINED' })
     );
+  });
+
+  test('revokeFriendRequest clears pending email notifications for email-only invite', async () => {
+    friendRequestGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        status: 'pending',
+        fromUserId: 'sender1',
+        fromEmail: 'sender@example.com',
+        toEmail: 'invitee@example.com',
+        toUserId: null,
+      }),
+    });
+    pendingNotificationDocs = [
+      {
+        ref: { id: 'pending1' },
+        data: () => ({
+          dedupeKey: 'friend:req1',
+          eventType: 'FRIEND_REQUEST_SENT',
+          resource: { type: 'friend', id: 'req1' },
+        }),
+      },
+    ];
+
+    const result = await legacy.revokeFriendRequest.run(
+      { requestId: 'req1' },
+      { auth: { uid: 'sender1', token: { email: 'sender@example.com' } } }
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(friendRequestDeleteMock).toHaveBeenCalled();
+    expect(batchDeleteDocMock).toHaveBeenCalled();
+    expect(batchCommitMock).toHaveBeenCalled();
+    expect(notificationEventSetMock).not.toHaveBeenCalled();
   });
 
   test('acceptFriendInviteLink accepts pending request', async () => {
@@ -763,6 +934,34 @@ describe('legacy callables success paths', () => {
     expect(call?.recipients?.pendingEmails).toEqual(['unknown@example.com']);
   });
 
+  test('sendPollInvites suppresses blocked recipients without notifying', async () => {
+    userDocExists = true;
+    userDocData = { inviteAllowance: 5, suspended: false };
+    usersPublicByIdDoc = { discordUsernameLower: 'discord', qsUsernameLower: 'qs' };
+    usersPublicDocs = [{ id: 'inviteeId', data: () => ({ email: 'invitee@example.com' }) }];
+    blockedLegacyExists = true;
+    schedulerGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        creatorId: 'creator1',
+        participantIds: [],
+        pendingInvites: [],
+        title: 'Session',
+      }),
+    });
+
+    const result = await legacy.sendPollInvites.run(
+      { schedulerId: 'sched1', invitees: ['invitee@example.com'] },
+      { auth: { uid: 'creator1', token: { email: 'creator@example.com' } } }
+    );
+
+    expect(result).toEqual({
+      added: [],
+      rejected: [{ email: 'invitee@example.com', reason: 'blocked' }],
+    });
+    expect(notificationEventSetMock).not.toHaveBeenCalled();
+  });
+
   test('sendPollInvites adds pending invite even when invitee is already a participant', async () => {
     userDocExists = true;
     userDocData = { inviteAllowance: 5, suspended: false };
@@ -806,6 +1005,19 @@ describe('legacy callables success paths', () => {
         ref: { delete: friendRequestDeleteMock },
       },
     ];
+    notificationQueryDocs = [
+      { ref: { id: 'notif1' }, data: () => ({ type: 'FRIEND_REQUEST_SENT' }) },
+    ];
+    pendingNotificationDocs = [
+      {
+        ref: { id: 'pending1' },
+        data: () => ({
+          dedupeKey: 'friend:req1',
+          eventType: 'FRIEND_REQUEST_SENT',
+          resource: { type: 'friend', id: 'req1' },
+        }),
+      },
+    ];
     txGetMock.mockResolvedValueOnce({
       exists: true,
       data: () => ({ inviteAllowance: 5, suspended: false }),
@@ -819,6 +1031,11 @@ describe('legacy callables success paths', () => {
     expect(result).toEqual({ ok: true, penalized: true });
     expect(friendRequestDeleteMock).toHaveBeenCalled();
     expect(notificationDeleteMock).toHaveBeenCalled();
+    expect(notificationUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dismissed: true, autoCleared: true })
+    );
+    expect(batchDeleteDocMock).toHaveBeenCalled();
+    expect(batchCommitMock).toHaveBeenCalled();
     expect(txSetMock).toHaveBeenCalled();
   });
 

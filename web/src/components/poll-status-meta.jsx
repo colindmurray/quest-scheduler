@@ -1,6 +1,7 @@
 import { Calendar, AlertTriangle, Users } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { formatSlotRange, getPollStatusLabel, getSlotRange } from "../features/dashboard/lib/poll-card-utils";
+import { formatZonedDateTime } from "../lib/time";
 
 const toneStyles = {
   amber: {
@@ -44,9 +45,12 @@ export function PollStatusMeta({
   questingGroupName = null,
   questingGroupColor = null,
   guestCount = 0,
+  displayTimeZone = null,
+  showTimeZone = true,
 }) {
+  const timeZone = displayTimeZone || scheduler?.timezone || null;
   const slotRange = getSlotRange(slots);
-  const slotRangeLabel = formatSlotRange(slotRange);
+  const slotRangeLabel = formatSlotRange(slotRange, timeZone, showTimeZone);
   const cancelledAt =
     scheduler?.cancelledAt ||
     scheduler?.calendarSync?.cancelled?.at ||
@@ -80,19 +84,19 @@ export function PollStatusMeta({
   if (isCancelled) {
     if (winningSlot?.start) {
       const slotDate = new Date(winningSlot.start);
-      timeDisplay = format(slotDate, "MMM d, yyyy · h:mm a");
+      timeDisplay = formatZonedDateTime(slotDate, timeZone, undefined, { showTimeZone });
     } else if (slotRangeLabel) {
       timeDisplay = slotRangeLabel;
     } else if (cancelledAt) {
       const cancelledDate = new Date(cancelledAt);
       if (!Number.isNaN(cancelledDate.getTime())) {
-        timeDisplay = format(cancelledDate, "MMM d, yyyy · h:mm a");
+        timeDisplay = formatZonedDateTime(cancelledDate, timeZone, undefined, { showTimeZone });
       }
     }
     dateTone = "slate";
   } else if (scheduler?.status === "FINALIZED" && winningSlot?.start) {
     const slotDate = new Date(winningSlot.start);
-    timeDisplay = format(slotDate, "MMM d, yyyy · h:mm a");
+    timeDisplay = formatZonedDateTime(slotDate, timeZone, undefined, { showTimeZone });
     if (slotDate > new Date()) {
       relativeTime = formatDistanceToNow(slotDate, { addSuffix: true });
     }

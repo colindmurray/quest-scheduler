@@ -7,6 +7,7 @@ let restInstance;
 const restGetMock = vi.fn();
 const restPostMock = vi.fn();
 const restPatchMock = vi.fn();
+const restDeleteMock = vi.fn();
 
 describe('discord client', () => {
   beforeEach(async () => {
@@ -18,6 +19,7 @@ describe('discord client', () => {
       get: restGetMock,
       post: restPostMock,
       patch: restPatchMock,
+      delete: restDeleteMock,
     };
 
     const require = createRequire(import.meta.url);
@@ -101,6 +103,15 @@ describe('discord client', () => {
     expect(restPatchMock).toHaveBeenCalledWith('/channels/chan1/messages/msg1', {
       body: { content: 'update' },
     });
+  });
+
+  test('deleteChannelMessage deletes channel message', async () => {
+    await discordClient.deleteChannelMessage({
+      channelId: 'chan1',
+      messageId: 'msg1',
+    });
+
+    expect(restDeleteMock).toHaveBeenCalledWith('/channels/chan1/messages/msg1');
   });
 
   test('fetchChannel calls channel route', async () => {

@@ -16,6 +16,7 @@ import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfil
 import { UserIdentity } from "../../components/UserIdentity";
 import { useSchedulerAttendance } from "./hooks/useSchedulerAttendance";
 import { normalizeEmail } from "../../lib/utils";
+import { resolveDisplayTimeZone, shouldShowTimeZone } from "../../lib/time";
 import { NextSessionCard } from "./components/NextSessionCard";
 import { SessionCard } from "./components/SessionCard";
 import { DashboardCalendar } from "./components/DashboardCalendar";
@@ -27,7 +28,7 @@ import { SectionHeader } from "./components/section-header";
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { archivedPolls, loading: settingsLoading } = useUserSettings();
+  const { archivedPolls, loading: settingsLoading, settings } = useUserSettings();
   const { groups, getGroupColor } = useQuestingGroups();
   const normalizedUserEmail = normalizeEmail(user?.email) || "";
   const groupIds = useMemo(
@@ -145,6 +146,7 @@ export default function DashboardPage() {
     useSchedulerAttendance(activeSchedulers);
 
   // Enrich schedulers with slot data and voters
+  const showTimeZone = useMemo(() => shouldShowTimeZone(settings), [settings]);
   const enrichedSchedulers = useMemo(() => {
     return activeSchedulers.map((scheduler) => {
       const slots = slotsByScheduler[scheduler.id] || [];
@@ -199,6 +201,11 @@ export default function DashboardPage() {
         .map((id) => participantEmailById.get(id))
         .filter(Boolean);
 
+      const displayTimeZone = resolveDisplayTimeZone({
+        pollTimeZone: scheduler.timezone,
+        settings,
+      });
+
       return {
         ...scheduler,
         effectiveParticipants: participantEmails,
@@ -207,6 +214,8 @@ export default function DashboardPage() {
         firstSlot: futureSlots[0] || null,
         votedCount: voteDocs.length,
         voters,
+        displayTimeZone,
+        showTimeZone,
         attendanceSummary: {
           confirmed,
           unavailable,
@@ -221,6 +230,8 @@ export default function DashboardPage() {
     votersByScheduler,
     groupMembersById,
     participantProfilesById,
+    settings,
+    showTimeZone,
   ]);
 
   // Filter into categories
@@ -421,6 +432,8 @@ export default function DashboardPage() {
               : null
           }
           participants={nextSession.effectiveParticipants || []}
+          displayTimeZone={nextSession.displayTimeZone}
+          showTimeZone={nextSession.showTimeZone}
         />
       )}
 
@@ -469,6 +482,8 @@ export default function DashboardPage() {
                       scheduler={scheduler}
                       winningSlot={scheduler.winningSlot}
                       slots={scheduler.slots}
+                      displayTimeZone={scheduler.displayTimeZone}
+                      showTimeZone={scheduler.showTimeZone}
                       conflictsWith={conflictMap.get(scheduler.id) || []}
                       attendanceSummary={scheduler.attendanceSummary}
                       groupColor={
@@ -499,6 +514,8 @@ export default function DashboardPage() {
                       scheduler={scheduler}
                       showVoteNeeded={needsVote.has(scheduler.id)}
                       slots={scheduler.slots}
+                      displayTimeZone={scheduler.displayTimeZone}
+                      showTimeZone={scheduler.showTimeZone}
                       attendanceSummary={scheduler.attendanceSummary}
                       groupColor={
                         scheduler.questingGroupId
@@ -623,6 +640,8 @@ export default function DashboardPage() {
                     scheduler={scheduler}
                     winningSlot={enriched?.winningSlot}
                     slots={enriched?.slots || []}
+                    displayTimeZone={enriched?.displayTimeZone || scheduler.timezone}
+                    showTimeZone={enriched?.showTimeZone ?? showTimeZone}
                     groupColor={
                       scheduler.questingGroupId
                         ? getGroupColor(scheduler.questingGroupId)

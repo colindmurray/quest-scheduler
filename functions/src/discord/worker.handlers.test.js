@@ -4,6 +4,8 @@ import { createRequire } from 'module';
 let worker;
 let editOriginalInteractionResponseMock;
 let fetchChannelMock;
+let createChannelMessageMock;
+let deleteChannelMessageMock;
 let codeGetMock;
 let codeSetMock;
 let codeDeleteMock;
@@ -23,6 +25,8 @@ describe('discord worker handlers', () => {
 
     editOriginalInteractionResponseMock = vi.fn().mockResolvedValue({ ok: true });
     fetchChannelMock = vi.fn().mockResolvedValue({ name: 'general' });
+    createChannelMessageMock = vi.fn().mockResolvedValue({ id: 'msg1' });
+    deleteChannelMessageMock = vi.fn().mockResolvedValue({ ok: true });
     codeGetMock = vi.fn();
     codeSetMock = vi.fn();
     codeDeleteMock = vi.fn();
@@ -124,6 +128,8 @@ describe('discord worker handlers', () => {
     require.cache[require.resolve('./discord-client')] = {
       exports: {
         editOriginalInteractionResponse: (...args) => editOriginalInteractionResponseMock(...args),
+        createChannelMessage: (...args) => createChannelMessageMock(...args),
+        deleteChannelMessage: (...args) => deleteChannelMessageMock(...args),
         fetchChannel: (...args) => fetchChannelMock(...args),
       },
     };
@@ -193,9 +199,49 @@ describe('discord worker handlers', () => {
 
     expect(groupSetMock).toHaveBeenCalled();
     expect(codeDeleteMock).toHaveBeenCalled();
+    expect(createChannelMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'chan1' })
+    );
+    expect(deleteChannelMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'chan1', messageId: 'msg1' })
+    );
     expect(editOriginalInteractionResponseMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        body: expect.objectContaining({ content: expect.stringContaining('Discord channel linked') }),
+        body: expect.objectContaining({
+          content: expect.stringContaining('test message'),
+        }),
+      })
+    );
+  });
+
+  test('handleLinkGroup warns when test message fails', async () => {
+    createChannelMessageMock.mockRejectedValueOnce({ status: 403, code: 50013 });
+    codeGetMock.mockResolvedValueOnce(
+      buildDocSnap({
+        type: 'group-link',
+        groupId: 'group1',
+        uid: 'user1',
+        attempts: 0,
+        expiresAt: { toDate: () => new Date(Date.now() + 10000) },
+      })
+    );
+    groupGetMock.mockResolvedValueOnce(buildDocSnap({ discord: { notifyRoleId: 'role1' } }));
+
+    await worker.__test__.handleLinkGroup({
+      id: 'invalid',
+      token: 'tok',
+      applicationId: 'app',
+      data: { options: [{ name: 'code', value: '123' }] },
+      guildId: 'guild1',
+      channelId: 'chan1',
+      member: { permissions: '8' },
+    });
+
+    expect(editOriginalInteractionResponseMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          content: expect.stringContaining("couldn't post"),
+        }),
       })
     );
   });

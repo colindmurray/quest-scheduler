@@ -20,6 +20,7 @@ describe("notification event constants", () => {
       "VOTE_SUBMITTED",
       "VOTE_REMINDER",
       "POLL_READY_TO_FINALIZE",
+      "POLL_ALL_VOTES_IN",
       "POLL_FINALIZED",
       "POLL_REOPENED",
       "POLL_CANCELLED",

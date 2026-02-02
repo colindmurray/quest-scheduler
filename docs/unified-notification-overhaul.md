@@ -107,6 +107,7 @@ Advanced mode exposes all categories.
   - `GROUP_DELETED` (group no longer exists)
 - Informative MED (default OFF)
   - `VOTE_SUBMITTED` (activity noise unless creator prefers)
+  - `POLL_ALL_VOTES_IN` (participant opt-in)
   - `POLL_INVITE_ACCEPTED` (creator FYI)
   - `POLL_INVITE_DECLINED` (creator FYI)
   - `POLL_RESTORED` (FYI)
@@ -118,6 +119,7 @@ Advanced mode exposes all categories.
 
 Notes:
 - `POLL_READY_TO_FINALIZE` is derived when a poll is open, not finalized/cancelled, and all required participants have submitted votes (or explicitly marked unavailable). "Required" means accepted/active participants (exclude pending invites that have not accepted; treat declined invites as non-required).
+- When `POLL_READY_TO_FINALIZE` fires, an optional participant-facing `POLL_ALL_VOTES_IN` notification may be emitted for opt-in users.
 - Auto-clear updates must be chunked to respect Firestore batch limits (500 writes per batch).
 - Creator/participant context matters; routing rules should be role-aware.
 - These defaults are intended for Simple mode; Advanced mode can override any event.
@@ -251,7 +253,8 @@ The router writes in-app notifications server-side, so the UI updates live witho
 | `POLL_INVITE_REVOKED` | Former invitee | Yes | No | No |
 | `VOTE_SUBMITTED` | Creator | Yes | Gated | Gated (group setting) |
 | `VOTE_REMINDER` | Non-voters | Yes | Gated | No (use nudge) |
-| `POLL_READY_TO_FINALIZE` | Creator | Yes | Gated | No |
+| `POLL_READY_TO_FINALIZE` | Creator | Yes | Gated | Gated (group setting) |
+| `POLL_ALL_VOTES_IN` | Participants (opt-in) | Yes | No | No |
 | `POLL_FINALIZED` | All participants | Yes | Gated | Gated (group setting) |
 | `POLL_REOPENED` | All participants | Yes | Gated | Gated (group setting) |
 | `POLL_CANCELLED` | All participants | Yes | Gated | Gated (group setting) |
@@ -279,6 +282,7 @@ The router writes in-app notifications server-side, so the UI updates live witho
 ### Discord-Specific Routing
 Discord notifications are controlled at the **questing group level**, not user level:
 - `questingGroups/{groupId}.discord.notifications.voteSubmitted` (default: false)
+- `questingGroups/{groupId}.discord.notifications.allVotesIn` (default: false)
 - `questingGroups/{groupId}.discord.notifications.slotChanges` (default: true)
 - `questingGroups/{groupId}.discord.notifications.finalizationEvents` (default: true)
 

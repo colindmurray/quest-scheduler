@@ -1,12 +1,8 @@
-import { buildPublicIdentifier } from "../lib/identity";
+import { getUserIdentity } from "../lib/identity";
 
 export function UserIdentity({ user, showIdentifier = true, className = "" }) {
   if (!user) return null;
-  const publicIdentifier = buildPublicIdentifier(user);
-  const displayName = user.displayName || "";
-  const normalizedPublic = publicIdentifier || "";
-  const isDuplicate =
-    displayName && normalizedPublic && displayName.toLowerCase() === normalizedPublic.toLowerCase();
+  const { displayName, publicIdentifier, isDuplicate } = getUserIdentity(user);
 
   if (!displayName || isDuplicate) {
     return <span className={className}>{publicIdentifier}</span>;

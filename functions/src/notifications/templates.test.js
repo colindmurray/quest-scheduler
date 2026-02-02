@@ -138,4 +138,94 @@ describe('notification templates', () => {
     expect(result.body).toContain('Leader');
     expect(result.body).toContain('Heroes');
   });
+
+  test('vote reminder template includes poll title', () => {
+    const template = getInAppTemplate(NOTIFICATION_EVENTS.VOTE_REMINDER);
+    const result = template({
+      resource: { id: 'poll1', title: 'Poll Title' },
+      payload: { pollTitle: 'Poll Title' },
+    });
+
+    expect(result.title).toBe('Vote Reminder');
+    expect(result.body).toContain('Poll Title');
+  });
+
+  test('poll ready to finalize template includes poll title', () => {
+    const template = getInAppTemplate(NOTIFICATION_EVENTS.POLL_READY_TO_FINALIZE);
+    const result = template({
+      resource: { id: 'poll1', title: 'Poll Title' },
+      payload: { pollTitle: 'Poll Title' },
+    });
+
+    expect(result.title).toBe('All Votes Are In');
+    expect(result.body).toContain('Poll Title');
+  });
+
+  test('poll all votes in template includes poll title', () => {
+    const template = getInAppTemplate(NOTIFICATION_EVENTS.POLL_ALL_VOTES_IN);
+    const result = template({
+      resource: { id: 'poll1', title: 'Poll Title' },
+      payload: { pollTitle: 'Poll Title' },
+    });
+
+    expect(result.title).toBe('All Votes Are In');
+    expect(result.body).toContain('Poll Title');
+  });
+
+  test('poll cancelled template includes poll title', () => {
+    const template = getInAppTemplate(NOTIFICATION_EVENTS.POLL_CANCELLED);
+    const result = template({
+      resource: { id: 'poll1', title: 'Poll Title' },
+      payload: { pollTitle: 'Poll Title' },
+    });
+
+    expect(result.title).toBe('Session Cancelled');
+    expect(result.body).toContain('Poll Title');
+  });
+
+  test('poll deleted template includes poll title', () => {
+    const template = getInAppTemplate(NOTIFICATION_EVENTS.POLL_DELETED);
+    const result = template({
+      resource: { id: 'poll1', title: 'Poll Title' },
+      payload: { pollTitle: 'Poll Title' },
+    });
+
+    expect(result.title).toBe('Session Deleted');
+    expect(result.body).toContain('Poll Title');
+  });
+
+  test('group deleted template includes actor and group name', () => {
+    const template = getInAppTemplate(NOTIFICATION_EVENTS.GROUP_DELETED);
+    const result = template({
+      actor: { displayName: 'Leader' },
+      resource: { id: 'group1', title: 'Heroes' },
+      payload: { groupName: 'Heroes' },
+    });
+
+    expect(result.title).toBe('Group Deleted');
+    expect(result.body).toContain('Leader');
+    expect(result.body).toContain('Heroes');
+  });
+
+  test('friend removed template includes actor name', () => {
+    const template = getInAppTemplate(NOTIFICATION_EVENTS.FRIEND_REMOVED);
+    const result = template({
+      actor: { displayName: 'Friend' },
+      resource: { id: 'friend1', title: 'Friend' },
+    });
+
+    expect(result.title).toBe('Friend Removed');
+    expect(result.body).toContain('Friend');
+  });
+
+  test('discord nudge template includes poll title', () => {
+    const template = getInAppTemplate(NOTIFICATION_EVENTS.DISCORD_NUDGE_SENT);
+    const result = template({
+      resource: { id: 'poll1', title: 'Poll Title' },
+      payload: { pollTitle: 'Poll Title' },
+    });
+
+    expect(result.title).toBe('Discord Nudge Sent');
+    expect(result.body).toContain('Poll Title');
+  });
 });

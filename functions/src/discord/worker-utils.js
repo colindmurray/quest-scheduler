@@ -1,4 +1,5 @@
 const { ComponentType } = require("discord-api-types/v10");
+const { getTimeZoneAbbr, resolveTimeZone } = require("./time-utils");
 
 const DISCORD_EPOCH = 1420070400000n;
 const MAX_SELECT_OPTIONS = 25;
@@ -63,22 +64,22 @@ function buildSessionId(schedulerId, discordUserId) {
 function formatSlotLabel(startIso, endIso, timezone) {
   const start = new Date(startIso);
   const end = new Date(endIso);
+  const zone = resolveTimeZone(timezone);
   const dateOptions = {
     weekday: "short",
     month: "short",
     day: "numeric",
+    timeZone: zone,
   };
   const timeOptions = {
     hour: "numeric",
     minute: "2-digit",
+    timeZone: zone,
   };
-  if (timezone) {
-    dateOptions.timeZone = timezone;
-    timeOptions.timeZone = timezone;
-  }
   const datePart = start.toLocaleDateString("en-US", dateOptions);
   const timePart = `${start.toLocaleTimeString("en-US", timeOptions)} - ${end.toLocaleTimeString("en-US", timeOptions)}`;
-  return `${datePart} ${timePart}`;
+  const tzAbbr = getTimeZoneAbbr(start, zone);
+  return tzAbbr ? `${datePart} ${timePart} ${tzAbbr}` : `${datePart} ${timePart}`;
 }
 
 function buildVoteComponents({

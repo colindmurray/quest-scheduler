@@ -58,9 +58,13 @@ vi.mock('../../lib/data/usernames', () => ({
   registerQsUsername: vi.fn(),
 }));
 
-vi.mock('../../lib/identity', () => ({
-  buildPublicIdentifier: vi.fn(() => 'user@example.com'),
-}));
+vi.mock('../../lib/identity', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    buildPublicIdentifier: vi.fn(() => 'user@example.com'),
+  };
+});
 
 vi.mock('sonner', () => ({
   toast: {

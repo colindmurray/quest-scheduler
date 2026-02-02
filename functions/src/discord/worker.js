@@ -14,6 +14,8 @@ const { hashLinkCode } = require("./link-utils");
 const { ERROR_MESSAGES, buildUserNotLinkedMessage } = require("./error-messages");
 const {
   editOriginalInteractionResponse,
+  createChannelMessage,
+  deleteChannelMessage,
   fetchChannel,
 } = require("./discord-client");
 const {
@@ -35,8 +37,33 @@ if (!admin.apps.length) {
 
 const INTERACTION_TTL_MINUTES = 60;
 const VOTE_SESSION_TTL_MINUTES = 15;
+const LINK_TEST_SUCCESS_MESSAGE =
+  "Discord channel linked! Polls for this group will now post here. I posted a test message to confirm I can post in this channel.";
+const LINK_PERMISSION_WARNING_MESSAGE =
+  "Discord channel linked, but I couldn't post a test message here. If this is a private channel, add the Quest Scheduler bot role to the channel or its category and allow View Channel, Send Messages, and Embed Links. Then run /qs link-group again.";
 
 const db = admin.firestore();
+
+function resolveDiscordDisplayTimeZone(scheduler, linkedUser) {
+  const pollTimeZone = scheduler?.timezone || null;
+  const settings = linkedUser?.settings || {};
+  const autoConvert = settings?.autoConvertPollTimes !== false;
+  const userTimeZone =
+    settings?.timezoneMode === "manual" && settings?.timezone
+      ? settings.timezone
+      : settings?.timezone || null;
+
+  if (autoConvert && userTimeZone) return userTimeZone;
+  return pollTimeZone || userTimeZone || null;
+}
+
+async function sendLinkTestMessage(channelId, channelName) {
+  const message = {
+    content: `Quest Scheduler connected${channelName ? ` to #${channelName}` : ""}. This is a test message to confirm I can post in this channel.`,
+  };
+  const result = await createChannelMessage({ channelId, body: message });
+  return result?.id || null;
+}
 
 async function acquireInteractionLock(interactionId) {
   const ref = db.collection("discordInteractionIds").doc(interactionId);
@@ -242,9 +269,38 @@ async function handleLinkGroup(interaction) {
 
   await codeRef.delete();
 
-  return respondWithMessage(interaction, {
-    content: "Discord channel linked! Polls for this group will now post here.",
-  });
+  try {
+    const testMessageId = await sendLinkTestMessage(
+      interaction.channelId,
+      channelInfo?.name || null
+    );
+    if (testMessageId) {
+      await deleteChannelMessage({
+        channelId: interaction.channelId,
+        messageId: testMessageId,
+      }).catch((err) => {
+        logger.warn("Failed to delete Discord link test message", {
+          channelId: interaction.channelId,
+          messageId: testMessageId,
+          error: err?.message || String(err),
+        });
+      });
+    }
+    return respondWithMessage(interaction, {
+      content: LINK_TEST_SUCCESS_MESSAGE,
+    });
+  } catch (err) {
+    logger.warn("Discord link test message failed", {
+      guildId: interaction.guildId,
+      channelId: interaction.channelId,
+      error: err?.message || String(err),
+      status: err?.status || err?.statusCode,
+      code: err?.code || err?.rawError?.code,
+    });
+    return respondWithMessage(interaction, {
+      content: LINK_PERMISSION_WARNING_MESSAGE,
+    });
+  }
 }
 
 async function handleUnlinkGroup(interaction) {
@@ -321,6 +377,7 @@ async function handleVoteButton(interaction, schedulerId) {
     );
   }
   const userEmail = linkedUser.email || null;
+  const displayTimeZone = resolveDiscordDisplayTimeZone(scheduler, linkedUser);
 
   const participation = await getParticipationDecision(scheduler, linkedUser);
   if (!participation.allowed) {
@@ -362,6 +419,7 @@ async function handleVoteButton(interaction, schedulerId) {
       preferredSlotIds: preferredIds,
       feasibleSlotIds: feasibleIds,
       pageIndex: pageInfo.pageIndex,
+      displayTimeZone,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       expiresAt: admin.firestore.Timestamp.fromDate(
         new Date(Date.now() + VOTE_SESSION_TTL_MINUTES * 60 * 1000)
@@ -375,7 +433,7 @@ async function handleVoteButton(interaction, schedulerId) {
     slots: pageInfo.pageSlots,
     preferredIds,
     feasibleIds,
-    timezone: scheduler?.timezone || null,
+    timezone: displayTimeZone || scheduler?.timezone || null,
     pageIndex: pageInfo.pageIndex,
     pageCount: pageInfo.pageCount,
   });
@@ -421,6 +479,7 @@ async function handleVoteSelect(interaction, schedulerId, type) {
   if (slots.length === 0) {
     return respondWithError(interaction, ERROR_MESSAGES.noSlots);
   }
+  const displayTimeZone = sessionData.displayTimeZone || scheduler?.timezone || null;
   const pageInfo = getVotePage(slots, sessionData.pageIndex || 0);
   const pageSlotIds = new Set(pageInfo.pageSlots.map((slot) => slot.id));
 
@@ -466,7 +525,7 @@ async function handleVoteSelect(interaction, schedulerId, type) {
     slots: pageInfo.pageSlots,
     preferredIds: nextPreferred,
     feasibleIds: nextFeasible,
-    timezone: scheduler?.timezone || null,
+    timezone: displayTimeZone,
     pageIndex: pageInfo.pageIndex,
     pageCount: pageInfo.pageCount,
   });
@@ -512,6 +571,7 @@ async function handleVotePage(interaction, schedulerId, direction) {
     return respondWithError(interaction, ERROR_MESSAGES.noSlots);
   }
 
+  const displayTimeZone = sessionData.displayTimeZone || scheduler?.timezone || null;
   const currentPage = getVotePage(slots, sessionData.pageIndex || 0);
   const nextIndex =
     direction === "next" ? currentPage.pageIndex + 1 : currentPage.pageIndex - 1;
@@ -533,7 +593,7 @@ async function handleVotePage(interaction, schedulerId, direction) {
     slots: pageInfo.pageSlots,
     preferredIds: sessionData.preferredSlotIds || [],
     feasibleIds: sessionData.feasibleSlotIds || [],
-    timezone: scheduler?.timezone || null,
+    timezone: displayTimeZone,
     pageIndex: pageInfo.pageIndex,
     pageCount: pageInfo.pageCount,
   });
@@ -583,6 +643,7 @@ async function handleClearVotes(interaction, schedulerId, noTimesWork) {
     );
   }
   const userEmail = linkedUser.email || null;
+  const displayTimeZone = resolveDiscordDisplayTimeZone(scheduler, linkedUser);
 
   const participation = await getParticipationDecision(scheduler, linkedUser);
   if (!participation.allowed) {
@@ -627,6 +688,7 @@ async function handleClearVotes(interaction, schedulerId, noTimesWork) {
       preferredSlotIds: [],
       feasibleSlotIds: [],
       pageIndex: 0,
+      displayTimeZone,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       expiresAt: admin.firestore.Timestamp.fromDate(
         new Date(Date.now() + VOTE_SESSION_TTL_MINUTES * 60 * 1000)
@@ -650,7 +712,7 @@ async function handleClearVotes(interaction, schedulerId, noTimesWork) {
     slots: pageInfo.pageSlots,
     preferredIds: [],
     feasibleIds: [],
-    timezone: scheduler?.timezone || null,
+    timezone: displayTimeZone || scheduler?.timezone || null,
     pageIndex: pageInfo.pageIndex,
     pageCount: pageInfo.pageCount,
   });

@@ -43,8 +43,7 @@ describe('discord poll card', () => {
     expect(votesField?.value).toBe('1/3 voted (2 pending)');
 
     const rangeField = fields.find((field) => field.name === 'Range');
-    expect(rangeField?.value).toContain('<t:');
-    expect(rangeField?.value).toContain('->');
+    expect(rangeField?.value).toContain('UTC');
   });
 
   test('buildPollCard marks finalized status and winning slot', () => {
@@ -64,7 +63,7 @@ describe('discord poll card', () => {
     expect(statusField?.value).toBe('FINALIZED');
 
     const winningField = result.embeds[0].fields.find((field) => field.name === 'Winning slot');
-    expect(winningField?.value).toContain('<t:');
+    expect(winningField?.value).toContain('UTC');
 
     const button = result.components[0].components[0];
     expect(button.label).toBe('Voting closed');

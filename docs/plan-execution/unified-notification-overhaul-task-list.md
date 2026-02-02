@@ -1,10 +1,10 @@
 # Unified Notification Overhaul — Task List
 
 ## Execution Checkpoint
-- Last Completed: P3.1 Discord routing + rate limits
+- Last Completed: P3.3 All votes in notification (creator + participant + Discord setting)
 - Next Step: Complete
 - Open Issues: None
-- Last Updated (YYYY-MM-DD): 2026-01-31
+- Last Updated (YYYY-MM-DD): 2026-02-02
 
 ## Task List
 
@@ -181,6 +181,20 @@
     - No direct writes to `users/{uid}/notifications` outside router
   - Test Gate: `npm --prefix web run test`
 
+- [x] P3.3 All votes in notification (creator + participant + Discord setting)
+  - Dependencies: P2.2, P2.4, P3.1
+  - Definition of Ready:
+    - [ ] Poll readiness criteria confirmed (all active participants voted)
+  - Definition of Done:
+    - [ ] Emit creator `POLL_READY_TO_FINALIZE` when all votes are in
+    - [ ] Emit participant `POLL_ALL_VOTES_IN` gated by advanced settings
+    - [ ] Discord settings include "All votes are in" toggle
+  - Acceptance Criteria:
+    - Creator receives readiness notification by default in simple mode
+    - Participants can opt in via advanced settings
+    - Discord alert respects group toggle
+  - Test Gate: `npm --prefix functions run test`, `npm --prefix web run test`
+
 ## Progress Notes
 - 2026-01-31: Task list created from plan doc and expert feedback; ready for execution.
 - 2026-01-31: Tests not run (setup and documentation only).
@@ -207,3 +221,4 @@
 - 2026-01-31: Deployed staging hosting with the `userVoteRef` fix. Tests: `npm --prefix web run test` (pass).
 - 2026-01-31: Ran coverage. Tests: `npm --prefix web run test:coverage` (pass), `npm --prefix functions run test -- --coverage` (pass, 1 skipped).
 - 2026-01-31: Enabled Discord worker integration test by auto-starting Firestore emulator when needed. Tests: `npm --prefix functions run test -- --coverage` (pass).
+- 2026-02-02: Added all-votes-in notifications (creator + participant opt-in), Discord toggle, and updated templates/docs. Tests: `npm --prefix functions run test -- notifications/constants.test.js notifications/templates.test.js notifications/discord.test.js notifications/auto-clear.test.js` (pass), `npm --prefix web run test -- GroupCard.test.jsx` (pass), `npm --prefix web run test:e2e:emulators` (fail: notification-types timeout), `npm --prefix web run test:e2e:emulators` (pass).

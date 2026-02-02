@@ -273,6 +273,13 @@ export default function AuthPage() {
     try {
       await signInWithEmailPassword(email, password);
       toast.success("Welcome back!");
+      const storedRedirect = localStorage.getItem("postLoginRedirect");
+      if (storedRedirect && storedRedirect.startsWith("/")) {
+        localStorage.removeItem("postLoginRedirect");
+        navigate(storedRedirect, { replace: true });
+      } else {
+        navigate("/dashboard", { replace: true });
+      }
     } catch (error) {
       toast.error(getAuthErrorMessage(error));
     } finally {

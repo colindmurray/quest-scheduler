@@ -54,6 +54,8 @@ export function PastSessionsSection({
                 scheduler={scheduler}
                 winningSlot={scheduler.winningSlot}
                 slots={scheduler.slots}
+                displayTimeZone={scheduler.displayTimeZone}
+                showTimeZone={scheduler.showTimeZone}
                 groupColor={
                   scheduler.questingGroupId ? getGroupColor(scheduler.questingGroupId) : null
                 }
@@ -82,6 +84,8 @@ export function PastSessionsSection({
                 isArchived
                 winningSlot={scheduler.winningSlot}
                 slots={scheduler.slots}
+                displayTimeZone={scheduler.displayTimeZone}
+                showTimeZone={scheduler.showTimeZone}
                 groupColor={
                   scheduler.questingGroupId ? getGroupColor(scheduler.questingGroupId) : null
                 }
@@ -109,6 +113,8 @@ export function PastSessionsSection({
                 scheduler={scheduler}
                 winningSlot={scheduler.winningSlot}
                 slots={scheduler.slots}
+                displayTimeZone={scheduler.displayTimeZone}
+                showTimeZone={scheduler.showTimeZone}
                 groupColor={
                   scheduler.questingGroupId ? getGroupColor(scheduler.questingGroupId) : null
                 }

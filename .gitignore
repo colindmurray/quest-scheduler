@@ -25,6 +25,8 @@ extensions/*.secret.local
 **/.env
 **/.env.*
 !**/.env.example
+!functions/.env.quest-scheduler-stg
+!functions/.env.studio-473406021-87ead
 
 # OAuth client secrets (local only)
 client_secret*.json

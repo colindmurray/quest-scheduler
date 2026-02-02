@@ -19,6 +19,8 @@ export function SessionCard({
   attendanceSummary = null,
   conflictsWith = [],
   questingGroup = null,
+  displayTimeZone = null,
+  showTimeZone = true,
 }) {
   const navigate = useNavigate();
   const participantEmails = participants.map((p) => (typeof p === "string" ? p : p.email));
@@ -117,6 +119,8 @@ export function SessionCard({
               questingGroupName={questingGroup?.name || null}
               questingGroupColor={groupColor}
               guestCount={guestCount}
+              displayTimeZone={displayTimeZone}
+              showTimeZone={showTimeZone}
             />
           </div>
 

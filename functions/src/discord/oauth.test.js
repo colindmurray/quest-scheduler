@@ -2,6 +2,16 @@ import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 let oauth;
 let lastDocId = null;
+const originalEnv = { ...process.env };
+
+const resetEnv = () => {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in originalEnv)) {
+      delete process.env[key];
+    }
+  }
+  Object.assign(process.env, originalEnv);
+};
 
 const setMock = vi.fn();
 const docMock = vi.fn((id) => {
@@ -51,6 +61,7 @@ describe('discord oauth functions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     lastDocId = null;
+    resetEnv();
   });
 
   test('discordOAuthStart requires auth', async () => {
@@ -91,5 +102,31 @@ describe('discord oauth functions', () => {
 
     const url = new URL(result.authUrl);
     expect(url.searchParams.get('scope')).toBe('identify email');
+  });
+
+  test('discordOAuthStart ignores localhost override outside emulator', async () => {
+    process.env.DISCORD_OAUTH_REDIRECT_URI =
+      'http://127.0.0.1:5001/test-project/us-central1/discordOAuthCallback';
+    delete process.env.FUNCTIONS_EMULATOR;
+    delete process.env.FIREBASE_EMULATOR_HUB;
+    process.env.GCLOUD_PROJECT = 'test-project';
+
+    const result = await oauth.discordOAuthStart.run({ auth: { uid: 'user1' } });
+    const url = new URL(result.authUrl);
+    expect(url.searchParams.get('redirect_uri')).toBe(
+      'https://us-central1-test-project.cloudfunctions.net/discordOAuthCallback'
+    );
+  });
+
+  test('discordOAuthStart allows localhost override in emulator', async () => {
+    process.env.DISCORD_OAUTH_REDIRECT_URI =
+      'http://127.0.0.1:5001/test-project/us-central1/discordOAuthCallback';
+    process.env.FUNCTIONS_EMULATOR = 'true';
+
+    const result = await oauth.discordOAuthStart.run({ auth: { uid: 'user1' } });
+    const url = new URL(result.authUrl);
+    expect(url.searchParams.get('redirect_uri')).toBe(
+      'http://127.0.0.1:5001/test-project/us-central1/discordOAuthCallback'
+    );
   });
 });

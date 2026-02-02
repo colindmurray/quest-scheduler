@@ -24,7 +24,7 @@ describe("poll-card-utils", () => {
       { start: "2026-01-05T18:00:00Z" },
     ]);
 
-    expect(formatSlotRange(range)).toBe("Jan 5, 2026");
+    expect(formatSlotRange(range, "UTC")).toBe("Jan 5, 2026 UTC");
   });
 
   it("formats a multi-day range within the same year", () => {
@@ -33,7 +33,7 @@ describe("poll-card-utils", () => {
       { start: "2026-03-10T12:00:00Z" },
     ]);
 
-    expect(formatSlotRange(range)).toBe("Jan 5 - Mar 10, 2026");
+    expect(formatSlotRange(range, "UTC")).toBe("Jan 5 - Mar 10, 2026 UTC");
   });
 
   it("formats a multi-year range with both years", () => {
@@ -42,7 +42,7 @@ describe("poll-card-utils", () => {
       { start: "2026-01-02T12:00:00Z" },
     ]);
 
-    expect(formatSlotRange(range)).toBe("Dec 31, 2025 - Jan 2, 2026");
+    expect(formatSlotRange(range, "UTC")).toBe("Dec 31, 2025 - Jan 2, 2026 UTC");
   });
 
   it("returns the right status label", () => {

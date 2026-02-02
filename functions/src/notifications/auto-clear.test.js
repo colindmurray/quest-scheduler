@@ -154,4 +154,84 @@ describe('auto-clear', () => {
     expect(queryChain.where).toHaveBeenCalledWith('resource.id', '==', 'group1');
     expect(batchUpdateMock).toHaveBeenCalledTimes(1);
   });
+
+  test('clears poll invite notifications for actor on accept', async () => {
+    const { db, queryChain, batchUpdateMock } = buildDbMock([
+      { ref: { id: 'n9' }, data: () => ({ type: NOTIFICATION_EVENTS.POLL_INVITE_SENT }) },
+    ]);
+
+    await applyAutoClear({
+      db,
+      eventType: NOTIFICATION_EVENTS.POLL_INVITE_ACCEPTED,
+      event: { resource: { id: 'poll5' }, actor: { uid: 'invitee1' } },
+      recipients: { userIds: ['owner1'] },
+    });
+
+    expect(queryChain.where).toHaveBeenCalledWith('resource.id', '==', 'poll5');
+    expect(batchUpdateMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('clears vote reminder for actor on vote submitted', async () => {
+    const { db, queryChain, batchUpdateMock } = buildDbMock([
+      { ref: { id: 'n10' }, data: () => ({ type: NOTIFICATION_EVENTS.VOTE_REMINDER }) },
+    ]);
+
+    await applyAutoClear({
+      db,
+      eventType: NOTIFICATION_EVENTS.VOTE_SUBMITTED,
+      event: { resource: { id: 'poll6' }, actor: { uid: 'voter1' } },
+      recipients: { userIds: ['voter1'] },
+    });
+
+    expect(queryChain.where).toHaveBeenCalledWith('resource.id', '==', 'poll6');
+    expect(batchUpdateMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('clears poll deleted notifications for recipients', async () => {
+    const { db, queryChain, batchUpdateMock } = buildDbMock([
+      { ref: { id: 'n11' }, data: () => ({ type: NOTIFICATION_EVENTS.POLL_INVITE_SENT }) },
+    ]);
+
+    await applyAutoClear({
+      db,
+      eventType: NOTIFICATION_EVENTS.POLL_DELETED,
+      event: { resource: { id: 'poll7' } },
+      recipients: { userIds: ['user7'] },
+    });
+
+    expect(queryChain.where).toHaveBeenCalledWith('resource.id', '==', 'poll7');
+    expect(batchUpdateMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('clears poll cancelled notifications on restore', async () => {
+    const { db, queryChain, batchUpdateMock } = buildDbMock([
+      { ref: { id: 'n12' }, data: () => ({ type: NOTIFICATION_EVENTS.POLL_CANCELLED }) },
+    ]);
+
+    await applyAutoClear({
+      db,
+      eventType: NOTIFICATION_EVENTS.POLL_RESTORED,
+      event: { resource: { id: 'poll8' } },
+      recipients: { userIds: ['user8'] },
+    });
+
+    expect(queryChain.where).toHaveBeenCalledWith('resource.id', '==', 'poll8');
+    expect(batchUpdateMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('clears group notifications for recipients on group delete', async () => {
+    const { db, queryChain, batchUpdateMock } = buildDbMock([
+      { ref: { id: 'n13' }, data: () => ({ type: NOTIFICATION_EVENTS.GROUP_INVITE_SENT }) },
+    ]);
+
+    await applyAutoClear({
+      db,
+      eventType: NOTIFICATION_EVENTS.GROUP_DELETED,
+      event: { resource: { id: 'group2' } },
+      recipients: { userIds: ['user9'] },
+    });
+
+    expect(queryChain.where).toHaveBeenCalledWith('resource.id', '==', 'group2');
+    expect(batchUpdateMock).toHaveBeenCalledTimes(1);
+  });
 });

@@ -48,6 +48,61 @@ function friendRequestIdForEmails(fromEmail, toEmail) {
   return `friendRequest:${encodeURIComponent(`${fromEmail}__${toEmail}`)}`;
 }
 
+const hashEmail = (email) =>
+  crypto.createHash("sha256").update(normalizeEmail(email)).digest("hex");
+
+async function deletePendingNotificationEvents(db, email, matcher = {}) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return 0;
+  const pendingRef = db
+    .collection("pendingNotifications")
+    .doc(hashEmail(normalized))
+    .collection("events");
+  const snapshot = await pendingRef.get();
+  if (snapshot.empty) return 0;
+
+  const matches = snapshot.docs.filter((docSnap) => {
+    const data = docSnap.data() || {};
+    if (matcher.dedupeKey && data.dedupeKey !== matcher.dedupeKey) return false;
+    if (matcher.eventType && data.eventType !== matcher.eventType) return false;
+    if (matcher.resourceId && data.resource?.id !== matcher.resourceId) return false;
+    if (matcher.resourceType && data.resource?.type !== matcher.resourceType) return false;
+    return true;
+  });
+
+  if (matches.length === 0) return 0;
+
+  const batch = db.batch();
+  matches.forEach((docSnap) => batch.delete(docSnap.ref));
+  await batch.commit();
+  return matches.length;
+}
+
+async function dismissInviteNotifications({ db, userId, ids = [], resourceId, types = [] }) {
+  if (!userId) return;
+  const notificationsRef = db.collection("users").doc(userId).collection("notifications");
+  const updatePayload = { dismissed: true, autoCleared: true };
+  const filteredIds = ids.filter(Boolean);
+  if (filteredIds.length > 0) {
+    await Promise.allSettled(
+      filteredIds.map((id) => notificationsRef.doc(id).update(updatePayload))
+    );
+  }
+  if (resourceId && types.length > 0) {
+    const snapshot = await notificationsRef.where("resource.id", "==", resourceId).get();
+    if (!snapshot.empty) {
+      const typeSet = new Set(types);
+      const batch = db.batch();
+      snapshot.docs.forEach((docSnap) => {
+        const data = docSnap.data() || {};
+        if (!typeSet.has(data.type)) return;
+        batch.update(docSnap.ref, updatePayload);
+      });
+      await batch.commit();
+    }
+  }
+}
+
 async function findUserIdByEmail(email) {
   const normalized = normalizeEmail(email);
   if (!normalized) return null;
@@ -1058,6 +1113,21 @@ exports.revokeFriendRequest = functions.https.onCall(async (data, context) => {
 
   const inviteeUserId = request.toUserId || (await findUserIdByEmail(request.toEmail));
   if (inviteeUserId) {
+    await dismissInviteNotifications({
+      db,
+      userId: inviteeUserId,
+      ids: [`dedupe:friend:${requestId}`, `friendRequest:${requestId}`],
+      resourceId: requestId,
+      types: ["FRIEND_REQUEST_SENT", "FRIEND_REQUEST"],
+    });
+  }
+  await deletePendingNotificationEvents(db, request.toEmail, {
+    dedupeKey: `friend:${requestId}`,
+    eventType: "FRIEND_REQUEST_SENT",
+    resourceType: "friend",
+    resourceId: requestId,
+  });
+  if (inviteeUserId) {
     try {
       const eventRef = db.collection("notificationEvents").doc();
       await eventRef.set({
@@ -1500,6 +1570,24 @@ exports.revokePollInvite = functions.https.onCall(async (data, context) => {
 
   const inviteeUserId = await findUserIdByEmail(inviteeEmail);
   if (inviteeUserId) {
+    await dismissInviteNotifications({
+      db,
+      userId: inviteeUserId,
+      ids: [
+        `dedupe:poll:${schedulerId}:invite:${inviteeEmail}`,
+        `pollInvite:${schedulerId}`,
+      ],
+      resourceId: schedulerId,
+      types: ["POLL_INVITE_SENT", "POLL_INVITE"],
+    });
+  }
+  await deletePendingNotificationEvents(db, inviteeEmail, {
+    dedupeKey: `poll:${schedulerId}:invite:${inviteeEmail}`,
+    eventType: "POLL_INVITE_SENT",
+    resourceType: "poll",
+    resourceId: schedulerId,
+  });
+  if (inviteeUserId) {
     try {
       const eventRef = db.collection("notificationEvents").doc();
       const schedulerTitle = scheduler.title || "Session Poll";
@@ -1740,6 +1828,13 @@ exports.revokeGroupInvite = functions.https.onCall(async (data, context) => {
       console.warn("Failed to emit group invite revoked event:", err);
     }
   }
+
+  await deletePendingNotificationEvents(db, inviteeEmail, {
+    dedupeKey: `group:${groupId}:invite:${inviteeEmail}`,
+    eventType: "GROUP_INVITE_SENT",
+    resourceType: "group",
+    resourceId: groupId,
+  });
 
   return { ok: true };
 });
@@ -2036,6 +2131,19 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
 
   if (hasPendingFriend) {
     await friendDoc.ref.delete();
+    await dismissInviteNotifications({
+      db,
+      userId: blockerId,
+      ids: [`dedupe:friend:${friendDoc.id}`, `friendRequest:${friendDoc.id}`],
+      resourceId: friendDoc.id,
+      types: ["FRIEND_REQUEST_SENT", "FRIEND_REQUEST"],
+    });
+    await deletePendingNotificationEvents(db, blockerEmail, {
+      dedupeKey: `friend:${friendDoc.id}`,
+      eventType: "FRIEND_REQUEST_SENT",
+      resourceType: "friend",
+      resourceId: friendDoc.id,
+    });
     await db
       .collection("users")
       .doc(blockerId)
@@ -2057,6 +2165,22 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
         pendingInvites,
         pendingInviteMeta: nextMeta,
         updatedAt: FieldValue.serverTimestamp(),
+      });
+      await dismissInviteNotifications({
+        db,
+        userId: blockerId,
+        ids: [
+          `dedupe:poll:${pollDoc.id}:invite:${blockerEmail}`,
+          `pollInvite:${pollDoc.id}`,
+        ],
+        resourceId: pollDoc.id,
+        types: ["POLL_INVITE_SENT", "POLL_INVITE"],
+      });
+      await deletePendingNotificationEvents(db, blockerEmail, {
+        dedupeKey: `poll:${pollDoc.id}:invite:${blockerEmail}`,
+        eventType: "POLL_INVITE_SENT",
+        resourceType: "poll",
+        resourceId: pollDoc.id,
       });
       await db
         .collection("users")
@@ -2080,6 +2204,22 @@ exports.blockUser = functions.https.onCall(async (data, context) => {
         pendingInvites,
         pendingInviteMeta: nextMeta,
         updatedAt: FieldValue.serverTimestamp(),
+      });
+      await dismissInviteNotifications({
+        db,
+        userId: blockerId,
+        ids: [
+          `dedupe:group:${groupDoc.id}:invite:${blockerEmail}`,
+          `groupInvite:${groupDoc.id}`,
+        ],
+        resourceId: groupDoc.id,
+        types: ["GROUP_INVITE_SENT", "GROUP_INVITE"],
+      });
+      await deletePendingNotificationEvents(db, blockerEmail, {
+        dedupeKey: `group:${groupDoc.id}:invite:${blockerEmail}`,
+        eventType: "GROUP_INVITE_SENT",
+        resourceType: "group",
+        resourceId: groupDoc.id,
       });
       await db
         .collection("users")

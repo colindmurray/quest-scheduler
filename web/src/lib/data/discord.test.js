@@ -85,4 +85,18 @@ describe('discord data helpers', () => {
     expect(callable).toHaveBeenCalledWith({ groupId: 'group2' });
     expect(result).toEqual({ roles: ['r1'] });
   });
+
+  test('repostDiscordPollCard returns data payload', async () => {
+    const callable = vi.fn().mockResolvedValueOnce({ data: { messageId: 'm1' } });
+    functionsMocks.httpsCallable.mockReturnValueOnce(callable);
+
+    const result = await discord.repostDiscordPollCard('sched1');
+
+    expect(functionsMocks.httpsCallable).toHaveBeenCalledWith(
+      { name: 'functions' },
+      'discordRepostPollCard'
+    );
+    expect(callable).toHaveBeenCalledWith({ schedulerId: 'sched1' });
+    expect(result).toEqual({ messageId: 'm1' });
+  });
 });

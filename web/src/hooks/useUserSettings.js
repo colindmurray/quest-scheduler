@@ -89,6 +89,8 @@ export function useUserSettings() {
   return {
     loading,
     settings: data?.settings,
+    autoConvertPollTimes: data?.settings?.autoConvertPollTimes !== false,
+    hideTimeZone: data?.settings?.hideTimeZone === true,
     timezone:
       data?.settings?.timezoneMode === "manual"
         ? data?.settings?.timezone

@@ -1,6 +1,7 @@
 import * as React from "react";
 import * as AvatarPrimitive from "@radix-ui/react-avatar";
 import { cn } from "../../lib/utils";
+import { getUserAvatarUrl, getUserLabel } from "../../lib/identity";
 import { getColorForEmail, getInitial } from "./voter-avatar-utils";
 
 const Avatar = React.forwardRef(({ className, ...props }, ref) => (
@@ -38,8 +39,15 @@ const AvatarFallback = React.forwardRef(({ className, ...props }, ref) => (
 AvatarFallback.displayName = AvatarPrimitive.Fallback.displayName;
 
 const UserAvatar = React.forwardRef(
-  ({ email, src, size = 40, className, ...props }, ref) => {
-    const colors = getColorForEmail(email);
+  ({ user, email, src, size = 40, className, ...props }, ref) => {
+    const resolvedUser = user || {};
+    const resolvedEmail = email || resolvedUser.email || null;
+    const avatarUrl = src || getUserAvatarUrl(resolvedUser);
+    const label =
+      getUserLabel({ ...resolvedUser, email: resolvedEmail }) ||
+      resolvedEmail ||
+      "User";
+    const colors = getColorForEmail(resolvedEmail || label);
     return (
       <Avatar
         ref={ref}
@@ -47,11 +55,11 @@ const UserAvatar = React.forwardRef(
         style={{ width: size, height: size }}
         {...props}
       >
-        <AvatarImage src={src} alt={email || "User"} />
+        <AvatarImage src={avatarUrl} alt={label} />
         <AvatarFallback
           style={{ backgroundColor: colors.bg, color: colors.text }}
         >
-          {getInitial(email)}
+          {getInitial(label)}
         </AvatarFallback>
       </Avatar>
     );
@@ -68,6 +76,7 @@ const AvatarStack = ({ users, max = 4, size = 24, className }) => {
       {visible.map((user, index) => (
         <UserAvatar
           key={user.email || index}
+          user={user}
           email={user.email}
           src={user.avatar}
           size={size}

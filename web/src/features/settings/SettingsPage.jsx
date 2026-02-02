@@ -109,6 +109,16 @@ const NOTIFICATION_PREFERENCE_GROUPS = [
         description: "When a participant submits their vote.",
       },
       {
+        eventType: NOTIFICATION_TYPES.POLL_READY_TO_FINALIZE,
+        label: "All votes are in (creator)",
+        description: "When all participants have voted on a poll you created.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.POLL_ALL_VOTES_IN,
+        label: "All votes are in (participant)",
+        description: "When all participants have voted on a poll you joined.",
+      },
+      {
         eventType: NOTIFICATION_TYPES.POLL_FINALIZED,
         label: "Poll finalized",
         description: "When the winning time is chosen.",
@@ -237,6 +247,8 @@ export default function SettingsPage() {
   const [timezone, setTimezone] = useState(
     Intl.DateTimeFormat().resolvedOptions().timeZone
   );
+  const [autoConvertPollTimes, setAutoConvertPollTimes] = useState(true);
+  const [hideTimeZone, setHideTimeZone] = useState(false);
   const [calendarIds, setCalendarIds] = useState([]);
   const [calendarNames, setCalendarNames] = useState({});
   const [availableCalendars, setAvailableCalendars] = useState([]);
@@ -308,6 +320,8 @@ export default function SettingsPage() {
           setNotificationMode(data.settings?.notificationMode ?? "simple");
           setNotificationPreferences(data.settings?.notificationPreferences ?? {});
           setTimezoneMode(data.settings?.timezoneMode ?? "auto");
+          setAutoConvertPollTimes(data.settings?.autoConvertPollTimes ?? true);
+          setHideTimeZone(data.settings?.hideTimeZone ?? false);
 
           // Load session defaults mode and values
           const savedMode = data.settings?.sessionDefaultsMode ?? "simple";
@@ -713,6 +727,8 @@ export default function SettingsPage() {
             defaultStartTimes: sessionDefaultsToSave,
             timezoneMode,
             timezone,
+            autoConvertPollTimes,
+            hideTimeZone,
             googleCalendarId: primaryCalendarId || null,
             googleCalendarName: primaryCalendarName,
             googleCalendarIds: calendarIds,
@@ -946,6 +962,7 @@ export default function SettingsPage() {
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-4">
                 <UserAvatar
+                  user={user}
                   email={user?.email}
                   src={resolvedAvatarUrl || user?.photoURL || null}
                   size={56}
@@ -1159,6 +1176,34 @@ export default function SettingsPage() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div className="mt-4 space-y-3">
+                <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white px-4 py-3 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                  <div className="flex flex-col gap-1">
+                    <span>Auto-convert poll times to local</span>
+                    <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                      Shows poll times in your timezone while keeping the poll timezone visible.
+                    </span>
+                  </div>
+                  <Switch
+                    checked={autoConvertPollTimes}
+                    onCheckedChange={setAutoConvertPollTimes}
+                  />
+                </div>
+                {autoConvertPollTimes && (
+                  <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white px-4 py-3 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                    <div className="flex flex-col gap-1">
+                      <span>Hide timezone</span>
+                      <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                        All timezones are local, so the zone label is hidden.
+                      </span>
+                    </div>
+                    <Switch
+                      checked={hideTimeZone}
+                      onCheckedChange={setHideTimeZone}
+                    />
+                  </div>
+                )}
               </div>
             </section>
             <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
 import { format, parse, startOfWeek, getDay, startOfDay, isBefore, startOfHour } from "date-fns";
-import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
+import { fromZonedTime } from "date-fns-tz";
 import { enUS } from "date-fns/locale";
 import { toast } from "sonner";
 import { useAuth } from "../../app/useAuth";
@@ -31,6 +31,7 @@ import { buildNotificationActor, emitPollEvent } from "../../lib/data/notificati
 import { sendPendingPollInvites, revokePollInvite } from "../../lib/data/pollInvites";
 import { findUserIdsByEmails } from "../../lib/data/users";
 import { buildEmailSet, normalizeEmail, normalizeEmailList } from "../../lib/utils";
+import { formatZonedDateTime, formatZonedTime, shouldShowTimeZone, toDisplayDate } from "../../lib/time";
 import { validateInviteCandidate } from "./utils/invite-utils";
 import { InvitePanel } from "./components/invite-panel";
 import { QuestingGroupSelect } from "./components/questing-group-select";
@@ -141,8 +142,13 @@ export default function CreateSchedulerPage() {
   }, [groupMemberIds, groupMemberProfiles]);
   const groupMemberSet = useMemo(() => buildEmailSet(groupMemberEmails), [groupMemberEmails]);
   const profileEmails = useMemo(() => {
-    return normalizeEmailList([...invites, ...pendingInvites, ...groupMemberEmails]);
-  }, [invites, pendingInvites, groupMemberEmails]);
+    return normalizeEmailList([
+      ...invites,
+      ...pendingInvites,
+      ...groupMemberEmails,
+      user?.email,
+    ]);
+  }, [invites, pendingInvites, groupMemberEmails, user?.email]);
   const { enrichUsers } = useUserProfiles(profileEmails);
   const groupUsers = useMemo(() => {
     if (!groupMemberIds.length) return [];
@@ -167,17 +173,35 @@ export default function CreateSchedulerPage() {
       .filter((email) => !groupMemberSet.has(email));
   }, [friends, invites, pendingInvites, groupMemberSet, user?.email]);
   const recommendedUsers = useMemo(() => enrichUsers(recommendedEmails), [enrichUsers, recommendedEmails]);
+  const includedUser = useMemo(() => {
+    if (!user?.email) return null;
+    const [profile] = enrichUsers([user.email]);
+    if (!profile) {
+      return { email: user.email, displayName: user.displayName || null };
+    }
+    if (!profile.displayName && user.displayName) {
+      return { ...profile, displayName: user.displayName };
+    }
+    return profile;
+  }, [enrichUsers, user?.email, user?.displayName]);
   const defaultDuration = settings?.defaultDurationMinutes ?? 60;
   const effectiveTimezone = selectedTimezone;
+  const showTimeZone = useMemo(() => shouldShowTimeZone(settings), [settings]);
   const calendarEvents = useMemo(
     () =>
       slots.map((slot) => ({
         ...slot,
-        start: slot.start instanceof Date ? slot.start : new Date(slot.start),
-        end: slot.end instanceof Date ? slot.end : new Date(slot.end),
-        title: formatInTimeZone(slot.start, effectiveTimezone, "h:mm a"),
+        start: toDisplayDate(
+          slot.start instanceof Date ? slot.start : new Date(slot.start),
+          effectiveTimezone
+        ),
+        end: toDisplayDate(
+          slot.end instanceof Date ? slot.end : new Date(slot.end),
+          effectiveTimezone
+        ),
+        title: formatZonedTime(slot.start, effectiveTimezone, "h:mm a", { showTimeZone }),
       })),
-    [slots, effectiveTimezone]
+    [slots, effectiveTimezone, showTimeZone]
   );
   const {
     scrollToTime,
@@ -938,11 +962,7 @@ export default function CreateSchedulerPage() {
             />
 
             <InvitePanel
-              includedUser={
-                user?.email
-                  ? { displayName: user.displayName || null, email: user.email }
-                  : null
-              }
+              includedUser={includedUser}
               groupName={selectedGroup?.name || null}
               groupColor={selectedGroup ? getGroupColor(selectedGroup.id) : null}
               groupMembers={groupUsers}
@@ -1127,10 +1147,11 @@ export default function CreateSchedulerPage() {
                 >
                   <div>
                     <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                      {formatInTimeZone(
+                      {formatZonedDateTime(
                         slot.start,
                         effectiveTimezone,
-                        "MMM d, yyyy · h:mm a"
+                        "MMM d, yyyy · h:mm a",
+                        { showTimeZone }
                       )}
                     </p>
                     <p className="text-xs text-slate-500 dark:text-slate-400">

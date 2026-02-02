@@ -621,7 +621,7 @@ export default function FriendsPage() {
                     className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs dark:border-slate-700 dark:bg-slate-800"
                   >
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700">
-                      <UserAvatar email={friend.email} src={friend.avatar} size={32} />
+                      <UserAvatar user={friend} email={friend.email} src={friend.avatar} size={32} />
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">

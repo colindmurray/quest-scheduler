@@ -1,28 +1,38 @@
+import { getUserAvatarUrl, getUserLabel } from "../../lib/identity";
 import { getColorForEmail, getInitial, uniqueUsers } from "./voter-avatar-utils";
 
-export function AvatarBubble({ email, avatar, size = 24, colorMap }) {
+export function AvatarBubble({ user, email, avatar, label, size = 24, colorMap }) {
+  const resolvedUser = user || {};
+  const resolvedEmail = email || resolvedUser.email || null;
+  const resolvedAvatar = avatar || getUserAvatarUrl(resolvedUser);
+  const resolvedLabel =
+    label ||
+    getUserLabel({ ...resolvedUser, email: resolvedEmail }) ||
+    resolvedEmail ||
+    "User";
   // Use colorMap if provided, otherwise compute color directly from email hash
-  const palette = colorMap?.[email] || getColorForEmail(email);
+  const palette =
+    colorMap?.[resolvedEmail] || getColorForEmail(resolvedEmail || resolvedLabel);
   return (
     <div
       className="flex items-center justify-center rounded-full border border-white shadow-sm dark:border-slate-900"
       style={{
         width: size,
         height: size,
-        backgroundColor: avatar ? "transparent" : palette.bg,
+        backgroundColor: resolvedAvatar ? "transparent" : palette.bg,
         color: palette.text,
       }}
-      title={email}
+      title={resolvedLabel}
     >
-      {avatar ? (
+      {resolvedAvatar ? (
         <img
-          src={avatar}
-          alt={email}
+          src={resolvedAvatar}
+          alt={resolvedLabel}
           className="h-full w-full rounded-full object-cover"
           referrerPolicy="no-referrer"
         />
       ) : (
-        <span className="text-[10px] font-semibold">{getInitial(email)}</span>
+        <span className="text-[10px] font-semibold">{getInitial(resolvedLabel)}</span>
       )}
     </div>
   );
@@ -34,11 +44,10 @@ export function AvatarStack({ users, max = 4, size = 20, colorMap }) {
   const extra = unique.length - visible.length;
   return (
     <div className="flex items-center -space-x-2">
-      {visible.map((userInfo) => (
+      {visible.map((userInfo, index) => (
         <AvatarBubble
-          key={userInfo.email}
-          email={userInfo.email}
-          avatar={userInfo.avatar}
+          key={userInfo.email || index}
+          user={userInfo}
           size={size}
           colorMap={colorMap}
         />

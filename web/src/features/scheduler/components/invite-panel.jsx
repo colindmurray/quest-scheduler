@@ -62,7 +62,7 @@ export function InvitePanel({
                 key={member.email}
                 className="flex items-center gap-2 rounded-xl border border-transparent bg-white/70 px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-slate-900/70 dark:text-slate-200"
               >
-                <UserAvatar email={member.email} src={member.avatar} size={groupAvatarSize} />
+                <UserAvatar user={member} email={member.email} src={member.avatar} size={groupAvatarSize} />
                 <UserIdentity user={member} showIdentifier={false} />
               </div>
             ))}
@@ -85,7 +85,7 @@ export function InvitePanel({
             title="Remove"
           >
             {showInviteAvatars && (
-              <UserAvatar email={invitee.email} src={invitee.avatar} size={20} />
+              <UserAvatar user={invitee} email={invitee.email} src={invitee.avatar} size={20} />
             )}
             <UserIdentity user={invitee} />
             <span className="text-xs">✕</span>
@@ -114,7 +114,7 @@ export function InvitePanel({
                   title="Remove pending invite"
                 >
                   {showPendingAvatars && (
-                    <UserAvatar email={invitee.email} src={invitee.avatar} size={20} />
+                    <UserAvatar user={invitee} email={invitee.email} src={invitee.avatar} size={20} />
                   )}
                   <UserIdentity user={invitee} />
                   <span className="text-xs">✕</span>
@@ -139,7 +139,7 @@ export function InvitePanel({
                 onClick={() => onAddInvite(entry.email)}
               >
                 {showRecommendedAvatars && (
-                  <UserAvatar email={entry.email} src={entry.avatar} size={18} />
+                  <UserAvatar user={entry} email={entry.email} src={entry.avatar} size={18} />
                 )}
                 + <UserIdentity user={entry} showIdentifier={false} />
               </button>

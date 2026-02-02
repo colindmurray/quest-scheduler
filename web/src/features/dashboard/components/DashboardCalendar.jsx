@@ -9,6 +9,7 @@ import "../../scheduler/calendar-styles.css";
 import { useCalendarNavigation } from "../../../hooks/useCalendarNavigation";
 import { CalendarJumpControls } from "../../../components/ui/calendar-jump-controls";
 import { CalendarToolbar } from "../../scheduler/components/CalendarToolbar";
+import { formatZonedTimeRange, toDisplayDate } from "../../../lib/time";
 
 function doEventsOverlap(event1, event2) {
   if (event1.id === event2.id) return false;
@@ -64,6 +65,9 @@ function EventCell({ event }) {
         <AlertTriangle className="h-3 w-3 flex-shrink-0 text-amber-200" />
       )}
       <span className="truncate font-medium">{event.title}</span>
+      {event.timeLabel && (
+        <span className="ml-1 truncate text-[10px] opacity-90">{event.timeLabel}</span>
+      )}
       {event.status === "OPEN" && (
         <span className="ml-auto text-[10px] opacity-75">Open</span>
       )}
@@ -85,6 +89,7 @@ export function DashboardCalendar({
     const baseEvents = sessions
       .filter((session) => session.winningSlot?.start || session.status === "OPEN")
       .map((session) => {
+        const displayTimeZone = session.displayTimeZone || session.timezone || null;
         const startDate = session.winningSlot?.start
           ? new Date(session.winningSlot.start)
           : session.firstSlot?.start
@@ -97,19 +102,27 @@ export function DashboardCalendar({
             ? new Date(session.firstSlot.end)
             : new Date(startDate.getTime() + 4 * 60 * 60 * 1000);
 
+        const displayStart = toDisplayDate(startDate, displayTimeZone) || startDate;
+        const displayEnd = toDisplayDate(endDate, displayTimeZone) || endDate;
         const isPast = isBefore(startDate, startOfDay(now));
 
         return {
           id: session.id,
           title: session.title || "Untitled",
-          start: startDate,
-          end: endDate,
+          start: displayStart,
+          end: displayEnd,
           status: session.status,
           groupColor: session.questingGroupId
             ? getGroupColor(session.questingGroupId)
             : null,
           isPast,
           resource: session,
+          timeLabel: formatZonedTimeRange({
+            start: startDate,
+            end: endDate,
+            timeZone: displayTimeZone,
+            showTimeZone: session.showTimeZone,
+          }),
         };
       });
 

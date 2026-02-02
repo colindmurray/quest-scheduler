@@ -4,10 +4,20 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
 import { format, parse, startOfWeek, getDay, isSameDay, isBefore, startOfDay, startOfHour } from "date-fns";
-import { formatInTimeZone } from "date-fns-tz";
 import { enUS } from "date-fns/locale";
 import { toast } from "sonner";
-import { MoreVertical, Pencil, Copy, Archive, ArchiveRestore, Trash2, RotateCcw } from "lucide-react";
+import {
+  Check,
+  MoreVertical,
+  Pencil,
+  Copy,
+  Archive,
+  ArchiveRestore,
+  Trash2,
+  RotateCcw,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { useAuth } from "../../app/useAuth";
 import { useUserSettings } from "../../hooks/useUserSettings";
 import { useFriends } from "../../hooks/useFriends";
@@ -32,17 +42,18 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { AvatarBubble, AvatarStack, VotingAvatarStack } from "../../components/ui/voter-avatars";
 import { buildColorMap, uniqueUsers } from "../../components/ui/voter-avatar-utils";
-import { UserAvatar } from "../../components/ui/avatar";
 import { UserIdentity } from "../../components/UserIdentity";
 import { LoadingState } from "../../components/ui/spinner";
 import { CalendarJumpControls } from "../../components/ui/calendar-jump-controls";
 import { PollStatusMeta } from "../../components/poll-status-meta";
 import { buildEmailSet, isValidEmail, normalizeEmail, normalizeEmailList } from "../../lib/utils";
+import { getUserLabel } from "../../lib/identity";
 import { resolveIdentifier } from "../../lib/identifiers";
 import {
   pollInviteNotificationId,
@@ -52,6 +63,17 @@ import { fetchPublicProfilesByIds, findUserIdByEmail, findUserIdsByEmails } from
 import { acceptPollInvite, declinePollInvite, removeParticipantFromPoll, revokePollInvite } from "../../lib/data/pollInvites";
 import { buildNotificationActor, emitPollEvent } from "../../lib/data/notification-events";
 import { validateInviteCandidate } from "./utils/invite-utils";
+import { repostDiscordPollCard } from "../../lib/data/discord";
+import { filterSlotsByRequiredAttendance } from "./utils/required-attendance";
+import {
+  formatZonedDateTimeRange,
+  formatZonedTime,
+  formatZonedTimeRange,
+  resolveDisplayTimeZone,
+  resolvePollTimeZone,
+  shouldShowTimeZone,
+  toDisplayDate,
+} from "../../lib/time";
 import { CloneDialog } from "./components/clone-dialog";
 import { FinalizeDialog } from "./components/finalize-dialog";
 import { PendingVotesDialog } from "./components/pending-votes-dialog";
@@ -99,6 +121,7 @@ export default function SchedulerPage() {
   const [saving, setSaving] = useState(false);
   const [modalDate, setModalDate] = useState(null);
   const [sortMode, setSortMode] = useState("preferred");
+  const [requiredAttendance, setRequiredAttendance] = useState([]);
   const [noTimesWork, setNoTimesWork] = useState(false);
   const [finalizeSlotId, setFinalizeSlotId] = useState(null);
   const [finalizeOpen, setFinalizeOpen] = useState(false);
@@ -134,6 +157,7 @@ export default function SchedulerPage() {
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaveSaving, setLeaveSaving] = useState(false);
   const [nudgeSending, setNudgeSending] = useState(false);
+  const [repostSending, setRepostSending] = useState(false);
   const [removeMemberOpen, setRemoveMemberOpen] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState(null);
   const [revokeInviteOpen, setRevokeInviteOpen] = useState(false);
@@ -142,6 +166,12 @@ export default function SchedulerPage() {
   const isPollArchived = isArchived(id);
   const isCreator = scheduler.data?.creatorId === user?.uid;
   const normalizedUserEmail = normalizeEmail(user?.email) || null;
+  const pollTimeZone = scheduler.data?.timezone || null;
+  const displayTimeZone = useMemo(
+    () => resolveDisplayTimeZone({ pollTimeZone, settings }),
+    [pollTimeZone, settings]
+  );
+  const showTimeZone = useMemo(() => shouldShowTimeZone(settings), [settings]);
   const pendingInviteEmails = useMemo(
     () => scheduler.data?.pendingInvites || [],
     [scheduler.data?.pendingInvites]
@@ -494,6 +524,69 @@ export default function SchedulerPage() {
       ),
     [participants]
   );
+  const requiredAttendanceOptions = useMemo(() => {
+    const seen = new Set();
+    const options = [];
+    participants.forEach((participant) => {
+      const email = normalizeEmail(participant.email);
+      if (!email || seen.has(email)) return;
+      seen.add(email);
+      options.push({ ...participant, email });
+    });
+    return options.sort((a, b) => {
+      const aLabel = (getUserLabel(a) || "").toLowerCase();
+      const bLabel = (getUserLabel(b) || "").toLowerCase();
+      return aLabel.localeCompare(bLabel);
+    });
+  }, [participants]);
+  const requiredAttendanceOptionsByEmail = useMemo(
+    () => new Map(requiredAttendanceOptions.map((participant) => [participant.email, participant])),
+    [requiredAttendanceOptions]
+  );
+  const requiredAttendanceSet = useMemo(
+    () => new Set(requiredAttendance),
+    [requiredAttendance]
+  );
+  const requiredAttendanceUsers = useMemo(
+    () =>
+      requiredAttendance
+        .map((email) => requiredAttendanceOptionsByEmail.get(email))
+        .filter(Boolean)
+        .map((participant) => participant),
+    [requiredAttendance, requiredAttendanceOptionsByEmail]
+  );
+  const requiredAttendanceLabel = useMemo(() => {
+    if (requiredAttendance.length === 0) return "Anyone";
+    const selected = requiredAttendance
+      .map((email) => requiredAttendanceOptionsByEmail.get(email))
+      .filter(Boolean);
+    const first = selected[0];
+    if (!first) return `${requiredAttendance.length} required`;
+    const label = getUserLabel(first) || "Participant";
+    if (selected.length > 1) {
+      return `${label} +${selected.length - 1}`;
+    }
+    return label;
+  }, [requiredAttendance, requiredAttendanceOptionsByEmail]);
+  const requiredAttendanceTitle = useMemo(() => {
+    if (requiredAttendance.length === 0) return "No required attendance filter";
+    const names = requiredAttendance
+      .map((email) => {
+        const participant = requiredAttendanceOptionsByEmail.get(email);
+        return getUserLabel(participant) || email;
+      })
+      .filter(Boolean);
+    return `Required attendance: ${names.join(", ")}`;
+  }, [requiredAttendance, requiredAttendanceOptionsByEmail]);
+  const hasRequiredAttendanceFilter = requiredAttendance.length > 0;
+
+  useEffect(() => {
+    if (requiredAttendance.length === 0) return;
+    const validSet = new Set(requiredAttendanceOptions.map((participant) => participant.email));
+    const next = requiredAttendance.filter((email) => validSet.has(email));
+    if (next.length === requiredAttendance.length) return;
+    setRequiredAttendance(next);
+  }, [requiredAttendance, requiredAttendanceOptions]);
   const pendingInviteNonParticipants = useMemo(
     () =>
       pendingInviteUsers.filter((invitee) => {
@@ -565,6 +658,16 @@ export default function SchedulerPage() {
     });
   }, [slots.data, sortMode, tallies]);
 
+  const filteredSortedSlots = useMemo(
+    () =>
+      filterSlotsByRequiredAttendance({
+        slots: sortedSlots,
+        slotVotersById: slotVoters,
+        requiredEmails: requiredAttendance,
+      }),
+    [requiredAttendance, slotVoters, sortedSlots]
+  );
+
   const slotsByDate = useMemo(() => {
     return [...slots.data].sort((a, b) => {
       const aTime = a.start ? new Date(a.start).getTime() : 0;
@@ -584,22 +687,30 @@ export default function SchedulerPage() {
 
   const calendarEvents = useMemo(() => {
     return slots.data.map((slot) => {
-      const start = slot.start ? new Date(slot.start) : new Date();
-      const end = slot.end ? new Date(slot.end) : start;
+      const startRaw = slot.start ? new Date(slot.start) : new Date();
+      const endRaw = slot.end ? new Date(slot.end) : startRaw;
+      const displayStart = toDisplayDate(startRaw, displayTimeZone) || startRaw;
+      const displayEnd = toDisplayDate(endRaw, displayTimeZone) || endRaw;
       const counts = tallies[slot.id] || { feasible: 0, preferred: 0 };
       const voters = slotVoters[slot.id] || { preferred: [], feasible: [] };
       return {
         id: slot.id,
-        start,
-        end,
-        timeLabel: format(start, "h:mm a"),
+        start: displayStart,
+        end: displayEnd,
+        timeLabel: formatZonedTime(startRaw, displayTimeZone, "h:mm a", { showTimeZone }),
+        rangeLabel: formatZonedTimeRange({
+          start: startRaw,
+          end: endRaw,
+          timeZone: displayTimeZone,
+          showTimeZone,
+        }),
         preferredCount: counts.preferred,
         feasibleCount: counts.feasible,
         preferredVoters: voters.preferred,
         feasibleVoters: voters.feasible,
       };
     });
-  }, [slots.data, tallies, slotVoters]);
+  }, [slots.data, tallies, slotVoters, displayTimeZone]);
 
   const {
     scrollToTime,
@@ -628,10 +739,11 @@ export default function SchedulerPage() {
     if (!modalDate) return [];
     const sameDay = slots.data.filter((slot) => {
       if (!slot.start) return false;
-      return isSameDay(new Date(slot.start), modalDate);
+      const displayStart = toDisplayDate(new Date(slot.start), displayTimeZone);
+      return displayStart ? isSameDay(displayStart, modalDate) : false;
     });
     return sameDay.sort((a, b) => new Date(a.start) - new Date(b.start));
-  }, [modalDate, slots.data]);
+  }, [modalDate, slots.data, displayTimeZone]);
 
   const linkedCalendars = useMemo(() => {
     const ids = settings?.googleCalendarIds || [];
@@ -661,6 +773,19 @@ export default function SchedulerPage() {
 
   const toggleExpanded = (slotId) => {
     setExpandedSlots((prev) => ({ ...prev, [slotId]: !prev[slotId] }));
+  };
+
+  const toggleRequiredAttendance = (email) => {
+    setRequiredAttendance((prev) => {
+      if (prev.includes(email)) {
+        return prev.filter((item) => item !== email);
+      }
+      return [...prev, email];
+    });
+  };
+
+  const clearRequiredAttendance = () => {
+    setRequiredAttendance([]);
   };
 
   const handleAcceptInvite = async () => {
@@ -758,22 +883,29 @@ export default function SchedulerPage() {
     }
   };
 
-  const AvatarBubbleWithColors = ({ email, avatar, size = 24 }) => (
-    <AvatarBubble email={email} avatar={avatar} size={size} colorMap={colorMap} />
+  const resolveAvatarUser = (userInfo) => {
+    if (!userInfo?.email) return userInfo;
+    return participantMapByEmail.get(normalizeEmail(userInfo.email)) || userInfo;
+  };
+
+  const AvatarBubbleWithColors = ({ user, size = 24 }) => (
+    <AvatarBubble user={resolveAvatarUser(user)} size={size} colorMap={colorMap} />
   );
 
   const AvatarStackWithColors = ({ users, max = 4, size = 20 }) => (
-    <AvatarStack users={users} max={max} size={size} colorMap={colorMap} />
+    <AvatarStack
+      users={(users || []).map((userInfo) => resolveAvatarUser(userInfo))}
+      max={max}
+      size={size}
+      colorMap={colorMap}
+    />
   );
 
   const EventCell = ({ event }) => {
     const preferredCount = event.preferredCount ?? 0;
     const feasibleCount = event.feasibleCount ?? 0;
     const durationMinutes = event.end && event.start ? Math.max(0, Math.round((event.end - event.start) / 60000)) : 0;
-    const rangeLabel =
-      event.start && event.end
-        ? `${format(event.start, "h:mm a")} - ${format(event.end, "h:mm a")}`
-        : event.timeLabel;
+    const rangeLabel = event.rangeLabel || event.timeLabel;
 
     if (calendarView === "month") {
       return (
@@ -919,6 +1051,14 @@ export default function SchedulerPage() {
       toast.error("Accept the invite to vote on this poll.");
       return false;
     }
+    const wasAllVotesIn = allVotesIn;
+    const hadVote = Boolean(userVote.data);
+    const nextVoteCount = hadVote ? voteCount : voteCount + 1;
+    const shouldNotifyAllVotesIn =
+      !wasAllVotesIn &&
+      scheduler.data?.status === "OPEN" &&
+      participantCount > 0 &&
+      nextVoteCount >= participantCount;
     setSaving(true);
     let success = false;
     try {
@@ -955,6 +1095,60 @@ export default function SchedulerPage() {
           } catch (notifyErr) {
             console.error("Failed to notify creator about vote:", notifyErr);
           }
+        }
+      }
+      if (shouldNotifyAllVotesIn) {
+        try {
+          const normalizedCreatorEmail = normalizeEmail(scheduler.data?.creatorEmail) || null;
+          const creatorRecipients = {
+            userIds: scheduler.data?.creatorId ? [scheduler.data.creatorId] : [],
+            emails: normalizedCreatorEmail ? [normalizedCreatorEmail] : [],
+          };
+          if (creatorRecipients.userIds.length || creatorRecipients.emails.length) {
+            await emitPollEvent({
+              eventType: "POLL_READY_TO_FINALIZE",
+              schedulerId: id,
+              pollTitle: scheduler.data?.title || "Session Poll",
+              actor: buildNotificationActor(user),
+              payload: {
+                pollTitle: scheduler.data?.title || "Session Poll",
+              },
+              recipients: creatorRecipients,
+              dedupeKey: `poll:${id}:ready-to-finalize`,
+            });
+          }
+
+          const normalizedActorEmail = normalizeEmail(user.email) || null;
+          const participantRecipientIds = Array.from(participantIdSet).filter(
+            (participantId) =>
+              participantId &&
+              participantId !== scheduler.data?.creatorId &&
+              participantId !== user.uid
+          );
+          const participantRecipientEmails = participantEmails.filter(
+            (email) =>
+              email &&
+              email !== normalizedCreatorEmail &&
+              email !== normalizedActorEmail
+          );
+          if (participantRecipientIds.length || participantRecipientEmails.length) {
+            await emitPollEvent({
+              eventType: "POLL_ALL_VOTES_IN",
+              schedulerId: id,
+              pollTitle: scheduler.data?.title || "Session Poll",
+              actor: buildNotificationActor(user),
+              payload: {
+                pollTitle: scheduler.data?.title || "Session Poll",
+              },
+              recipients: {
+                userIds: participantRecipientIds,
+                emails: participantRecipientEmails,
+              },
+              dedupeKey: `poll:${id}:all-votes-in`,
+            });
+          }
+        } catch (notifyErr) {
+          console.error("Failed to notify all votes in:", notifyErr);
         }
       }
       toast.success("Votes saved successfully");
@@ -1122,15 +1316,13 @@ export default function SchedulerPage() {
             const normalized = normalizeEmail(profile.email);
             emails.add(normalized);
           });
-          const timezone =
-            scheduler.data?.timezone ||
-            Intl.DateTimeFormat().resolvedOptions().timeZone;
-          const rangeLabel = `${formatInTimeZone(
+          const notificationTimeZone = resolvePollTimeZone(scheduler.data?.timezone);
+          const winningLabel = formatZonedDateTimeRange({
             start,
-            timezone,
-            "MMM d, yyyy · h:mm a"
-          )} - ${formatInTimeZone(slotEnd, timezone, "h:mm a")}`;
-          const winningLabel = `${rangeLabel} (${timezone})`;
+            end: slotEnd,
+            timeZone: notificationTimeZone,
+            showTimeZone: true,
+          });
           const recipientEmails = Array.from(emails).filter(
             (email) => email !== normalizedCreatorEmail
           );
@@ -1510,6 +1702,20 @@ export default function SchedulerPage() {
     }
   };
 
+  const handleRepostDiscordPoll = async () => {
+    if (!id) return;
+    setRepostSending(true);
+    try {
+      await repostDiscordPollCard(id);
+      toast.success("Reposted the poll to Discord.");
+    } catch (err) {
+      console.error("Failed to repost Discord poll:", err);
+      toast.error(err.message || "Failed to repost the poll to Discord");
+    } finally {
+      setRepostSending(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!schedulerDocRef || !id) return;
     setDeleteSaving(true);
@@ -1589,6 +1795,11 @@ export default function SchedulerPage() {
     scheduler.data.allowLinkSharing ||
     isAcceptedParticipant ||
     isPendingInvite;
+  const canRepostDiscordPoll = Boolean(
+    isCreator &&
+      scheduler.data?.questingGroupId &&
+      questingGroup.data?.discord?.channelId
+  );
   if (!canAccess) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 text-center text-slate-600 dark:text-slate-400">
@@ -1634,6 +1845,8 @@ export default function SchedulerPage() {
                 questingGroupName={questingGroupName}
                 questingGroupColor={questingGroupColor}
                 guestCount={nonGroupParticipants.length}
+                displayTimeZone={displayTimeZone}
+                showTimeZone={showTimeZone}
               />
               {discordStatus && (
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
@@ -1703,6 +1916,15 @@ export default function SchedulerPage() {
                   <Copy className="mr-2 h-4 w-4" />
                   Clone poll
                 </DropdownMenuItem>
+                {canRepostDiscordPoll && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleRepostDiscordPoll} disabled={repostSending}>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      {repostSending ? "Reposting..." : "Repost Discord poll"}
+                    </DropdownMenuItem>
+                  </>
+                )}
                 {isExplicitParticipant && !isCreator && !isPendingInvite && (
                   <DropdownMenuItem
                     onClick={() => {
@@ -1787,10 +2009,7 @@ export default function SchedulerPage() {
                 </p>
               </div>
               <AvatarStackWithColors
-                users={participants.map((participant) => ({
-                  email: participant.email,
-                  avatar: participant.avatar,
-                }))}
+                users={participants}
                 max={8}
                 size={24}
               />
@@ -1830,7 +2049,7 @@ export default function SchedulerPage() {
                       key={member.email}
                       className="flex items-center gap-2 rounded-xl border border-transparent bg-white/70 px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-slate-900/70 dark:text-slate-200"
                     >
-                      <AvatarBubbleWithColors email={member.email} avatar={member.avatar} size={22} />
+                      <AvatarBubbleWithColors user={member} size={22} />
                       <UserIdentity user={member} className="text-xs" />
                       <span
                         className={`ml-auto text-[10px] font-semibold ${
@@ -1857,7 +2076,7 @@ export default function SchedulerPage() {
                   key={participant.email}
                   className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
                 >
-                  <AvatarBubbleWithColors email={participant.email} avatar={participant.avatar} size={18} />
+                  <AvatarBubbleWithColors user={participant} size={18} />
                   <UserIdentity user={participant} className="text-slate-700 dark:text-slate-200" />
                   <span
                     className={`text-[10px] font-semibold ${
@@ -2062,7 +2281,16 @@ export default function SchedulerPage() {
                   >
                     <div>
                       <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                        {startDate ? format(startDate, "EEE, MMM d, yyyy · h:mm a") : "Slot"}
+                        {startDate
+                          ? formatZonedDateTimeRange({
+                              start: startDate,
+                              end: slot.end ? new Date(slot.end) : null,
+                              timeZone: displayTimeZone,
+                              startPattern: "EEE, MMM d, yyyy · h:mm a",
+                              endPattern: "h:mm a",
+                              showTimeZone,
+                            })
+                          : "Slot"}
                       </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
                         Preferred {counts.preferred} · Feasible {counts.feasible}
@@ -2124,35 +2352,169 @@ export default function SchedulerPage() {
                 <h3 className="text-lg font-semibold">Results</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   Sort by preferred votes or total attendance.
+                  {hasRequiredAttendanceFilter && (
+                    <span className="ml-2 text-slate-400 dark:text-slate-500">
+                      {filteredSortedSlots.length} of {sortedSlots.length} slots match required
+                      attendance.
+                    </span>
+                  )}
                 </p>
               </div>
-              <div className="flex gap-2 rounded-full border border-slate-200 bg-white px-2 py-1 dark:border-slate-600 dark:bg-slate-700">
-                <button
-                  type="button"
-                  onClick={() => setSortMode("preferred")}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                    sortMode === "preferred"
-                      ? "bg-brand-primary text-white"
-                      : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-600"
-                  }`}
-                >
-                  Maximize Preferred
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSortMode("attendance")}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                    sortMode === "attendance"
-                      ? "bg-brand-primary text-white"
-                      : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-600"
-                  }`}
-                >
-                  Maximize Attendance
-                </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex gap-2 rounded-full border border-slate-200 bg-white px-2 py-1 dark:border-slate-600 dark:bg-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setSortMode("preferred")}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                      sortMode === "preferred"
+                        ? "bg-brand-primary text-white"
+                        : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-600"
+                    }`}
+                  >
+                    Maximize Preferred
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSortMode("attendance")}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                      sortMode === "attendance"
+                        ? "bg-brand-primary text-white"
+                        : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-600"
+                    }`}
+                  >
+                    Maximize Attendance
+                  </button>
+                </div>
+                <div className="flex items-center gap-1">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        title={requiredAttendanceTitle}
+                        className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
+                      >
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-300">
+                          Required
+                        </span>
+                        {hasRequiredAttendanceFilter ? (
+                          <>
+                            <AvatarStackWithColors
+                              users={requiredAttendanceUsers}
+                              max={3}
+                              size={18}
+                            />
+                            <span className="text-xs text-slate-700 dark:text-slate-100">
+                              {requiredAttendanceLabel}
+                            </span>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500 dark:bg-slate-600/60 dark:text-slate-200">
+                              {requiredAttendance.length}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-xs text-slate-400 dark:text-slate-300">
+                            Anyone
+                          </span>
+                        )}
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-72 p-2">
+                      <DropdownMenuLabel>Required attendance</DropdownMenuLabel>
+                      <div className="max-h-72 space-y-1 overflow-y-auto">
+                        {requiredAttendanceOptions.length === 0 && (
+                          <p className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
+                            No participants available yet.
+                          </p>
+                        )}
+                        {requiredAttendanceOptions.map((participant) => {
+                          const isSelected = requiredAttendanceSet.has(participant.email);
+                          return (
+                            <DropdownMenuItem
+                              key={participant.email}
+                              role="menuitemcheckbox"
+                              aria-checked={isSelected}
+                              onSelect={(event) => {
+                                event.preventDefault();
+                                toggleRequiredAttendance(participant.email);
+                              }}
+                              className="gap-2"
+                            >
+                              <span
+                                className={`flex h-5 w-5 items-center justify-center rounded-full border text-[10px] ${
+                                  isSelected
+                                    ? "border-brand-primary bg-brand-primary text-white"
+                                    : "border-slate-200 text-transparent dark:border-slate-600"
+                                }`}
+                              >
+                                <Check size={12} />
+                              </span>
+                              <AvatarBubbleWithColors user={participant} size={18} />
+                              <div className="min-w-0 flex-1">
+                                <UserIdentity
+                                  user={participant}
+                                  className="block truncate text-slate-700 dark:text-slate-100"
+                                />
+                              </div>
+                              <div className="ml-auto flex items-center gap-1">
+                                {participant.isPendingInvite && (
+                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                                    Pending
+                                  </span>
+                                )}
+                                {!participant.hasVoted && (
+                                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                                    No votes
+                                  </span>
+                                )}
+                              </div>
+                            </DropdownMenuItem>
+                          );
+                        })}
+                      </div>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        disabled={!hasRequiredAttendanceFilter}
+                        onSelect={(event) => {
+                          event.preventDefault();
+                          clearRequiredAttendance();
+                        }}
+                        className="justify-between text-xs font-semibold text-slate-500"
+                      >
+                        Clear filter
+                        {hasRequiredAttendanceFilter && <X size={12} />}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  {hasRequiredAttendanceFilter && (
+                    <button
+                      type="button"
+                      onClick={clearRequiredAttendance}
+                      className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-600"
+                      aria-label="Clear required attendance filter"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
             <div className="mt-4 space-y-3">
-              {sortedSlots.map((slot) => {
+              {filteredSortedSlots.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+                  {hasRequiredAttendanceFilter
+                    ? "No slots match the required attendance filter."
+                    : "No slots to display yet."}
+                  {hasRequiredAttendanceFilter && (
+                    <button
+                      type="button"
+                      onClick={clearRequiredAttendance}
+                      className="ml-3 text-xs font-semibold text-brand-primary"
+                    >
+                      Clear filter
+                    </button>
+                  )}
+                </div>
+              ) : (
+                filteredSortedSlots.map((slot) => {
                 const startDate = slot.start ? new Date(slot.start) : null;
                 const endDate = slot.end ? new Date(slot.end) : null;
                 const voters = slotVoters[slot.id] || { feasible: [], preferred: [] };
@@ -2175,9 +2537,14 @@ export default function SchedulerPage() {
                       <div>
                         <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                           {startDate
-                            ? `${format(startDate, "EEE, MMM d, yyyy · h:mm a")}${
-                                endDate ? ` - ${format(endDate, "h:mm a")}` : ""
-                              }`
+                            ? formatZonedDateTimeRange({
+                                start: startDate,
+                                end: endDate,
+                                timeZone: displayTimeZone,
+                                startPattern: "EEE, MMM d, yyyy · h:mm a",
+                                endPattern: "h:mm a",
+                                showTimeZone,
+                              })
                             : "Slot"}
                         </p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -2260,7 +2627,7 @@ export default function SchedulerPage() {
                                   key={voter.email}
                                   className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
                                 >
-                                  <AvatarBubbleWithColors email={voter.email} avatar={voter.avatar} size={20} />
+                                  <AvatarBubbleWithColors user={voter} size={20} />
                                   <UserIdentity
                                     user={
                                       participantMapByEmail.get(normalizeEmail(voter.email)) || voter
@@ -2298,7 +2665,7 @@ export default function SchedulerPage() {
                                   key={voter.email}
                                   className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
                                 >
-                                  <AvatarBubbleWithColors email={voter.email} avatar={voter.avatar} size={20} />
+                                  <AvatarBubbleWithColors user={voter} size={20} />
                                   <UserIdentity
                                     user={
                                       participantMapByEmail.get(normalizeEmail(voter.email)) || voter
@@ -2319,7 +2686,8 @@ export default function SchedulerPage() {
                     )}
                   </div>
                 );
-              })}
+                })
+              )}
             </div>
           </div>
 
@@ -2345,6 +2713,8 @@ export default function SchedulerPage() {
         }}
         modalDate={modalDate}
         slots={slotsForModal}
+        displayTimeZone={displayTimeZone}
+        showTimeZone={showTimeZone}
         noTimesWork={noTimesWork}
         canVote={canVote}
         onToggleNoTimesWork={toggleNoTimesWork}

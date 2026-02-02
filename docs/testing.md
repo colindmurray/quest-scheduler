@@ -63,7 +63,7 @@ npm --prefix web run test:rules
 ## E2E Tests (manual emulator)
 1) Start emulators:
 ```bash
-firebase emulators:start --only auth,firestore,functions,storage
+scripts/run-emulators-local.sh
 ```
 2) Seed a scheduler in the emulator:
 ```bash

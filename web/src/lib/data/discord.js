@@ -34,3 +34,10 @@ export async function fetchDiscordGuildRoles(groupId) {
   const response = await listRoles({ groupId });
   return response.data;
 }
+
+export async function repostDiscordPollCard(schedulerId) {
+  const functions = getFunctions();
+  const repost = httpsCallable(functions, "discordRepostPollCard");
+  const response = await repost({ schedulerId });
+  return response.data;
+}

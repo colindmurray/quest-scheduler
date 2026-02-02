@@ -83,7 +83,7 @@ export default function AppLayout({ children }) {
                 aria-expanded={accountMenuOpen}
                 className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-2 py-1 text-sm font-semibold transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 dark:border-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700"
               >
-                <UserAvatar email={user?.email} src={user?.photoURL} size={32} />
+                <UserAvatar user={user} email={user?.email} src={user?.photoURL} size={32} />
                 <span className="hidden text-slate-600 dark:text-slate-300 sm:inline">
                   Account
                 </span>

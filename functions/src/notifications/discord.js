@@ -5,6 +5,7 @@ const { NOTIFICATION_EVENTS } = require("./constants");
 const DISCORD_EVENT_SETTINGS = Object.freeze({
   [NOTIFICATION_EVENTS.VOTE_SUBMITTED]: "voteSubmitted",
   [NOTIFICATION_EVENTS.SLOT_CHANGED]: "slotChanges",
+  [NOTIFICATION_EVENTS.POLL_READY_TO_FINALIZE]: "allVotesIn",
   [NOTIFICATION_EVENTS.POLL_FINALIZED]: "finalizationEvents",
   [NOTIFICATION_EVENTS.POLL_REOPENED]: "finalizationEvents",
   [NOTIFICATION_EVENTS.POLL_CANCELLED]: "finalizationEvents",
@@ -57,6 +58,13 @@ const buildDiscordMessage = (eventType, event, { notifyRoleId }) => {
     const summaryText = summary ? ` (${summary})` : "";
     return {
       content: `Slots updated for **${pollTitle}**${summaryText}. View: ${pollUrl}`,
+      allowed_mentions: { parse: [] },
+    };
+  }
+
+  if (eventType === NOTIFICATION_EVENTS.POLL_READY_TO_FINALIZE) {
+    return {
+      content: `All votes are in for **${pollTitle}**. Ready to finalize: ${pollUrl}`,
       allowed_mentions: { parse: [] },
     };
   }

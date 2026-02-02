@@ -62,3 +62,12 @@
 ## Unified Notification Overhaul: Group Invite Revocation
 - Decision: use `GROUP_INVITE_DECLINED` events (actor = invitee) to auto-clear revoked group invites, without sending new notifications to inviters.
 - Rationale: reuse existing auto-clear rules without introducing a new event type.
+
+## Unified Notification Overhaul: Auto-Clear Expansion
+- Decision: auto-clear poll-scoped notifications on `POLL_DELETED` (invites, reminders, slot changes, ready-to-finalize, finalized, reopened, cancelled, created) and clear `POLL_CANCELLED`/`POLL_DELETED` when `POLL_RESTORED` arrives.
+- Decision: auto-clear group-scoped notifications on `GROUP_DELETED` for pending invites and member change notifications.
+- Rationale: removed/deleted resources should not leave stale actionable notifications visible.
+
+## Unified Notification Overhaul: All Votes In Notifications
+- Decision: split "all votes in" into creator (`POLL_READY_TO_FINALIZE`) and participant opt-in (`POLL_ALL_VOTES_IN`) events.
+- Rationale: creators need the prompt by default in simple mode; participants can opt in via advanced settings without changing creator defaults.

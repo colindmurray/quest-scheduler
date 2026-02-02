@@ -117,6 +117,7 @@ describe('discord worker helpers', () => {
     const label = formatSlotLabel('2025-01-01T10:00:00Z', '2025-01-01T11:00:00Z');
     expect(label).toContain('Jan');
     expect(label).toContain('-');
+    expect(label).toContain('UTC');
   });
 
   test('buildVoteComponents marks preferred and feasible defaults', () => {

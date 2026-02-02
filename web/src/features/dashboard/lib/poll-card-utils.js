@@ -1,4 +1,6 @@
 import { format, isSameDay, isSameYear } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
+import { getTimeZoneAbbr } from "../../../lib/time";
 
 export function getSlotRange(slots = []) {
   const dates = slots
@@ -14,21 +16,27 @@ export function getSlotRange(slots = []) {
   };
 }
 
-export function formatSlotRange(range) {
+export function formatSlotRange(range, timeZone, showTimeZone = true) {
   if (!range?.start || !range?.end) return null;
 
   const start = range.start;
   const end = range.end;
+  const tzAbbr = showTimeZone ? getTimeZoneAbbr(start, timeZone) : "";
+  const formatDate = (date, pattern) =>
+    timeZone ? formatInTimeZone(date, timeZone, pattern) : format(date, pattern);
 
   if (isSameDay(start, end)) {
-    return format(start, "MMM d, yyyy");
+    const label = formatDate(start, "MMM d, yyyy");
+    return tzAbbr ? `${label} ${tzAbbr}` : label;
   }
 
   if (isSameYear(start, end)) {
-    return `${format(start, "MMM d")} - ${format(end, "MMM d, yyyy")}`;
+    const label = `${formatDate(start, "MMM d")} - ${formatDate(end, "MMM d, yyyy")}`;
+    return tzAbbr ? `${label} ${tzAbbr}` : label;
   }
 
-  return `${format(start, "MMM d, yyyy")} - ${format(end, "MMM d, yyyy")}`;
+  const label = `${formatDate(start, "MMM d, yyyy")} - ${formatDate(end, "MMM d, yyyy")}`;
+  return tzAbbr ? `${label} ${tzAbbr}` : label;
 }
 
 export function getPollStatusLabel({ status, allVotesIn, isCancelled }) {

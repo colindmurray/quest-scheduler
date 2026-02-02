@@ -9,9 +9,33 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 
+function isEmulator() {
+  return process.env.FUNCTIONS_EMULATOR === "true" || Boolean(process.env.FIREBASE_EMULATOR_HUB);
+}
+
+function isLocalhostHostname(hostname) {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+function parseUrl(value) {
+  try {
+    return new URL(value);
+  } catch (err) {
+    return null;
+  }
+}
+
 function getRedirectUri() {
-  if (process.env.DISCORD_OAUTH_REDIRECT_URI) {
-    return process.env.DISCORD_OAUTH_REDIRECT_URI;
+  const override = String(process.env.DISCORD_OAUTH_REDIRECT_URI || "").trim();
+  if (override) {
+    const parsed = parseUrl(override);
+    if (!parsed) {
+      console.warn("Ignoring invalid DISCORD_OAUTH_REDIRECT_URI value.");
+    } else if (!isEmulator() && isLocalhostHostname(parsed.hostname)) {
+      console.warn("Ignoring localhost DISCORD_OAUTH_REDIRECT_URI in non-emulator environment.");
+    } else {
+      return override;
+    }
   }
   const project = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "";
   return `https://${DISCORD_REGION}-${project}.cloudfunctions.net/discordOAuthCallback`;

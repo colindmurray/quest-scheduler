@@ -1,11 +1,19 @@
 import { useNavigate } from "react-router-dom";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { Calendar, ExternalLink, Users } from "lucide-react";
 import { AvatarStack } from "../../../components/ui/voter-avatars";
 import { buildColorMap } from "../../../components/ui/voter-avatar-utils";
 import { useUserProfiles } from "../../../hooks/useUserProfiles";
+import { formatZonedDate, formatZonedTimeRange } from "../../../lib/time";
 
-export function NextSessionCard({ scheduler, winningSlot, groupColor, participants = [] }) {
+export function NextSessionCard({
+  scheduler,
+  winningSlot,
+  groupColor,
+  participants = [],
+  displayTimeZone = null,
+  showTimeZone = true,
+}) {
   const navigate = useNavigate();
   const participantEmails = participants.map((p) => (typeof p === "string" ? p : p.email));
   const colorMap = buildColorMap(participantEmails);
@@ -62,11 +70,15 @@ export function NextSessionCard({ scheduler, winningSlot, groupColor, participan
         </div>
         <div>
           <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-            {format(slotDate, "EEEE, MMMM d")}
+            {formatZonedDate(slotDate, displayTimeZone, "EEEE, MMMM d", { showTimeZone })}
           </p>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {format(slotDate, "h:mm a")}
-            {slotEnd && ` - ${format(slotEnd, "h:mm a")}`}
+            {formatZonedTimeRange({
+              start: slotDate,
+              end: slotEnd,
+              timeZone: displayTimeZone,
+              showTimeZone,
+            })}
           </p>
         </div>
       </div>

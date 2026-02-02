@@ -2,6 +2,7 @@ const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { createChannelMessage } = require("./discord-client");
 const { APP_URL, DISCORD_REGION, DISCORD_BOT_TOKEN } = require("./config");
+const { formatDateTime } = require("./time-utils");
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -19,6 +20,7 @@ function buildNudgeMessage({
   schedulerTitle,
   discordUserIds,
   firstSlotUnix,
+  firstSlotLabel,
   pollMessageUrl,
 }) {
   const mentions = discordUserIds.map((id) => `<@${id}>`).join(" ");
@@ -28,7 +30,11 @@ function buildNudgeMessage({
   content += `${mentions}\n\n`;
   content += `Hey! Your votes are still needed for this session poll.\n`;
 
-  if (firstSlotUnix) {
+  if (firstSlotLabel && firstSlotUnix) {
+    content += `The first proposed time is ${firstSlotLabel} (<t:${firstSlotUnix}:R>).\n`;
+  } else if (firstSlotLabel) {
+    content += `The first proposed time is ${firstSlotLabel}.\n`;
+  } else if (firstSlotUnix) {
     content += `The first proposed time is <t:${firstSlotUnix}:F> (<t:${firstSlotUnix}:R>).\n`;
   }
 
@@ -181,10 +187,12 @@ exports.nudgeDiscordParticipants = functions
   // Get the first slot time for urgency
   const slotsSnap = await schedulerRef.collection("slots").orderBy("start").limit(1).get();
   let firstSlotUnix = null;
+  let firstSlotLabel = null;
   if (!slotsSnap.empty) {
     const firstSlot = slotsSnap.docs[0].data();
     if (firstSlot.start) {
       firstSlotUnix = Math.floor(new Date(firstSlot.start).getTime() / 1000);
+      firstSlotLabel = formatDateTime(firstSlot.start, scheduler.timezone || null);
     }
   }
 
@@ -194,6 +202,7 @@ exports.nudgeDiscordParticipants = functions
     schedulerTitle: scheduler.title || "Quest Session",
     discordUserIds,
     firstSlotUnix,
+    firstSlotLabel,
     pollMessageUrl: scheduler.discord?.messageUrl || null,
   });
 

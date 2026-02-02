@@ -28,7 +28,7 @@ Optional Vite env overrides (prefix with `VITE_`):
   - `VITE_FIREBASE_APP_ID`
 
 ## Functions config (env)
-- Local dev: create `functions/.env` from `functions/.env.example`.
+- Local dev: create `functions/.env.local` from `functions/.env.example`.
 - Deploy: create `functions/.env.studio-473406021-87ead` (or `functions/.env.<projectId>`).
 - Required variables:
   - `QS_APP_URL`
@@ -37,6 +37,8 @@ Optional Vite env overrides (prefix with `VITE_`):
   - `QS_GOOGLE_OAUTH_CLIENT_ID`
   - `QS_GOOGLE_OAUTH_CLIENT_SECRET`
   - `QS_GOOGLE_OAUTH_REDIRECT_URI`
+- Optional Discord override (local/emulator only unless you need a custom domain):
+  - `DISCORD_OAUTH_REDIRECT_URI` (set in `functions/.env.<projectId>` for deploys; avoid localhost in prod)
 
 ## Functions OAuth secret (recommended)
 - Store the OAuth client JSON in Secret Manager:
@@ -85,7 +87,7 @@ DEPLOY_ONLY=hosting ./scripts/deploy-prod.sh
 
 ## Staging deploy (quest-scheduler-stg)
 - Create `web/.env.staging` from `web/.env.staging.example`.
-- Create `functions/.env.quest-scheduler-stg` with staging values (set `QS_APP_URL=https://quest-scheduler-stg.firebaseapp.com`).
+- Create `functions/.env.quest-scheduler-stg` with staging values (set `QS_APP_URL=https://quest-scheduler-stg.web.app`).
 - Build + deploy with staging mode:
 ```
 VITE_BUILD_MODE=staging firebase deploy --only hosting,firestore,extensions --project quest-scheduler-stg
