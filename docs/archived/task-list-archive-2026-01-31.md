@@ -1,3 +1,18 @@
+---
+created: 2026-01-31
+lastUpdated: 2026-01-31
+summary: "Archived historical task list snapshot from the 2026-01-31 transition window."
+category: TASK_TRACKER
+status: OBSOLETE
+implementationStatus: DEPRECATED
+note: "Archive-only tracker superseded by newer planning cycles; not for active execution."
+changelog:
+  - "2026-01-31: Improve invite flows, notifications, and tests"
+---
+
+> [!WARNING]
+> This document is **obsolete/deprecated** and retained for historical context only. Do not use it to drive active implementation decisions.
+
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint

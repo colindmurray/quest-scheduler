@@ -1,3 +1,22 @@
+---
+created: 2026-01-27
+lastUpdated: 2026-01-29
+summary: "Comprehensive automated testing strategy covering unit, integration, rules, and E2E testing phases."
+category: TEST_PLAN
+status: STALE
+implementationStatus: COMPLETE
+note: "Large portions were executed, but planning assumptions should be revalidated against current coverage and tooling."
+changelog:
+  - "2026-01-29: Chore: consolidate audit/docs and recent updates"
+  - "2026-01-29: Expand functions coverage tests and config"
+  - "2026-01-28: Add auth and discord ingress/unlink/poll-card tests"
+  - "2026-01-28: Mock Discord roles mapping test"
+  - "2026-01-28: Refresh test plan status"
+---
+
+> [!WARNING]
+> This document is marked **stale**. Verify against current code and newer docs before relying on it.
+
 # Automated Testing Plan
 
 ## Overview

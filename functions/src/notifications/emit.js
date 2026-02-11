@@ -1,47 +1,11 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
-const { FieldValue } = require("firebase-admin/firestore");
 const { resolveNotificationEventType } = require("./constants");
+const { queueNotificationEvent } = require("./write-event");
 
 if (!admin.apps.length) {
   admin.initializeApp();
 }
-
-const NOTIFICATION_EVENT_TTL_MS = 90 * 24 * 60 * 60 * 1000;
-
-const buildExpiresAt = () =>
-  admin.firestore.Timestamp.fromDate(new Date(Date.now() + NOTIFICATION_EVENT_TTL_MS));
-
-const buildEventPayload = ({
-  eventType,
-  resource,
-  actor,
-  payload,
-  channels,
-  dedupeKey,
-  recipients,
-  source,
-  createdBy,
-}) => {
-  const base = {
-    eventType,
-    resource,
-    actor,
-    payload: payload || null,
-    channels: channels || null,
-    dedupeKey: dedupeKey || null,
-    recipients: recipients || null,
-    source: source || "web",
-    status: "queued",
-    createdAt: FieldValue.serverTimestamp(),
-    expiresAt: buildExpiresAt(),
-    createdBy,
-  };
-
-  return Object.fromEntries(
-    Object.entries(base).filter(([, value]) => value !== null && value !== undefined)
-  );
-};
 
 const emitNotificationEventHandler = async (data, context) => {
   if (!context?.auth?.uid) {
@@ -73,8 +37,8 @@ const emitNotificationEventHandler = async (data, context) => {
   }
 
   const db = admin.firestore();
-  const docRef = db.collection("notificationEvents").doc();
-  const eventPayload = buildEventPayload({
+  const queued = await queueNotificationEvent({
+    db,
     eventType: resolvedEventType,
     resource,
     actor,
@@ -85,10 +49,7 @@ const emitNotificationEventHandler = async (data, context) => {
     source: data?.source,
     createdBy: context.auth.uid,
   });
-
-  await docRef.set(eventPayload);
-
-  return { eventId: docRef.id, eventType: resolvedEventType };
+  return queued;
 };
 
 const emitNotificationEvent = functions.https.onCall(emitNotificationEventHandler);

@@ -10,35 +10,34 @@ import {
 const acceptInviteMock = vi.fn();
 const declineInviteMock = vi.fn();
 const removeLocalMock = vi.fn();
+const fetchOpenGroupPollsWithoutVoteMock = vi.fn();
+const fetchRequiredEmbeddedPollsWithoutVoteMock = vi.fn();
+
+let authState;
+let userSettingsState;
+let questingGroupsState;
+let pollInvitesState;
+let schedulersByCreatorState;
+let schedulersByGroupIdsState;
+let schedulersByParticipantState;
+let userProfilesState;
+let userProfilesByIdsState;
+let schedulerAttendanceState;
 
 vi.mock("../../app/useAuth", () => ({
-  useAuth: () => ({ user: { uid: "user-1", email: "invitee@example.com" } }),
+  useAuth: () => authState,
 }));
 
 vi.mock("../../hooks/useUserSettings", () => ({
-  useUserSettings: () => ({ archivedPolls: [], loading: false }),
+  useUserSettings: () => userSettingsState,
 }));
 
 vi.mock("../../hooks/useQuestingGroups", () => ({
-  useQuestingGroups: () => ({ groups: [], getGroupColor: () => null }),
+  useQuestingGroups: () => questingGroupsState,
 }));
 
 vi.mock("../../hooks/usePollInvites", () => ({
-  usePollInvites: () => ({
-    pendingInvites: [
-      {
-        id: "sched-1",
-        title: "Invite Poll",
-        creatorEmail: "creator@example.com",
-        pendingInviteMeta: {
-          "invitee@example.com": { invitedByEmail: "inviter@example.com" },
-        },
-      },
-    ],
-    loading: false,
-    acceptInvite: acceptInviteMock,
-    declineInvite: declineInviteMock,
-  }),
+  usePollInvites: () => pollInvitesState,
 }));
 
 vi.mock("../../hooks/useNotifications", () => ({
@@ -46,33 +45,68 @@ vi.mock("../../hooks/useNotifications", () => ({
 }));
 
 vi.mock("../../hooks/useSchedulers", () => ({
-  useSchedulersByCreator: () => ({ data: [], loading: false }),
-  useSchedulersByGroupIds: () => ({ data: [], loading: false, error: null }),
-  useSchedulersByParticipant: () => ({ data: [], loading: false }),
+  useSchedulersByCreator: () => schedulersByCreatorState,
+  useSchedulersByGroupIds: () => schedulersByGroupIdsState,
+  useSchedulersByParticipant: () => schedulersByParticipantState,
 }));
 
 vi.mock("../../hooks/useUserProfiles", () => ({
-  useUserProfiles: () => ({
-    enrichUsers: (emails = []) => emails.map((email) => ({ email })),
-  }),
-  useUserProfilesByIds: () => ({ profiles: {}, loading: false }),
+  useUserProfiles: () => userProfilesState,
+  useUserProfilesByIds: () => userProfilesByIdsState,
 }));
 
 vi.mock("./hooks/useSchedulerAttendance", () => ({
-  useSchedulerAttendance: () => ({
-    slotsByScheduler: {},
-    votesByScheduler: {},
-    votersByScheduler: {},
-  }),
+  useSchedulerAttendance: () => schedulerAttendanceState,
+}));
+
+vi.mock("../../lib/data/basicPolls", () => ({
+  fetchOpenGroupPollsWithoutVote: (...args) => fetchOpenGroupPollsWithoutVoteMock(...args),
+  fetchRequiredEmbeddedPollsWithoutVote: (...args) =>
+    fetchRequiredEmbeddedPollsWithoutVoteMock(...args),
 }));
 
 describe("DashboardPage pending invite actions", () => {
   beforeEach(() => {
+    authState = { user: { uid: "user-1", email: "invitee@example.com" } };
+    userSettingsState = { archivedPolls: [], loading: false, settings: {} };
+    questingGroupsState = { groups: [], getGroupColor: () => null };
+    pollInvitesState = {
+      pendingInvites: [
+        {
+          id: "sched-1",
+          title: "Invite Poll",
+          creatorEmail: "creator@example.com",
+          pendingInviteMeta: {
+            "invitee@example.com": { invitedByEmail: "inviter@example.com" },
+          },
+        },
+      ],
+      loading: false,
+      acceptInvite: acceptInviteMock,
+      declineInvite: declineInviteMock,
+    };
+    schedulersByCreatorState = { data: [], loading: false };
+    schedulersByGroupIdsState = { data: [], loading: false, error: null };
+    schedulersByParticipantState = { data: [], loading: false };
+    userProfilesState = {
+      enrichUsers: (emails = []) => emails.map((email) => ({ email })),
+    };
+    userProfilesByIdsState = { profiles: {}, loading: false };
+    schedulerAttendanceState = {
+      slotsByScheduler: {},
+      votesByScheduler: {},
+      votersByScheduler: {},
+    };
+
     acceptInviteMock.mockResolvedValue(undefined);
     declineInviteMock.mockResolvedValue(undefined);
     removeLocalMock.mockReset();
     acceptInviteMock.mockClear();
     declineInviteMock.mockClear();
+    fetchOpenGroupPollsWithoutVoteMock.mockResolvedValue([]);
+    fetchRequiredEmbeddedPollsWithoutVoteMock.mockResolvedValue([]);
+    fetchOpenGroupPollsWithoutVoteMock.mockClear();
+    fetchRequiredEmbeddedPollsWithoutVoteMock.mockClear();
   });
 
   test("accept button accepts invite without redirect", async () => {
@@ -113,5 +147,95 @@ describe("DashboardPage pending invite actions", () => {
         pollInviteLegacyNotificationId("sched-1")
       );
     });
+  });
+
+  test("renders polls to vote on with group and embedded poll links", async () => {
+    pollInvitesState = {
+      pendingInvites: [],
+      loading: false,
+      acceptInvite: acceptInviteMock,
+      declineInvite: declineInviteMock,
+    };
+    questingGroupsState = {
+      groups: [{ id: "group-1", name: "Fellowship", memberIds: ["user-1"] }],
+      getGroupColor: () => null,
+    };
+    schedulersByParticipantState = {
+      data: [
+        {
+          id: "sched-open",
+          title: "Sunday Session",
+          status: "OPEN",
+          participantIds: ["user-1"],
+          pendingInvites: [],
+        },
+      ],
+      loading: false,
+    };
+    fetchOpenGroupPollsWithoutVoteMock.mockResolvedValueOnce([
+      {
+        parentType: "group",
+        parentId: "group-1",
+        pollId: "poll-g1",
+        title: "Snack Vote",
+        settings: {
+          voteType: "MULTIPLE_CHOICE",
+          deadlineAt: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      },
+    ]);
+    fetchRequiredEmbeddedPollsWithoutVoteMock.mockResolvedValueOnce([
+      {
+        parentType: "scheduler",
+        parentId: "sched-open",
+        pollId: "poll-s1",
+        title: "DM Style",
+        required: true,
+        settings: {
+          voteType: "RANKED_CHOICE",
+          deadlineAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+        },
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <DashboardPage />
+      </MemoryRouter>
+    );
+
+    await screen.findByText("Polls to vote on");
+    expect(screen.getByText("in Fellowship")).toBeTruthy();
+    expect(screen.getByText("in Sunday Session")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Snack Vote/i }).getAttribute("href")).toBe(
+      "/groups/group-1/polls/poll-g1"
+    );
+    expect(screen.getByRole("link", { name: /DM Style/i }).getAttribute("href")).toBe(
+      "/scheduler/sched-open?poll=poll-s1"
+    );
+    expect(screen.getByText("Multiple choice")).toBeTruthy();
+    expect(screen.getByText("Ranked choice")).toBeTruthy();
+    expect(screen.getByText("Required")).toBeTruthy();
+  });
+
+  test("does not render polls-to-vote section when no unvoted polls exist", async () => {
+    pollInvitesState = {
+      pendingInvites: [],
+      loading: false,
+      acceptInvite: acceptInviteMock,
+      declineInvite: declineInviteMock,
+    };
+
+    render(
+      <MemoryRouter>
+        <DashboardPage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(fetchOpenGroupPollsWithoutVoteMock).toHaveBeenCalled();
+      expect(fetchRequiredEmbeddedPollsWithoutVoteMock).toHaveBeenCalled();
+    });
+    expect(screen.queryByText("Polls to vote on")).toBeNull();
   });
 });

@@ -27,6 +27,7 @@ let discordVoteSessionDocs;
 let questingGroupsByMember;
 let questingGroupsByInvite;
 let questingGroupsByCreator;
+let groupBasicPollDocs;
 let createdPollDocs;
 let participantPollDocs;
 let pendingPollDocs;
@@ -228,6 +229,17 @@ const buildFirestoreMock = () => {
             get: groupGetMock,
             update: groupUpdateMock,
             delete: groupDeleteMock,
+            collection: (sub) => {
+              if (sub === 'basicPolls') {
+                return {
+                  get: async () => ({
+                    empty: groupBasicPollDocs.length === 0,
+                    docs: groupBasicPollDocs,
+                  }),
+                };
+              }
+              return { get: async () => ({ empty: true, docs: [] }) };
+            },
           }),
           where: (field) => questingGroupQuery(field),
         };
@@ -286,7 +298,7 @@ describe('legacy callables success paths', () => {
     friendRequestUpdateMock = vi.fn().mockResolvedValue(undefined);
     friendRequestGetMock = vi.fn().mockResolvedValue({ exists: false });
     notificationSetMock = vi.fn();
-    notificationEventSetMock = vi.fn();
+    notificationEventSetMock = vi.fn().mockResolvedValue(undefined);
     friendRequestDocs = [];
     schedulerDocs = [];
     discordLinkCodeDocs = [];
@@ -294,6 +306,7 @@ describe('legacy callables success paths', () => {
     questingGroupsByMember = [];
     questingGroupsByInvite = [];
     questingGroupsByCreator = [];
+    groupBasicPollDocs = [];
     createdPollDocs = [];
     participantPollDocs = [];
     pendingPollDocs = [];
@@ -784,6 +797,11 @@ describe('legacy callables success paths', () => {
   });
 
   test('deleteUserAccount cleans up data and deletes auth user', async () => {
+    const groupBasicVoteDeleteMock = vi.fn().mockResolvedValue(undefined);
+    const createdSchedulerBasicVoteDeleteMock = vi.fn().mockResolvedValue(undefined);
+    const participantSchedulerBasicVoteDeleteMock = vi.fn().mockResolvedValue(undefined);
+    const participantSchedulerVoteDeleteMock = vi.fn().mockResolvedValue(undefined);
+
     userDocExists = true;
     userDocData = {
       inviteAllowance: 5,
@@ -814,19 +832,85 @@ describe('legacy callables success paths', () => {
         }),
       },
     ];
-    createdPollDocs = [{ ref: { id: 'poll1' } }];
+    createdPollDocs = [
+      {
+        id: 'poll1',
+        ref: {
+          id: 'poll1',
+          collection: (name) => {
+            if (name === 'basicPolls') {
+              return {
+                get: async () => ({
+                  empty: false,
+                  docs: [
+                    {
+                      ref: {
+                        collection: () => ({
+                          doc: () => ({ delete: createdSchedulerBasicVoteDeleteMock }),
+                          where: () => ({
+                            get: async () => ({ empty: true, docs: [] }),
+                          }),
+                        }),
+                      },
+                    },
+                  ],
+                }),
+              };
+            }
+            return { get: async () => ({ empty: true, docs: [] }) };
+          },
+        },
+      },
+    ];
     participantPollDocs = [
       {
+        id: 'poll2',
         data: () => ({ creatorId: 'other' }),
         ref: {
           update: vi.fn(),
-          collection: () => ({ doc: () => ({ delete: vi.fn() }) }),
+          collection: (name) => {
+            if (name === 'votes') {
+              return { doc: () => ({ delete: participantSchedulerVoteDeleteMock }) };
+            }
+            if (name === 'basicPolls') {
+              return {
+                get: async () => ({
+                  empty: false,
+                  docs: [
+                    {
+                      ref: {
+                        collection: () => ({
+                          doc: () => ({ delete: participantSchedulerBasicVoteDeleteMock }),
+                          where: () => ({
+                            get: async () => ({ empty: false, docs: [{ ref: { id: 'bp-vote-1' } }] }),
+                          }),
+                        }),
+                      },
+                    },
+                  ],
+                }),
+              };
+            }
+            return { get: async () => ({ empty: true, docs: [] }) };
+          },
         },
       },
     ];
     pendingPollDocs = [
       {
         ref: { update: vi.fn() },
+      },
+    ];
+    groupBasicPollDocs = [
+      {
+        ref: {
+          collection: () => ({
+            doc: () => ({ delete: groupBasicVoteDeleteMock }),
+            where: () => ({
+              get: async () => ({ empty: false, docs: [{ ref: { id: 'group-basic-vote-1' } }] }),
+            }),
+          }),
+        },
       },
     ];
     voteDocsById = [{ ref: { id: 'vote1' } }];
@@ -840,8 +924,94 @@ describe('legacy callables success paths', () => {
     expect(discordUserLinkDeleteMock).toHaveBeenCalled();
     expect(discordRateLimitDeleteMock).toHaveBeenCalled();
     expect(groupDeleteMock).toHaveBeenCalled();
+    expect(groupBasicVoteDeleteMock).toHaveBeenCalled();
+    expect(createdSchedulerBasicVoteDeleteMock).toHaveBeenCalled();
+    expect(participantSchedulerBasicVoteDeleteMock).toHaveBeenCalled();
+    expect(participantSchedulerVoteDeleteMock).toHaveBeenCalled();
     expect(usersPublicDeleteMock).toHaveBeenCalled();
     expect(userSecretsDeleteMock).toHaveBeenCalled();
+    expect(authDeleteMock).toHaveBeenCalledWith('user1');
+  });
+
+  test('deleteUserAccount explicitly prunes basic poll votes even when collectionGroup votes query is empty', async () => {
+    const explicitGroupBasicVoteDeleteMock = vi.fn().mockResolvedValue(undefined);
+    const explicitParticipantBasicVoteDeleteMock = vi.fn().mockResolvedValue(undefined);
+
+    userDocExists = true;
+    userDocData = {
+      inviteAllowance: 5,
+      suspended: false,
+    };
+    questingGroupsByMember = [
+      {
+        id: 'group-explicit',
+        data: () => ({
+          memberIds: ['user1', 'other-user'],
+          pendingInvites: [],
+          creatorId: 'other-user',
+          memberManaged: true,
+        }),
+      },
+    ];
+    groupBasicPollDocs = [
+      {
+        ref: {
+          collection: () => ({
+            doc: () => ({ delete: explicitGroupBasicVoteDeleteMock }),
+            where: () => ({
+              get: async () => ({ empty: true, docs: [] }),
+            }),
+          }),
+        },
+      },
+    ];
+    participantPollDocs = [
+      {
+        id: 'sched-explicit',
+        data: () => ({ creatorId: 'other-user' }),
+        ref: {
+          update: vi.fn().mockResolvedValue(undefined),
+          collection: (name) => {
+            if (name === 'votes') {
+              return { doc: () => ({ delete: vi.fn().mockResolvedValue(undefined) }) };
+            }
+            if (name === 'basicPolls') {
+              return {
+                get: async () => ({
+                  empty: false,
+                  docs: [
+                    {
+                      ref: {
+                        collection: () => ({
+                          doc: () => ({ delete: explicitParticipantBasicVoteDeleteMock }),
+                          where: () => ({
+                            get: async () => ({ empty: true, docs: [] }),
+                          }),
+                        }),
+                      },
+                    },
+                  ],
+                }),
+              };
+            }
+            return { get: async () => ({ empty: true, docs: [] }) };
+          },
+        },
+      },
+    ];
+    createdPollDocs = [];
+    pendingPollDocs = [];
+    voteDocsById = [];
+    voteDocsByEmail = [];
+
+    const result = await legacy.deleteUserAccount.run(
+      {},
+      { auth: { uid: 'user1', token: { email: 'user@example.com' } } }
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(explicitGroupBasicVoteDeleteMock).toHaveBeenCalledTimes(1);
+    expect(explicitParticipantBasicVoteDeleteMock).toHaveBeenCalledTimes(1);
     expect(authDeleteMock).toHaveBeenCalledWith('user1');
   });
 
@@ -866,6 +1036,146 @@ describe('legacy callables success paths', () => {
         { auth: { uid: 'user1', token: { email: 'user@example.com' } } }
       )
     ).rejects.toMatchObject({ code: 'internal' });
+  });
+
+  test('removeGroupMemberFromPolls prunes scheduler and basic poll votes for open polls', async () => {
+    const schedulerVoteDeleteById = vi.fn().mockResolvedValue(undefined);
+    const embeddedBasicVoteDeleteById = vi.fn().mockResolvedValue(undefined);
+    const groupBasicVoteDeleteById = vi.fn().mockResolvedValue(undefined);
+
+    groupGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        creatorId: 'creator1',
+        memberIds: ['creator1', 'memberUid'],
+        memberManaged: false,
+      }),
+    });
+    usersPublicDocs = [{ id: 'memberUid', data: () => ({ email: 'member@example.com' }) }];
+
+    schedulerDocs = [
+      {
+        id: 'sched1',
+        data: () => ({ title: 'Session Poll', status: 'OPEN' }),
+        ref: {
+          update: vi.fn().mockResolvedValue(undefined),
+          collection: (name) => {
+            if (name === 'votes') {
+              return {
+                doc: () => ({ delete: schedulerVoteDeleteById }),
+                where: () => ({
+                  get: async () => ({ empty: false, docs: [{ ref: { id: 'sched-email-vote' } }] }),
+                }),
+              };
+            }
+            if (name === 'basicPolls') {
+              return {
+                get: async () => ({
+                  empty: false,
+                  docs: [
+                    {
+                      ref: {
+                        collection: () => ({
+                          doc: () => ({ delete: embeddedBasicVoteDeleteById }),
+                          where: () => ({
+                            get: async () => ({
+                              empty: false,
+                              docs: [{ ref: { id: 'embedded-email-vote' } }],
+                            }),
+                          }),
+                        }),
+                      },
+                    },
+                  ],
+                }),
+              };
+            }
+            return { get: async () => ({ empty: true, docs: [] }) };
+          },
+        },
+      },
+      {
+        id: 'sched2',
+        data: () => ({ title: 'Finalized Session', status: 'FINALIZED' }),
+        ref: {
+          update: vi.fn().mockResolvedValue(undefined),
+          collection: (name) => {
+            if (name === 'votes') {
+              return {
+                doc: () => ({ delete: schedulerVoteDeleteById }),
+                where: () => ({
+                  get: async () => ({ empty: true, docs: [] }),
+                }),
+              };
+            }
+            if (name === 'basicPolls') {
+              return {
+                get: async () => ({
+                  empty: false,
+                  docs: [
+                    {
+                      ref: {
+                        collection: () => ({
+                          doc: () => ({ delete: vi.fn() }),
+                          where: () => ({
+                            get: async () => ({ empty: true, docs: [] }),
+                          }),
+                        }),
+                      },
+                    },
+                  ],
+                }),
+              };
+            }
+            return { get: async () => ({ empty: true, docs: [] }) };
+          },
+        },
+      },
+    ];
+
+    groupBasicPollDocs = [
+      {
+        data: () => ({ status: 'OPEN' }),
+        ref: {
+          collection: () => ({
+            doc: () => ({ delete: groupBasicVoteDeleteById }),
+            where: () => ({
+              get: async () => ({ empty: false, docs: [{ ref: { id: 'group-email-vote' } }] }),
+            }),
+          }),
+        },
+      },
+      {
+        data: () => ({ status: 'FINALIZED' }),
+        ref: {
+          collection: () => ({
+            doc: () => ({ delete: vi.fn() }),
+            where: () => ({
+              get: async () => ({ empty: true, docs: [] }),
+            }),
+          }),
+        },
+      },
+    ];
+
+    const result = await legacy.removeGroupMemberFromPolls.run(
+      { groupId: 'group1', memberEmail: 'member@example.com' },
+      { auth: { uid: 'creator1', token: { email: 'creator@example.com', name: 'Creator' } } }
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      polls: 2,
+      embeddedBasicPollsPruned: 1,
+      groupBasicPollsPruned: 1,
+    });
+    expect(schedulerVoteDeleteById).toHaveBeenCalled();
+    expect(embeddedBasicVoteDeleteById).toHaveBeenCalledTimes(1);
+    expect(groupBasicVoteDeleteById).toHaveBeenCalledTimes(1);
+    expect(batchDeleteDocMock).toHaveBeenCalled();
+    expect(notificationEventSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'POLL_INVITE_REVOKED' })
+    );
   });
 
   test('sendPollInvites updates scheduler and notifies invitees', async () => {

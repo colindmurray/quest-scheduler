@@ -5,6 +5,7 @@ import {
   acceptGroupInvitation,
   declineGroupInvitation,
   revokeGroupInvite,
+  deleteQuestingGroup,
   removeMemberFromGroup,
   leaveGroup,
   getDefaultGroupColor,
@@ -12,7 +13,7 @@ import {
   removeMemberFromGroupPolls,
 } from "./questingGroups";
 import { httpsCallable } from "firebase/functions";
-import { getDocs, getDoc, getDocFromServer, updateDoc, setDoc } from "firebase/firestore";
+import { deleteDoc, getDocs, getDoc, getDocFromServer, updateDoc, setDoc } from "firebase/firestore";
 import {
   dismissNotification,
   dismissNotificationsByResource,
@@ -43,6 +44,15 @@ vi.mock("firebase/firestore", () => ({
 }));
 
 vi.mock("../firebase", () => ({ db: {} }));
+
+const basicPollsMocks = {
+  fetchGroupBasicPolls: vi.fn(),
+  deleteBasicPoll: vi.fn(),
+};
+vi.mock("./basicPolls", () => ({
+  fetchGroupBasicPolls: (...args) => basicPollsMocks.fetchGroupBasicPolls(...args),
+  deleteBasicPoll: (...args) => basicPollsMocks.deleteBasicPoll(...args),
+}));
 
 const emitNotificationEventMock = vi.fn();
 const buildNotificationActorMock = vi.fn((user) => user);
@@ -315,5 +325,19 @@ describe("questing group helpers", () => {
     httpsCallable.mockReturnValue(async () => ({ data: {} }));
     await removeMemberFromGroupPolls("group_1", "member@example.com");
     expect(httpsCallable).toHaveBeenCalledWith(undefined, "removeGroupMemberFromPolls");
+  });
+
+  it("deletes group-linked basic polls before deleting the group", async () => {
+    basicPollsMocks.fetchGroupBasicPolls.mockResolvedValueOnce([
+      { id: "poll_1" },
+      { id: "poll_2" },
+    ]);
+
+    await deleteQuestingGroup("group_1");
+
+    expect(basicPollsMocks.fetchGroupBasicPolls).toHaveBeenCalledWith("group_1");
+    expect(basicPollsMocks.deleteBasicPoll).toHaveBeenCalledWith("group_1", "poll_1");
+    expect(basicPollsMocks.deleteBasicPoll).toHaveBeenCalledWith("group_1", "poll_2");
+    expect(deleteDoc).toHaveBeenCalledWith(expect.objectContaining({ __docRef: true }));
   });
 });

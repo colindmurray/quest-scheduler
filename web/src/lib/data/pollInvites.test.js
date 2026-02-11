@@ -6,7 +6,12 @@ const firestoreMocks = {
   collection: vi.fn((...args) => ({ path: args.slice(1).join('/') })),
   deleteField: vi.fn(() => ({ __deleteField: true })),
   deleteDoc: vi.fn(),
-  doc: vi.fn((...args) => ({ path: args.slice(1).join('/') })),
+  doc: vi.fn((...args) => {
+    if (args[0] && typeof args[0] === 'object' && args[0].path && args.length === 2) {
+      return { path: `${args[0].path}/${args[1]}` };
+    }
+    return { path: args.slice(1).join('/') };
+  }),
   getDoc: vi.fn(),
   getDocs: vi.fn(),
   query: vi.fn((...args) => ({ queryArgs: args })),
@@ -35,6 +40,10 @@ const usersMocks = {
   findUserIdByEmail: vi.fn(),
 };
 
+const basicPollsMocks = {
+  deleteBasicPollVote: vi.fn(),
+};
+
 vi.mock('firebase/firestore', () => firestoreMocks);
 vi.mock('firebase/functions', () => functionsMocks);
 vi.mock('../firebase', () => ({ db: { name: 'db' } }));
@@ -48,6 +57,9 @@ vi.mock('./notifications', () => ({
     notificationsMocks.pollInviteLegacyNotificationId(...args),
 }));
 vi.mock('./users', () => ({ findUserIdByEmail: usersMocks.findUserIdByEmail }));
+vi.mock('./basicPolls', () => ({
+  deleteBasicPollVote: (...args) => basicPollsMocks.deleteBasicPollVote(...args),
+}));
 
 let pollInvites;
 
@@ -258,6 +270,9 @@ describe('pollInvites', () => {
   test('removeParticipantFromPoll removes user and votes by userId', async () => {
     const callable = vi.fn().mockResolvedValueOnce({});
     functionsMocks.httpsCallable.mockReturnValueOnce(callable);
+    firestoreMocks.getDocs.mockResolvedValueOnce({
+      docs: [{ id: 'bp-1' }, { id: 'bp-2' }],
+    });
 
     await pollInvites.removeParticipantFromPoll(
       'sched3',
@@ -280,7 +295,22 @@ describe('pollInvites', () => {
     expect(firestoreMocks.deleteDoc).toHaveBeenCalledWith({
       path: 'schedulers/sched3/votes/user3',
     });
-    expect(firestoreMocks.deleteDoc.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(firestoreMocks.getDocs).toHaveBeenCalledWith({
+      path: 'schedulers/sched3/basicPolls',
+    });
+    expect(basicPollsMocks.deleteBasicPollVote).toHaveBeenCalledWith(
+      'scheduler',
+      'sched3',
+      'bp-1',
+      'user3'
+    );
+    expect(basicPollsMocks.deleteBasicPollVote).toHaveBeenCalledWith(
+      'scheduler',
+      'sched3',
+      'bp-2',
+      'user3'
+    );
+    expect(Math.min(...firestoreMocks.deleteDoc.mock.invocationCallOrder)).toBeLessThan(
       firestoreMocks.updateDoc.mock.invocationCallOrder[0]
     );
   });

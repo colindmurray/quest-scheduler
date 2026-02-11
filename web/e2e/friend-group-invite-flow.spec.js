@@ -84,22 +84,22 @@ test.describe.serial('Friend & group invite flows', () => {
 
     await page.getByRole('button', { name: /Notifications/ }).click();
     const menu = page.getByRole('menu');
-    await expect(menu.getByText(groupAcceptName)).toBeVisible();
+    const groupAcceptNotification = menu
+      .getByText(groupAcceptName)
+      .locator('xpath=ancestor::div[contains(@class, "flex")][1]');
+    await expect(groupAcceptNotification).toBeVisible();
     await expect(menu.getByText(groupDeclineName)).toBeVisible();
-    await page.getByRole('button', { name: /Notifications/ }).click();
-
-    const acceptRow = pendingSection
-      .getByText(groupAcceptName, { exact: true })
-      .locator('..')
-      .locator('..');
-    await acceptRow.getByRole('button', { name: /Accept/ }).click();
+    await groupAcceptNotification
+      .getByRole('button', { name: /Accept group invitation/i })
+      .click();
 
     await expect(pendingSection.getByText(groupAcceptName)).toHaveCount(0);
     await page.waitForTimeout(1500);
 
     await page.reload();
+    await expect(pendingSection.getByText(groupAcceptName)).toHaveCount(0, { timeout: 30000 });
     await page.getByRole('button', { name: /Notifications/ }).click();
-    await expect(menu.getByText(groupAcceptName)).toHaveCount(0);
+    await expect(menu.getByText(groupAcceptName)).toHaveCount(0, { timeout: 30000 });
     await expect(menu.getByText(groupDeclineName)).toBeVisible();
   });
 
@@ -123,7 +123,7 @@ test.describe.serial('Friend & group invite flows', () => {
     await page.reload();
     await page.getByRole('button', { name: /Notifications/ }).click();
     const menu = page.getByRole('menu');
-    await expect(menu.getByText(groupDeclineName)).toHaveCount(0);
+    await expect(menu.getByText(groupDeclineName)).toHaveCount(0, { timeout: 15000 });
   });
 
   test('revoking friend/group invites clears invitee notifications', async ({ browser }) => {

@@ -5,14 +5,17 @@ import {
   deleteField,
   doc,
   getDocs,
+  getDoc,
   onSnapshot,
   query,
   setDoc,
   updateDoc,
   where,
+  documentId,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { chunkArray } from "../utils";
+import { deleteEmbeddedBasicPoll, fetchEmbeddedBasicPolls } from "./basicPolls";
 
 export const schedulerRef = (id) => doc(db, "schedulers", id);
 export const schedulerSlotsCollectionRef = (id) =>
@@ -93,6 +96,29 @@ export async function fetchSchedulerVotes(schedulerId) {
   return snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
 }
 
+export async function fetchUserSchedulerVote(schedulerId, userId) {
+  if (!schedulerId || !userId) return null;
+  const snap = await getDoc(doc(db, "schedulers", schedulerId, "votes", userId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() };
+}
+
+export async function fetchSchedulersByIds(ids = []) {
+  const normalized = Array.from(new Set((ids || []).filter(Boolean)));
+  if (normalized.length === 0) return {};
+  const results = {};
+  await Promise.all(
+    chunkArray(normalized, 10).map(async (chunk) => {
+      const q = query(collection(db, "schedulers"), where(documentId(), "in", chunk));
+      const snapshot = await getDocs(q);
+      snapshot.docs.forEach((docSnap) => {
+        results[docSnap.id] = { id: docSnap.id, ...docSnap.data() };
+      });
+    })
+  );
+  return results;
+}
+
 export async function updateScheduler(schedulerId, updates) {
   if (!schedulerId) return;
   return updateDoc(schedulerRef(schedulerId), updates);
@@ -131,6 +157,24 @@ export async function upsertSchedulerVote(schedulerId, voteId, data) {
 export async function deleteSchedulerVote(schedulerId, voteId) {
   if (!schedulerId || !voteId) return;
   return deleteDoc(schedulerVoteDocRef(schedulerId, voteId));
+}
+
+export async function deleteSchedulerWithRelatedData(schedulerId) {
+  if (!schedulerId) return;
+
+  const [slots, votes, embeddedBasicPolls] = await Promise.all([
+    fetchSchedulerSlots(schedulerId),
+    fetchSchedulerVotes(schedulerId),
+    fetchEmbeddedBasicPolls(schedulerId),
+  ]);
+
+  await Promise.all(slots.map((slot) => deleteSchedulerSlot(schedulerId, slot.id)));
+  await Promise.all(votes.map((vote) => deleteSchedulerVote(schedulerId, vote.id)));
+  await Promise.all(
+    embeddedBasicPolls.map((poll) => deleteEmbeddedBasicPoll(schedulerId, poll.id))
+  );
+
+  await deleteScheduler(schedulerId);
 }
 
 export { deleteField };

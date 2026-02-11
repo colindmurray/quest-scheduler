@@ -47,6 +47,28 @@ async function seed() {
   const notifierId = process.env.E2E_NOTIFICATION_UID || "test-notifier";
   const notifierEmail = process.env.E2E_NOTIFICATION_EMAIL || "notifier@example.com";
   const notifierPassword = process.env.E2E_NOTIFICATION_PASSWORD || "password";
+  const copySourceId = process.env.E2E_COPY_SOURCE_ID || "e2e-copy-source";
+  const copyDestinationId = process.env.E2E_COPY_DEST_ID || "e2e-copy-destination";
+  const copyPendingDestId = process.env.E2E_COPY_PENDING_DEST_ID || "e2e-copy-destination-pending";
+  const copyOverlapDestId = process.env.E2E_COPY_OVERLAP_DEST_ID || "e2e-copy-destination-overlap";
+  const copyVotedDestId = process.env.E2E_COPY_VOTED_DEST_ID || "e2e-copy-destination-voted";
+  const busyFinalizedId = process.env.E2E_BUSY_FINALIZED_ID || "e2e-busy-finalized";
+  const busyTargetId = process.env.E2E_BUSY_TARGET_ID || "e2e-busy-target";
+  const basicGroupId = process.env.E2E_BASIC_GROUP_ID || groupOwnerId;
+  const basicStandalonePollId =
+    process.env.E2E_BASIC_STANDALONE_POLL_ID || "e2e-basic-standalone-poll";
+  const basicRankedPollId =
+    process.env.E2E_BASIC_RANKED_POLL_ID || "e2e-basic-ranked-poll";
+  const basicDeadlinePollId =
+    process.env.E2E_BASIC_DEADLINE_POLL_ID || "e2e-basic-deadline-poll";
+  const basicDashboardPollId =
+    process.env.E2E_BASIC_DASHBOARD_POLL_ID || "e2e-basic-dashboard-poll";
+  const embeddedBasicPollId =
+    process.env.E2E_EMBEDDED_BASIC_POLL_ID || "e2e-embedded-required-poll";
+  const embeddedEditorSchedulerId =
+    process.env.E2E_EMBEDDED_EDITOR_SCHEDULER_ID || "e2e-embedded-editor-scheduler";
+  const embeddedEditorPollId =
+    process.env.E2E_EMBEDDED_EDITOR_POLL_ID || "e2e-embedded-editor-existing-poll";
 
   const auth = admin.auth();
   const ensureUser = async ({ uid, email, password, displayName }) => {
@@ -200,6 +222,7 @@ async function seed() {
           notificationMode: "advanced",
           notificationPreferences: buildNotificationPreferences(),
           emailNotifications: true,
+          autoBlockConflicts: false,
         },
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
@@ -245,6 +268,13 @@ async function seed() {
     title,
     pendingEmails = [inviteeEmailLower],
     participantIds = [participantId, inviteeId],
+    creatorId = participantId,
+    creatorEmail = participantEmail,
+    status = "OPEN",
+    winningSlotId = null,
+    finalizedAtMs = null,
+    finalizedSlotPriorityAtMs = null,
+    seedDefaultSlots = true,
   }) => {
     const pendingInviteMeta = {};
     pendingEmails.forEach((email) => {
@@ -257,16 +287,18 @@ async function seed() {
     });
     await db.doc(`schedulers/${id}`).set({
       title,
-      creatorId: participantId,
-      creatorEmail: participantEmail,
-      status: "OPEN",
+      creatorId,
+      creatorEmail,
+      status,
       participantIds,
       pendingInvites: pendingEmails,
       pendingInviteMeta,
       allowLinkSharing: false,
       timezone: "UTC",
       timezoneMode: "utc",
-      winningSlotId: null,
+      winningSlotId,
+      ...(finalizedAtMs ? { finalizedAtMs } : {}),
+      ...(finalizedSlotPriorityAtMs ? { finalizedSlotPriorityAtMs } : {}),
       googleEventId: null,
       questingGroupId: null,
       questingGroupName: null,
@@ -298,17 +330,19 @@ async function seed() {
         },
       });
 
-    await db.doc(`schedulers/${id}/slots/slot-1`).set({
-      start: slotStart.toISOString(),
-      end: slotEnd.toISOString(),
-      stats: { feasible: 0, preferred: 0 },
-    });
+    if (seedDefaultSlots) {
+      await db.doc(`schedulers/${id}/slots/slot-1`).set({
+        start: slotStart.toISOString(),
+        end: slotEnd.toISOString(),
+        stats: { feasible: 0, preferred: 0 },
+      });
 
-    await db.doc(`schedulers/${id}/slots/slot-2`).set({
-      start: slotStartTwo.toISOString(),
-      end: slotEndTwo.toISOString(),
-      stats: { feasible: 0, preferred: 0 },
-    });
+      await db.doc(`schedulers/${id}/slots/slot-2`).set({
+        start: slotStartTwo.toISOString(),
+        end: slotEndTwo.toISOString(),
+        stats: { feasible: 0, preferred: 0 },
+      });
+    }
   };
 
   const seedFriendRequest = async ({
@@ -422,6 +456,12 @@ async function seed() {
   await seedScheduler({ id: schedulerDeclineId, title: "E2E Scheduler Poll Decline" });
   await seedScheduler({ id: schedulerNotificationId, title: "E2E Scheduler Poll Notification" });
   await seedScheduler({
+    id: embeddedEditorSchedulerId,
+    title: "E2E Embedded Editor Scheduler",
+    pendingEmails: [],
+    participantIds: [participantId, inviteeId],
+  });
+  await seedScheduler({
     id: "auto-poll-invite-accepted",
     title: "Auto Poll Invite Accepted",
     pendingEmails: [notifierEmailLower],
@@ -439,6 +479,183 @@ async function seed() {
     pendingEmails: [notifierEmailLower],
     participantIds: [participantId, notifierId],
   });
+
+  // Seed Copy Votes scenarios
+  // Source poll: owner has votes on future slots.
+  const copySourceStart = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+  const copySourceEnd = new Date(copySourceStart.getTime() + 2 * 60 * 60 * 1000);
+  const copySourceStartTwo = new Date(copySourceStart.getTime() + 24 * 60 * 60 * 1000);
+  const copySourceEndTwo = new Date(copySourceStartTwo.getTime() + 2 * 60 * 60 * 1000);
+
+  await seedScheduler({
+    id: copySourceId,
+    title: "E2E Copy Source Poll",
+    pendingEmails: [],
+    participantIds: [participantId, inviteeId],
+    seedDefaultSlots: false,
+  });
+  await db.doc(`schedulers/${copySourceId}/slots/slot-a`).set({
+    start: copySourceStart.toISOString(),
+    end: copySourceEnd.toISOString(),
+    stats: { feasible: 0, preferred: 0 },
+  });
+  await db.doc(`schedulers/${copySourceId}/slots/slot-b`).set({
+    start: copySourceStartTwo.toISOString(),
+    end: copySourceEndTwo.toISOString(),
+    stats: { feasible: 0, preferred: 0 },
+  });
+  await db.doc(`schedulers/${copySourceId}/votes/${participantId}`).set({
+    voterId: participantId,
+    userEmail: participantEmail,
+    userAvatar: null,
+    noTimesWork: false,
+    votes: { "slot-a": "PREFERRED", "slot-b": "FEASIBLE" },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  // Destination poll: overlapping and extending slots for match warnings.
+  await seedScheduler({
+    id: copyDestinationId,
+    title: "E2E Copy Destination Poll",
+    pendingEmails: [],
+    participantIds: [participantId, inviteeId],
+    seedDefaultSlots: false,
+  });
+  await db.doc(`schedulers/${copyDestinationId}/slots/dest-1`).set({
+    start: new Date(copySourceStart.getTime() + 30 * 60 * 1000).toISOString(),
+    end: new Date(copySourceStart.getTime() + 90 * 60 * 1000).toISOString(),
+    stats: { feasible: 0, preferred: 0 },
+  });
+  await db.doc(`schedulers/${copyDestinationId}/slots/dest-2`).set({
+    start: new Date(copySourceStart.getTime() + 60 * 60 * 1000).toISOString(),
+    end: new Date(copySourceEnd.getTime() + 60 * 60 * 1000).toISOString(),
+    stats: { feasible: 0, preferred: 0 },
+  });
+
+  // Overlap-review destination: slot starts before the source slot but overlaps.
+  await seedScheduler({
+    id: copyOverlapDestId,
+    title: "E2E Copy Overlap Review Poll",
+    pendingEmails: [],
+    participantIds: [participantId, inviteeId],
+    seedDefaultSlots: false,
+  });
+  await db.doc(`schedulers/${copyOverlapDestId}/slots/overlap-1`).set({
+    start: new Date(copySourceStart.getTime() - 30 * 60 * 1000).toISOString(),
+    end: new Date(copySourceStart.getTime() + 30 * 60 * 1000).toISOString(),
+    stats: { feasible: 0, preferred: 0 },
+  });
+
+  // Already-voted destination: should be excluded from the "Copy votes" dropdown.
+  await seedScheduler({
+    id: copyVotedDestId,
+    title: "E2E Copy Already Voted Poll",
+    pendingEmails: [],
+    participantIds: [participantId, inviteeId],
+    seedDefaultSlots: false,
+  });
+  await db.doc(`schedulers/${copyVotedDestId}/slots/voted-1`).set({
+    start: new Date(copySourceStart.getTime() + 45 * 60 * 1000).toISOString(),
+    end: new Date(copySourceStart.getTime() + 105 * 60 * 1000).toISOString(),
+    stats: { feasible: 0, preferred: 0 },
+  });
+  await db.doc(`schedulers/${copyVotedDestId}/votes/${participantId}`).set({
+    voterId: participantId,
+    userEmail: participantEmail,
+    userAvatar: null,
+    noTimesWork: false,
+    votes: { "voted-1": "FEASIBLE" },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  // Pending-invite destination: created by participant, invites owner.
+  await seedScheduler({
+    id: copyPendingDestId,
+    title: "E2E Copy Pending Invite Poll",
+    pendingEmails: [ownerEmailLower],
+    participantIds: [inviteeId],
+    creatorId: inviteeId,
+    creatorEmail: inviteeEmail,
+    seedDefaultSlots: false,
+  });
+  await db.doc(`schedulers/${copyPendingDestId}/slots/pdest-1`).set({
+    start: new Date(copySourceStart.getTime() + 30 * 60 * 1000).toISOString(),
+    end: new Date(copySourceStart.getTime() + 90 * 60 * 1000).toISOString(),
+    stats: { feasible: 0, preferred: 0 },
+  });
+
+  // Seed busy window scenario:
+  // A finalized poll where owner confirmed, producing a busy window that overlaps an open poll slot.
+  const busyStart = new Date(now.getTime() + 72 * 60 * 60 * 1000);
+  const busyEnd = new Date(busyStart.getTime() + 2 * 60 * 60 * 1000);
+  const busyTargetStart = new Date(busyStart.getTime() + 30 * 60 * 1000);
+  const busyTargetEnd = new Date(busyTargetStart.getTime() + 2 * 60 * 60 * 1000);
+  const priorityAtMs = Date.now() - 10000;
+
+  await seedScheduler({
+    id: busyFinalizedId,
+    title: "E2E Busy Finalized Poll",
+    pendingEmails: [],
+    participantIds: [participantId, inviteeId],
+    creatorId: inviteeId,
+    creatorEmail: inviteeEmail,
+    status: "FINALIZED",
+    winningSlotId: "busy-slot",
+    finalizedAtMs: priorityAtMs,
+    finalizedSlotPriorityAtMs: { "busy-slot": priorityAtMs },
+    seedDefaultSlots: false,
+  });
+  await db.doc(`schedulers/${busyFinalizedId}/slots/busy-slot`).set({
+    start: busyStart.toISOString(),
+    end: busyEnd.toISOString(),
+    stats: { feasible: 0, preferred: 0 },
+  });
+  await db.doc(`schedulers/${busyFinalizedId}/votes/${participantId}`).set({
+    voterId: participantId,
+    userEmail: participantEmail,
+    userAvatar: null,
+    noTimesWork: false,
+    votes: { "busy-slot": "FEASIBLE" },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await seedScheduler({
+    id: busyTargetId,
+    title: "E2E Busy Target Poll",
+    pendingEmails: [],
+    participantIds: [participantId, inviteeId],
+    creatorId: inviteeId,
+    creatorEmail: inviteeEmail,
+    seedDefaultSlots: false,
+  });
+  await db.doc(`schedulers/${busyTargetId}/slots/target-slot`).set({
+    start: busyTargetStart.toISOString(),
+    end: busyTargetEnd.toISOString(),
+    stats: { feasible: 0, preferred: 0 },
+  });
+  await db.doc(`schedulers/${busyTargetId}/votes/${participantId}`).set({
+    voterId: participantId,
+    userEmail: participantEmail,
+    userAvatar: null,
+    noTimesWork: false,
+    votes: { "target-slot": "PREFERRED" },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  // Wait for functions triggers to populate busy windows for the owner.
+  const waitForBusyWindow = async () => {
+    const maxTries = 40;
+    for (let i = 0; i < maxTries; i++) {
+      const snap = await db.doc(`usersPublic/${participantId}`).get();
+      const windows = snap.exists ? snap.data()?.busyWindows || [] : [];
+      if (windows.some((win) => win?.sourceSchedulerId === busyFinalizedId)) {
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    throw new Error("Timed out waiting for busy window trigger");
+  };
+  await waitForBusyWindow();
 
   await seedFriendRequest({
     id: friendAcceptId,
@@ -530,6 +747,130 @@ async function seed() {
     name: "Auto Group Deleted",
     pendingEmail: notifierEmail,
   });
+
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+  const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+
+  await db.doc(`questingGroups/${basicGroupId}/basicPolls/${basicStandalonePollId}`).set({
+    title: "E2E Standalone Basic Poll",
+    description: "Choose one option.",
+    creatorId: participantId,
+    status: "OPEN",
+    settings: {
+      voteType: "MULTIPLE_CHOICE",
+      allowMultiple: false,
+      allowWriteIn: false,
+      deadlineAt: nextWeek,
+    },
+    options: [
+      { id: "pizza", label: "Pizza", order: 0 },
+      { id: "tacos", label: "Tacos", order: 1 },
+      { id: "curry", label: "Curry", order: 2 },
+    ],
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await db.doc(`questingGroups/${basicGroupId}/basicPolls/${basicRankedPollId}`).set({
+    title: "E2E Ranked Basic Poll",
+    description: "Rank your campaign choices.",
+    creatorId: participantId,
+    status: "OPEN",
+    settings: {
+      voteType: "RANKED_CHOICE",
+      allowMultiple: false,
+      allowWriteIn: false,
+      deadlineAt: nextWeek,
+    },
+    options: [
+      { id: "strahd", label: "Curse of Strahd", order: 0 },
+      { id: "tomb", label: "Tomb of Annihilation", order: 1 },
+      { id: "wild", label: "The Wild Beyond the Witchlight", order: 2 },
+    ],
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await db.doc(`questingGroups/${basicGroupId}/basicPolls/${basicDeadlinePollId}`).set({
+    title: "E2E Deadline Closed Poll",
+    description: "Voting should be closed due to deadline.",
+    creatorId: participantId,
+    status: "OPEN",
+    settings: {
+      voteType: "MULTIPLE_CHOICE",
+      allowMultiple: false,
+      allowWriteIn: false,
+      deadlineAt: yesterday,
+    },
+    options: [
+      { id: "a", label: "Option A", order: 0 },
+      { id: "b", label: "Option B", order: 1 },
+    ],
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await db.doc(`questingGroups/${basicGroupId}/basicPolls/${basicDashboardPollId}`).set({
+    title: "E2E Dashboard Group Poll",
+    description: "Should appear in dashboard unvoted list.",
+    creatorId: participantId,
+    status: "OPEN",
+    settings: {
+      voteType: "MULTIPLE_CHOICE",
+      allowMultiple: false,
+      allowWriteIn: false,
+      deadlineAt: tomorrow,
+    },
+    options: [
+      { id: "d1", label: "Friday", order: 0 },
+      { id: "d2", label: "Saturday", order: 1 },
+    ],
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await db.doc(`schedulers/${schedulerId}/basicPolls/${embeddedBasicPollId}`).set({
+    title: "E2E Embedded Required Poll",
+    description: "**Required** embedded poll for dashboard + deep-link coverage.",
+    creatorId: participantId,
+    required: true,
+    order: 0,
+    settings: {
+      voteType: "MULTIPLE_CHOICE",
+      allowMultiple: false,
+      allowWriteIn: false,
+      deadlineAt: nextWeek,
+    },
+    options: [
+      { id: "e1", label: "In person", order: 0, note: "Bring **physical dice** and minis." },
+      { id: "e2", label: "Online", order: 1 },
+    ],
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await db
+    .doc(`schedulers/${embeddedEditorSchedulerId}/basicPolls/${embeddedEditorPollId}`)
+    .set({
+      title: "E2E Embedded Editable Poll",
+      description: "Poll used for embedded add/edit/remove e2e coverage.",
+      creatorId: participantId,
+      required: false,
+      order: 0,
+      settings: {
+        voteType: "MULTIPLE_CHOICE",
+        allowMultiple: false,
+        allowWriteIn: false,
+        deadlineAt: nextWeek,
+      },
+      options: [
+        { id: "ep1", label: "Option Alpha", order: 0 },
+        { id: "ep2", label: "Option Beta", order: 1 },
+      ],
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
 
   await seedGroupNotification({
     userId: inviteeId,

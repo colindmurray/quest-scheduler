@@ -7,6 +7,9 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { normalizeEmail, encodeEmailId } = require("./utils/email");
+const { computeInstantRunoffResults } = require("./basic-polls/irv");
+const { computeMultipleChoiceTallies } = require("./basic-polls/multiple-choice");
+const { computeSchedulerRequiredEmbeddedPollSummary } = require("./basic-polls/required-summary");
 const {
   DISCORD_USERNAME_REGEX,
   LEGACY_DISCORD_TAG_REGEX,
@@ -46,6 +49,97 @@ let fileConfigLoaded = false;
 
 function friendRequestIdForEmails(fromEmail, toEmail) {
   return `friendRequest:${encodeURIComponent(`${fromEmail}__${toEmail}`)}`;
+}
+
+function normalizeVoteOptionIds(values) {
+  if (!Array.isArray(values)) return [];
+  return values.filter((entry) => typeof entry === "string" && entry.trim());
+}
+
+function hasSubmittedBasicPollVote(voteType, allowWriteIn, voteDoc) {
+  if (voteType === "RANKED_CHOICE") {
+    return normalizeVoteOptionIds(voteDoc && voteDoc.rankings).length > 0;
+  }
+  const hasOptionIds = normalizeVoteOptionIds(voteDoc && voteDoc.optionIds).length > 0;
+  const hasWriteIn = allowWriteIn && String((voteDoc && voteDoc.otherText) || "").trim().length > 0;
+  return hasOptionIds || hasWriteIn;
+}
+
+function buildBasicPollFinalResultsSnapshot(pollData, voteDocs) {
+  const settings = (pollData && pollData.settings) || {};
+  const voteType = settings.voteType === "RANKED_CHOICE" ? "RANKED_CHOICE" : "MULTIPLE_CHOICE";
+  const allowWriteIn = voteType === "MULTIPLE_CHOICE" && settings.allowWriteIn === true;
+  const options = Array.isArray(pollData && pollData.options) ? pollData.options : [];
+  const submittedVotes = (voteDocs || []).filter((voteDoc) =>
+    hasSubmittedBasicPollVote(voteType, allowWriteIn, voteDoc)
+  );
+
+  if (voteType === "RANKED_CHOICE") {
+    const irv = computeInstantRunoffResults({
+      optionIds: options.map((option) => option && option.id).filter(Boolean),
+      votes: submittedVotes,
+    });
+    const rounds = Array.isArray(irv.rounds) ? irv.rounds : [];
+    const lastRound = rounds.length > 0 ? rounds[rounds.length - 1] : null;
+    return {
+      voteType,
+      rounds,
+      winnerIds: Array.isArray(irv.winnerIds) ? irv.winnerIds : [],
+      tiedIds: Array.isArray(irv.tiedIds) ? irv.tiedIds : [],
+      voterCount: Number.isFinite(irv.totalBallots) ? irv.totalBallots : submittedVotes.length,
+      exhaustedCount:
+        Number.isFinite(lastRound && lastRound.exhausted) ? lastRound.exhausted : 0,
+      capturedAt: FieldValue.serverTimestamp(),
+    };
+  }
+
+  const tallies = computeMultipleChoiceTallies({
+    options,
+    votes: submittedVotes,
+    allowWriteIn,
+  });
+  const rows = (tallies.rows || []).map((row) => ({
+    key: row.key,
+    label: row.label,
+    order: row.order,
+    count: row.count,
+    percentage: row.percentage,
+  }));
+  const winningCount = Math.max.apply(
+    null,
+    rows.map((row) => row.count).concat([0])
+  );
+  const winnerIds = winningCount > 0
+    ? rows.filter((row) => row.count === winningCount).map((row) => row.key)
+    : [];
+  return {
+    voteType,
+    rows,
+    winnerIds,
+    voterCount: Number.isFinite(tallies.totalVoters) ? tallies.totalVoters : submittedVotes.length,
+    capturedAt: FieldValue.serverTimestamp(),
+  };
+}
+
+async function writeEmbeddedBasicPollFinalResults(schedulerRef) {
+  const pollsSnapshot = await schedulerRef.collection("basicPolls").get();
+  if (!pollsSnapshot || pollsSnapshot.empty) return;
+
+  await Promise.all(
+    pollsSnapshot.docs.map(async (pollDoc) => {
+      const pollData = pollDoc.data() || {};
+      const votesSnapshot = await pollDoc.ref.collection("votes").get();
+      const voteDocs = (votesSnapshot.docs || []).map((voteDoc) => ({
+        id: voteDoc.id,
+        ...voteDoc.data(),
+      }));
+      const finalResults = buildBasicPollFinalResultsSnapshot(pollData, voteDocs);
+      await pollDoc.ref.update({
+        finalResults,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    })
+  );
 }
 
 const hashEmail = (email) =>
@@ -751,11 +845,36 @@ exports.googleCalendarFinalizePoll = functionsWithOAuthSecrets.https.onCall(asyn
     }
   }
 
+  const finalizedNowMs = Date.now();
+  const existingPriority = scheduler.finalizedSlotPriorityAtMs || {};
+  const requiredEmbeddedSummary = await computeSchedulerRequiredEmbeddedPollSummary({
+    db: admin.firestore(),
+    schedulerId,
+    schedulerData: scheduler,
+    includeMissingUsers: false,
+  });
+  const missingRequiredSummary = (requiredEmbeddedSummary.requiredPolls || [])
+    .filter((pollSummary) => pollSummary.missingCount > 0)
+    .map((pollSummary) => ({
+      basicPollId: pollSummary.basicPollId,
+      basicPollTitle: pollSummary.basicPollTitle || "Untitled poll",
+      missingCount: pollSummary.missingCount,
+      missingUserIds: pollSummary.missingUserIds || [],
+    }));
+  await writeEmbeddedBasicPollFinalResults(schedulerRef);
   await schedulerRef.update({
     status: "FINALIZED",
     winningSlotId: slotId,
     googleEventId: eventId,
     googleCalendarId: calendarIdToSave,
+    finalizedAtMs: finalizedNowMs,
+    finalizedSlotPriorityAtMs: {
+      ...existingPriority,
+      [slotId]: existingPriority[slotId] || finalizedNowMs,
+    },
+    finalizedWithMissingRequiredBasicPollVotes: missingRequiredSummary.length > 0,
+    missingRequiredBasicPollVotesSummary: missingRequiredSummary,
+    missingRequiredBasicPollVotesCapturedAt: FieldValue.serverTimestamp(),
   });
 
   return { eventId, calendarId: calendarIdToSave };
@@ -847,6 +966,29 @@ exports.cloneSchedulerPoll = functions.https.onCall(async (data, context) => {
     )
   );
 
+  const embeddedPollsSnap = await schedulerRef.collection("basicPolls").get();
+  const embeddedPollDocs = embeddedPollsSnap.docs || [];
+
+  await Promise.all(
+    embeddedPollDocs.map((pollDoc, index) => {
+      const pollData = pollDoc.data() || {};
+      const clonedPollData = {
+        ...pollData,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      delete clonedPollData.finalResults;
+      delete clonedPollData.finalizedAt;
+      delete clonedPollData.finalizedByUserId;
+      delete clonedPollData.status;
+      if (!Number.isFinite(clonedPollData.order)) {
+        clonedPollData.order = index;
+      }
+
+      return newRef.collection("basicPolls").doc(pollDoc.id).set(clonedPollData);
+    })
+  );
+
   if (!clearVotes) {
     const participantIdSet = new Set(
       [...participantIds, ...groupMemberIds].filter(Boolean)
@@ -880,6 +1022,32 @@ exports.cloneSchedulerPoll = functions.https.onCall(async (data, context) => {
             },
             { merge: true }
           );
+      })
+    );
+
+    await Promise.all(
+      embeddedPollDocs.map(async (pollDoc) => {
+        const embeddedVotesSnap = await pollDoc.ref.collection("votes").get();
+        await Promise.all(
+          embeddedVotesSnap.docs.map((voteDoc) => {
+            if (!participantIdSet.has(voteDoc.id)) {
+              return Promise.resolve();
+            }
+
+            return newRef
+              .collection("basicPolls")
+              .doc(pollDoc.id)
+              .collection("votes")
+              .doc(voteDoc.id)
+              .set(
+                {
+                  ...voteDoc.data(),
+                  updatedAt: FieldValue.serverTimestamp(),
+                },
+                { merge: true }
+              );
+          })
+        );
       })
     );
   }
@@ -1880,9 +2048,7 @@ exports.removeGroupMemberFromPolls = functions.https.onCall(async (data, context
     .get();
 
   const pollDocs = pollsSnap.docs;
-  if (pollDocs.length === 0) {
-    return { ok: true, polls: 0 };
-  }
+  const groupBasicPollsSnap = await groupRef.collection("basicPolls").get();
 
   const deleteVoteDocs = async (pollRef) => {
     if (memberUid) {
@@ -1897,6 +2063,23 @@ exports.removeGroupMemberFromPolls = functions.https.onCall(async (data, context
     }
   };
 
+  const deleteBasicPollVoteDocs = async (basicPollRef) => {
+    if (memberUid) {
+      await basicPollRef.collection("votes").doc(memberUid).delete().catch(() => undefined);
+    }
+    const voteSnap = await basicPollRef
+      .collection("votes")
+      .where("userEmail", "==", memberEmail)
+      .get()
+      .catch(() => ({ empty: true, docs: [] }));
+    if (!voteSnap.empty) {
+      await batchDelete(voteSnap.docs);
+    }
+  };
+
+  let embeddedBasicPollsPruned = 0;
+  let groupBasicPollsPruned = 0;
+
   const pollInviteEvents = [];
 
   for (const pollDoc of pollDocs) {
@@ -1908,6 +2091,16 @@ exports.removeGroupMemberFromPolls = functions.https.onCall(async (data, context
       updatedAt: FieldValue.serverTimestamp(),
     });
     await deleteVoteDocs(pollDoc.ref);
+    if ((pollData.status || "OPEN") === "OPEN") {
+      const embeddedBasicPollsSnap = await pollDoc.ref
+        .collection("basicPolls")
+        .get()
+        .catch(() => ({ empty: true, docs: [] }));
+      for (const basicPollDoc of embeddedBasicPollsSnap.docs || []) {
+        await deleteBasicPollVoteDocs(basicPollDoc.ref);
+        embeddedBasicPollsPruned += 1;
+      }
+    }
 
     if (memberUid) {
       pollInviteEvents.push(
@@ -1944,11 +2137,23 @@ exports.removeGroupMemberFromPolls = functions.https.onCall(async (data, context
     }
   }
 
+  for (const basicPollDoc of groupBasicPollsSnap.docs || []) {
+    const basicPollData = basicPollDoc.data() || {};
+    if ((basicPollData.status || "OPEN") !== "OPEN") continue;
+    await deleteBasicPollVoteDocs(basicPollDoc.ref);
+    groupBasicPollsPruned += 1;
+  }
+
   if (pollInviteEvents.length > 0) {
     await Promise.all(pollInviteEvents);
   }
 
-  return { ok: true, polls: pollDocs.length };
+  return {
+    ok: true,
+    polls: pollDocs.length,
+    embeddedBasicPollsPruned,
+    groupBasicPollsPruned,
+  };
 });
 
 exports.blockUser = functions.https.onCall(async (data, context) => {
@@ -2384,6 +2589,59 @@ async function deleteUserVotesEverywhere(uid, email) {
   }
 }
 
+async function deleteBasicPollVotesExplicitly({ uid, email, groupIds = [], schedulerDocs = [] }) {
+  const db = admin.firestore();
+  const uniqueGroupIds = Array.from(new Set((groupIds || []).filter(Boolean)));
+  const uniqueSchedulerDocs = Array.from(
+    new Map(
+      (schedulerDocs || [])
+        .filter((docSnap) => docSnap?.id && docSnap?.ref)
+        .map((docSnap) => [docSnap.id, docSnap])
+    ).values()
+  );
+
+  const deleteVotesForBasicPollRef = async (basicPollRef) => {
+    if (!basicPollRef?.collection) return;
+    const votesRef = basicPollRef.collection("votes");
+    if (!votesRef) return;
+
+    if (uid && votesRef.doc) {
+      await votesRef.doc(uid).delete().catch(() => undefined);
+    }
+
+    if (!email || !votesRef.where) return;
+    const emailVotesSnap = await votesRef
+      .where("userEmail", "==", email)
+      .get()
+      .catch(() => ({ empty: true, docs: [] }));
+    if (!emailVotesSnap.empty) {
+      await batchDelete(emailVotesSnap.docs);
+    }
+  };
+
+  for (const groupId of uniqueGroupIds) {
+    const groupPollsSnap = await db
+      .collection("questingGroups")
+      .doc(groupId)
+      .collection("basicPolls")
+      .get()
+      .catch(() => ({ empty: true, docs: [] }));
+    for (const basicPollDoc of groupPollsSnap.docs || []) {
+      await deleteVotesForBasicPollRef(basicPollDoc.ref);
+    }
+  }
+
+  for (const schedulerDoc of uniqueSchedulerDocs) {
+    const schedulerBasicPollsSnap = await schedulerDoc.ref
+      .collection("basicPolls")
+      .get()
+      .catch(() => ({ empty: true, docs: [] }));
+    for (const basicPollDoc of schedulerBasicPollsSnap.docs || []) {
+      await deleteVotesForBasicPollRef(basicPollDoc.ref);
+    }
+  }
+}
+
 exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError("unauthenticated", "Login required");
@@ -2500,8 +2758,21 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
       console.warn("deleteUserAccount: notifications cleanup failed", err);
     }
 
+    step = "scheduler-snapshots";
+    const [createdPollsSnap, participantPollsSnap] = await Promise.all([
+      db.collection("schedulers").where("creatorId", "==", uid).get(),
+      db.collection("schedulers").where("participantIds", "array-contains", uid).get(),
+    ]);
+
+    step = "basic-poll-votes-explicit";
+    await deleteBasicPollVotesExplicitly({
+      uid,
+      email,
+      groupIds,
+      schedulerDocs: [...createdPollsSnap.docs, ...participantPollsSnap.docs],
+    });
+
     step = "created-polls";
-    const createdPollsSnap = await db.collection("schedulers").where("creatorId", "==", uid).get();
     for (const pollDoc of createdPollsSnap.docs) {
       await db.recursiveDelete(pollDoc.ref);
     }
@@ -2510,10 +2781,6 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
     await deleteUserVotesEverywhere(uid, email);
 
     step = "participant-polls";
-    const participantPollsSnap = await db
-      .collection("schedulers")
-      .where("participantIds", "array-contains", uid)
-      .get();
     for (const pollDoc of participantPollsSnap.docs) {
       const pollData = pollDoc.data() || {};
       if (pollData.creatorId === uid) continue;

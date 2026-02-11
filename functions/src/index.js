@@ -9,6 +9,10 @@ const discordNudge = require("./discord/nudge");
 const discordRepost = require("./discord/repost");
 const discordWarmup = require("./discord/warmup");
 const schedulerTriggers = require("./triggers/scheduler");
+const busyWindowTriggers = require("./triggers/busy-windows");
+const basicPollTriggers = require("./triggers/basic-polls");
+const basicPollCardTriggers = require("./triggers/basic-poll-card");
+const basicPollCallables = require("./basic-polls/callables");
 const auth = require("./auth");
 const notificationEvents = require("./notifications/emit");
 const notificationRouter = require("./notifications/router");
@@ -26,6 +30,10 @@ module.exports = {
   ...discordRepost,
   ...discordWarmup,
   ...schedulerTriggers,
+  ...busyWindowTriggers,
+  ...basicPollTriggers,
+  ...basicPollCardTriggers,
+  ...basicPollCallables,
   ...auth,
   ...notificationEvents,
   ...notificationRouter,

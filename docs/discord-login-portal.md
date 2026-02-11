@@ -1,3 +1,21 @@
+---
+created: 2026-01-27
+lastUpdated: 2026-02-11
+summary: "Design for Discord OAuth as a first-class login provider and account-linking constraints."
+category: DESIGN_DOC
+status: STALE
+implementationStatus: COMPLETE
+note: "Discord login flow is implemented (auth entrypoint, callback token exchange, finish route, and unlink guard), but this design doc's baseline sections are now dated."
+changelog:
+  - "2026-02-11: Reclassified implementationStatus to COMPLETE after codebase verification of Discord login/link/unlink flows."
+  - "2026-01-28: uuid: phase4 uid-only participants/members"
+  - "2026-01-27: docs: clarify discord email requirement"
+  - "2026-01-27: chore: save work in progress"
+---
+
+> [!WARNING]
+> This document is marked **stale**. Verify against current code and newer docs before relying on it.
+
 # Discord Login Portal Design
 
 ## Summary

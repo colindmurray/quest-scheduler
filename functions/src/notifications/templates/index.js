@@ -13,6 +13,17 @@ const pollReopenedInApp = require("./in-app/poll-reopened");
 const pollCancelledInApp = require("./in-app/poll-cancelled");
 const pollRestoredInApp = require("./in-app/poll-restored");
 const pollDeletedInApp = require("./in-app/poll-deleted");
+const basicPollCreatedInApp = require("./in-app/basic-poll-created");
+const basicPollFinalizedInApp = require("./in-app/basic-poll-finalized");
+const basicPollReopenedInApp = require("./in-app/basic-poll-reopened");
+const basicPollVoteSubmittedInApp = require("./in-app/basic-poll-vote-submitted");
+const basicPollReminderInApp = require("./in-app/basic-poll-reminder");
+const basicPollResetInApp = require("./in-app/basic-poll-reset");
+const basicPollRemovedInApp = require("./in-app/basic-poll-removed");
+const basicPollDeadlineChangedInApp = require("./in-app/basic-poll-deadline-changed");
+const basicPollRequiredChangedInApp = require("./in-app/basic-poll-required-changed");
+const basicPollResultsInApp = require("./in-app/basic-poll-results");
+const basicPollFinalizedWithMissingRequiredVotesInApp = require("./in-app/basic-poll-finalized-with-missing-required-votes");
 const slotChangedInApp = require("./in-app/slot-changed");
 const discordNudgeSentInApp = require("./in-app/discord-nudge-sent");
 const friendRequestSentInApp = require("./in-app/friend-request-sent");
@@ -31,6 +42,17 @@ const pollInviteDeclinedEmail = require("./email/poll-invite-declined");
 const voteSubmittedEmail = require("./email/vote-submitted");
 const pollFinalizedEmail = require("./email/poll-finalized");
 const pollReopenedEmail = require("./email/poll-reopened");
+const basicPollCreatedEmail = require("./email/basic-poll-created");
+const basicPollFinalizedEmail = require("./email/basic-poll-finalized");
+const basicPollReopenedEmail = require("./email/basic-poll-reopened");
+const basicPollVoteSubmittedEmail = require("./email/basic-poll-vote-submitted");
+const basicPollReminderEmail = require("./email/basic-poll-reminder");
+const basicPollResetEmail = require("./email/basic-poll-reset");
+const basicPollRemovedEmail = require("./email/basic-poll-removed");
+const basicPollDeadlineChangedEmail = require("./email/basic-poll-deadline-changed");
+const basicPollRequiredChangedEmail = require("./email/basic-poll-required-changed");
+const basicPollResultsEmail = require("./email/basic-poll-results");
+const basicPollFinalizedWithMissingRequiredVotesEmail = require("./email/basic-poll-finalized-with-missing-required-votes");
 const slotChangedEmail = require("./email/slot-changed");
 const friendRequestSentEmail = require("./email/friend-request-sent");
 const friendRequestAcceptedEmail = require("./email/friend-request-accepted");
@@ -54,6 +76,18 @@ const IN_APP_TEMPLATES = Object.freeze({
   [NOTIFICATION_EVENTS.POLL_CANCELLED]: pollCancelledInApp,
   [NOTIFICATION_EVENTS.POLL_RESTORED]: pollRestoredInApp,
   [NOTIFICATION_EVENTS.POLL_DELETED]: pollDeletedInApp,
+  [NOTIFICATION_EVENTS.BASIC_POLL_CREATED]: basicPollCreatedInApp,
+  [NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED]: basicPollFinalizedInApp,
+  [NOTIFICATION_EVENTS.BASIC_POLL_REOPENED]: basicPollReopenedInApp,
+  [NOTIFICATION_EVENTS.BASIC_POLL_VOTE_SUBMITTED]: basicPollVoteSubmittedInApp,
+  [NOTIFICATION_EVENTS.BASIC_POLL_REMINDER]: basicPollReminderInApp,
+  [NOTIFICATION_EVENTS.BASIC_POLL_RESET]: basicPollResetInApp,
+  [NOTIFICATION_EVENTS.BASIC_POLL_REMOVED]: basicPollRemovedInApp,
+  [NOTIFICATION_EVENTS.BASIC_POLL_DEADLINE_CHANGED]: basicPollDeadlineChangedInApp,
+  [NOTIFICATION_EVENTS.BASIC_POLL_REQUIRED_CHANGED]: basicPollRequiredChangedInApp,
+  [NOTIFICATION_EVENTS.BASIC_POLL_RESULTS]: basicPollResultsInApp,
+  [NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED_WITH_MISSING_REQUIRED_VOTES]:
+    basicPollFinalizedWithMissingRequiredVotesInApp,
   [NOTIFICATION_EVENTS.SLOT_CHANGED]: slotChangedInApp,
   [NOTIFICATION_EVENTS.DISCORD_NUDGE_SENT]: discordNudgeSentInApp,
   [NOTIFICATION_EVENTS.FRIEND_REQUEST_SENT]: friendRequestSentInApp,
@@ -75,6 +109,18 @@ const EMAIL_TEMPLATES = Object.freeze({
   [NOTIFICATION_EVENTS.VOTE_SUBMITTED]: voteSubmittedEmail,
   [NOTIFICATION_EVENTS.POLL_FINALIZED]: pollFinalizedEmail,
   [NOTIFICATION_EVENTS.POLL_REOPENED]: pollReopenedEmail,
+  [NOTIFICATION_EVENTS.BASIC_POLL_CREATED]: basicPollCreatedEmail,
+  [NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED]: basicPollFinalizedEmail,
+  [NOTIFICATION_EVENTS.BASIC_POLL_REOPENED]: basicPollReopenedEmail,
+  [NOTIFICATION_EVENTS.BASIC_POLL_VOTE_SUBMITTED]: basicPollVoteSubmittedEmail,
+  [NOTIFICATION_EVENTS.BASIC_POLL_REMINDER]: basicPollReminderEmail,
+  [NOTIFICATION_EVENTS.BASIC_POLL_RESET]: basicPollResetEmail,
+  [NOTIFICATION_EVENTS.BASIC_POLL_REMOVED]: basicPollRemovedEmail,
+  [NOTIFICATION_EVENTS.BASIC_POLL_DEADLINE_CHANGED]: basicPollDeadlineChangedEmail,
+  [NOTIFICATION_EVENTS.BASIC_POLL_REQUIRED_CHANGED]: basicPollRequiredChangedEmail,
+  [NOTIFICATION_EVENTS.BASIC_POLL_RESULTS]: basicPollResultsEmail,
+  [NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED_WITH_MISSING_REQUIRED_VOTES]:
+    basicPollFinalizedWithMissingRequiredVotesEmail,
   [NOTIFICATION_EVENTS.SLOT_CHANGED]: slotChangedEmail,
   [NOTIFICATION_EVENTS.FRIEND_REQUEST_SENT]: friendRequestSentEmail,
   [NOTIFICATION_EVENTS.FRIEND_REQUEST_ACCEPTED]: friendRequestAcceptedEmail,

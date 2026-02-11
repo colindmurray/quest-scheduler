@@ -1,3 +1,16 @@
+---
+created: 2026-01-31
+lastUpdated: 2026-02-02
+summary: "Design for unified multi-channel notification events, routing, dedupe, and reconciliation behavior."
+category: DESIGN_DOC
+status: CURRENT
+implementationStatus: COMPLETE
+note: "Core notification architecture has been implemented; doc remains useful for maintenance context."
+changelog:
+  - "2026-02-02: chore: sync notifications, discord, and identity updates"
+  - "2026-01-31: Improve invite flows, notifications, and tests"
+---
+
 # Unified Notification Overhaul
 
 ## Summary

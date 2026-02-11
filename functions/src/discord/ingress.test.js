@@ -210,4 +210,28 @@ describe('discord ingress', () => {
     expect(enqueueMock).toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith({ type: 6 });
   });
+
+  test('responds with ephemeral defer for basic poll vote button', async () => {
+    const body = {
+      id: 'i3',
+      application_id: 'app123',
+      type: 3,
+      data: { custom_id: 'bp_vote:poll1' },
+    };
+    const req = makeReq({
+      method: 'POST',
+      body,
+      rawBody: Buffer.from(JSON.stringify(body)),
+      headers: {
+        'x-signature-ed25519': 'sig',
+        'x-signature-timestamp': 'ts',
+      },
+    });
+    const res = makeRes();
+
+    await discordInteractions(req, res);
+
+    expect(enqueueMock).toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({ type: 5, data: { flags: 64 } });
+  });
 });

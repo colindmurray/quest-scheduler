@@ -1,0 +1,26 @@
+You are executing the "__PLAN_ID__" long-running implementation plan in this repository.
+
+Primary sources (read first):
+- AGENTS.md
+- __PLAN_DOC__
+- __TASKS_DOC__
+- __EXEC_TASK_LIST__
+- docs/task-list.md
+- docs/testing.md
+- docs/decisions.md
+
+Execution requirements:
+1. Use the `__EXECUTION_SKILL__` skill workflow.
+2. Operate in local Codex CLI mode only. Never use `codex cloud` commands.
+3. Execute tasks in priority order from `__TASKS_DOC__` (P0/P1/P2/P3..., then numeric order).
+4. Implement in small, reviewable chunks.
+5. After each chunk:
+   - update `__EXEC_TASK_LIST__` statuses and checkpoint
+   - update `docs/task-list.md` checkpoint + progress notes
+   - run relevant tests and record exact commands/results
+6. Mark a task complete only after implementation and validation.
+7. Continue autonomously until blocked or all tasks are complete.
+
+If blocked:
+- document blockers in both tracker files
+- continue with the next safe unblocked task when possible

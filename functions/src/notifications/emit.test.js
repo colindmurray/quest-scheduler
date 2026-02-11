@@ -36,7 +36,10 @@ describe('emitNotificationEvent', () => {
     const require = createRequire(import.meta.url);
     require.cache[require.resolve('firebase-admin')] = { exports: adminMock };
     require.cache[require.resolve('firebase-admin/firestore')] = {
-      exports: { FieldValue: { serverTimestamp: vi.fn(() => 'server-time') } },
+      exports: {
+        FieldValue: { serverTimestamp: vi.fn(() => 'server-time') },
+        Timestamp: { fromDate: vi.fn(() => 'expires-at') },
+      },
     };
     require.cache[require.resolve('firebase-functions/v1')] = {
       exports: (() => {

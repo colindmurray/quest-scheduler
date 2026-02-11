@@ -16,6 +16,9 @@ let userSetMock;
 let schedulerGetMock;
 let schedulerUpdateMock;
 let slotGetMock;
+let basicPollsGetMock;
+let embeddedPollUpdateMocks;
+let embeddedPollVoteGetMocks;
 let authMock;
 const require = createRequire(import.meta.url);
 
@@ -64,6 +67,34 @@ describe('legacy google calendar flows', () => {
     schedulerGetMock = vi.fn();
     schedulerUpdateMock = vi.fn();
     slotGetMock = vi.fn();
+    basicPollsGetMock = vi.fn().mockResolvedValue({ empty: true, docs: [] });
+    embeddedPollUpdateMocks = new Map();
+    embeddedPollVoteGetMocks = new Map();
+
+    const ensureEmbeddedPollRef = (pollId) => {
+      if (!embeddedPollUpdateMocks.has(pollId)) {
+        embeddedPollUpdateMocks.set(pollId, vi.fn());
+      }
+      if (!embeddedPollVoteGetMocks.has(pollId)) {
+        embeddedPollVoteGetMocks.set(
+          pollId,
+          vi.fn().mockResolvedValue({ empty: true, docs: [] })
+        );
+      }
+      return {
+        id: pollId,
+        data: () => ({}),
+        ref: {
+          update: embeddedPollUpdateMocks.get(pollId),
+          collection: (name) => {
+            if (name === 'votes') {
+              return { get: embeddedPollVoteGetMocks.get(pollId) };
+            }
+            return { get: vi.fn().mockResolvedValue({ empty: true, docs: [] }) };
+          },
+        },
+      };
+    };
 
     const schedulerRef = {
       get: schedulerGetMock,
@@ -71,6 +102,12 @@ describe('legacy google calendar flows', () => {
       collection: (name) => {
         if (name === 'slots') {
           return { doc: () => ({ get: slotGetMock }) };
+        }
+        if (name === 'basicPolls') {
+          return {
+            get: basicPollsGetMock,
+            doc: (pollId) => ensureEmbeddedPollRef(pollId).ref,
+          };
         }
         return { doc: () => ({ get: async () => ({ exists: false }) }) };
       },
@@ -207,7 +244,160 @@ describe('legacy google calendar flows', () => {
     expect(result).toEqual({ eventId: 'event1', calendarId: 'primary' });
     expect(eventsInsertMock).toHaveBeenCalled();
     expect(schedulerUpdateMock).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'FINALIZED', googleEventId: 'event1' })
+      expect.objectContaining({
+        status: 'FINALIZED',
+        googleEventId: 'event1',
+        finalizedWithMissingRequiredBasicPollVotes: false,
+        missingRequiredBasicPollVotesSummary: [],
+        missingRequiredBasicPollVotesCapturedAt: 'server-time',
+      })
+    );
+  });
+
+  test('googleCalendarFinalizePoll snapshots embedded basic poll final results', async () => {
+    schedulerGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ creatorId: 'user1', googleCalendarId: 'primary' }),
+    });
+    slotGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ start: '2025-01-01T10:00:00Z' }),
+    });
+
+    const pollUpdateMock = vi.fn();
+    const pollVotesGetMock = vi.fn().mockResolvedValue({
+      empty: false,
+      docs: [
+        { id: 'u1', data: () => ({ optionIds: ['opt-a'] }) },
+        { id: 'u2', data: () => ({ optionIds: ['opt-b'], otherText: 'Tacos' }) },
+      ],
+    });
+
+    embeddedPollUpdateMocks.set('bp1', pollUpdateMock);
+    embeddedPollVoteGetMocks.set('bp1', pollVotesGetMock);
+    basicPollsGetMock.mockResolvedValue({
+      empty: false,
+      docs: [
+        {
+          id: 'bp1',
+          data: () => ({
+            settings: { voteType: 'MULTIPLE_CHOICE', allowWriteIn: true },
+            options: [
+              { id: 'opt-a', label: 'A', order: 0 },
+              { id: 'opt-b', label: 'B', order: 1 },
+            ],
+          }),
+          ref: {
+            update: pollUpdateMock,
+            collection: (name) =>
+              name === 'votes'
+                ? { get: pollVotesGetMock }
+                : { get: vi.fn().mockResolvedValue({ empty: true, docs: [] }) },
+          },
+        },
+      ],
+    });
+
+    const result = await legacy.googleCalendarFinalizePoll.run(
+      {
+        schedulerId: 'sched1',
+        slotId: 'slot1',
+        durationMinutes: 60,
+        createCalendarEvent: false,
+      },
+      { auth: { uid: 'user1' } }
+    );
+
+    expect(result).toEqual({ eventId: null, calendarId: null });
+    expect(pollUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalResults: expect.objectContaining({
+          voteType: 'MULTIPLE_CHOICE',
+          voterCount: 2,
+          winnerIds: expect.arrayContaining(['opt-a', 'opt-b', 'write-in:tacos']),
+          rows: expect.arrayContaining([
+            expect.objectContaining({ key: 'opt-a', count: 1 }),
+            expect.objectContaining({ key: 'opt-b', count: 1 }),
+            expect.objectContaining({ key: 'write-in:tacos', count: 1 }),
+          ]),
+        }),
+      })
+    );
+    expect(schedulerUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'FINALIZED',
+        winningSlotId: 'slot1',
+        finalizedWithMissingRequiredBasicPollVotes: false,
+        missingRequiredBasicPollVotesSummary: [],
+      })
+    );
+  });
+
+  test('googleCalendarFinalizePoll records missing required embedded poll votes snapshot', async () => {
+    schedulerGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        creatorId: 'user1',
+        participantIds: ['user1', 'member-1'],
+        googleCalendarId: 'primary',
+      }),
+    });
+    slotGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ start: '2025-01-01T10:00:00Z' }),
+    });
+
+    const pollUpdateMock = vi.fn();
+    const pollVotesGetMock = vi.fn().mockResolvedValue({
+      empty: false,
+      docs: [{ id: 'user1', data: () => ({ optionIds: ['opt-a'] }) }],
+    });
+
+    embeddedPollUpdateMocks.set('bp-required', pollUpdateMock);
+    embeddedPollVoteGetMocks.set('bp-required', pollVotesGetMock);
+    basicPollsGetMock.mockResolvedValue({
+      empty: false,
+      docs: [
+        {
+          id: 'bp-required',
+          data: () => ({
+            title: 'Food',
+            required: true,
+            settings: { voteType: 'MULTIPLE_CHOICE', allowWriteIn: false },
+            options: [{ id: 'opt-a', label: 'Pizza', order: 0 }],
+          }),
+          ref: {
+            update: pollUpdateMock,
+            collection: (name) =>
+              name === 'votes'
+                ? { get: pollVotesGetMock }
+                : { get: vi.fn().mockResolvedValue({ empty: true, docs: [] }) },
+          },
+        },
+      ],
+    });
+
+    await legacy.googleCalendarFinalizePoll.run(
+      {
+        schedulerId: 'sched1',
+        slotId: 'slot1',
+        durationMinutes: 60,
+        createCalendarEvent: false,
+      },
+      { auth: { uid: 'user1' } }
+    );
+
+    expect(schedulerUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalizedWithMissingRequiredBasicPollVotes: true,
+        missingRequiredBasicPollVotesSummary: [
+          expect.objectContaining({
+            basicPollId: 'bp-required',
+            missingCount: 1,
+            missingUserIds: ['member-1'],
+          }),
+        ],
+      })
     );
   });
 

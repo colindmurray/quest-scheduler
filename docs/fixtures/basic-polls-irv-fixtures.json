@@ -1,0 +1,149 @@
+[
+  {
+    "id": "majority-first-round",
+    "optionIds": ["a", "b", "c"],
+    "votes": [{ "rankings": ["a", "b"] }, { "rankings": ["a"] }, { "rankings": ["b", "a"] }],
+    "expected": {
+      "winnerIds": ["a"],
+      "tiedIds": [],
+      "roundCount": 1,
+      "eliminatedByRound": [[]],
+      "exhaustedByRound": [0]
+    }
+  },
+  {
+    "id": "multi-round-elimination",
+    "optionIds": ["a", "b", "c"],
+    "votes": [
+      { "rankings": ["a", "c"] },
+      { "rankings": ["a", "c"] },
+      { "rankings": ["b", "c"] },
+      { "rankings": ["c", "b"] },
+      { "rankings": ["c", "b"] }
+    ],
+    "expected": {
+      "winnerIds": ["c"],
+      "tiedIds": [],
+      "roundCount": 2,
+      "eliminatedByRound": [["b"], []],
+      "exhaustedByRound": [0, 0]
+    }
+  },
+  {
+    "id": "final-round-tie",
+    "optionIds": ["a", "b", "c"],
+    "votes": [
+      { "rankings": ["a", "b", "c"] },
+      { "rankings": ["b", "a", "c"] },
+      { "rankings": ["c", "a", "b"] },
+      { "rankings": ["c", "b", "a"] }
+    ],
+    "expected": {
+      "winnerIds": [],
+      "tiedIds": ["b", "c"],
+      "roundCount": 2,
+      "eliminatedByRound": [["a"], ["b", "c"]],
+      "exhaustedByRound": [0, 0]
+    }
+  },
+  {
+    "id": "partial-rankings-exhausted",
+    "optionIds": ["a", "b", "c"],
+    "votes": [
+      { "rankings": ["a"] },
+      { "rankings": ["a"] },
+      { "rankings": ["b"] },
+      { "rankings": ["c"] },
+      { "rankings": ["c"] }
+    ],
+    "expected": {
+      "winnerIds": [],
+      "tiedIds": ["a", "c"],
+      "roundCount": 2,
+      "eliminatedByRound": [["b"], ["a", "c"]],
+      "exhaustedByRound": [0, 1]
+    }
+  },
+  {
+    "id": "all-ballots-exhausted",
+    "optionIds": ["a", "b"],
+    "votes": [{ "rankings": [] }, { "rankings": [] }],
+    "expected": {
+      "winnerIds": [],
+      "tiedIds": ["a", "b"],
+      "roundCount": 1,
+      "eliminatedByRound": [["a", "b"]],
+      "exhaustedByRound": [2]
+    }
+  },
+  {
+    "id": "backward-tie-break",
+    "optionIds": ["a", "b", "c", "d"],
+    "votes": [
+      { "rankings": ["a"] },
+      { "rankings": ["a"] },
+      { "rankings": ["a"] },
+      { "rankings": ["a"] },
+      { "rankings": ["b"] },
+      { "rankings": ["b"] },
+      { "rankings": ["b"] },
+      { "rankings": ["c"] },
+      { "rankings": ["c"] },
+      { "rankings": ["d", "c"] }
+    ],
+    "expected": {
+      "winnerIds": ["a"],
+      "tiedIds": [],
+      "roundCount": 3,
+      "eliminatedByRound": [["d"], ["c"], []],
+      "exhaustedByRound": [0, 0, 3]
+    }
+  },
+  {
+    "id": "batch-elimination-safe",
+    "optionIds": ["a", "b", "c", "d"],
+    "votes": [
+      { "rankings": ["a"] },
+      { "rankings": ["a"] },
+      { "rankings": ["a"] },
+      { "rankings": ["a"] },
+      { "rankings": ["a"] },
+      { "rankings": ["b"] },
+      { "rankings": ["b"] },
+      { "rankings": ["b"] },
+      { "rankings": ["c", "a"] },
+      { "rankings": ["d", "a"] }
+    ],
+    "expected": {
+      "winnerIds": ["a"],
+      "tiedIds": [],
+      "roundCount": 2,
+      "eliminatedByRound": [["c", "d"], []],
+      "exhaustedByRound": [0, 0]
+    }
+  },
+  {
+    "id": "single-voter",
+    "optionIds": ["a", "b", "c"],
+    "votes": [{ "rankings": ["b", "a", "c"] }],
+    "expected": {
+      "winnerIds": ["b"],
+      "tiedIds": [],
+      "roundCount": 1,
+      "eliminatedByRound": [[]],
+      "exhaustedByRound": [0]
+    }
+  },
+  {
+    "id": "single-option",
+    "optionIds": ["only"],
+    "votes": [{ "rankings": ["only"] }],
+    "expected": {
+      "winnerIds": ["only"],
+      "tiedIds": [],
+      "roundCount": 1,
+      "eliminatedByRound": [[]],
+      "exhaustedByRound": [0]
+    }
+  }
+]

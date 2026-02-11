@@ -1,3 +1,15 @@
+---
+created: 2026-01-31
+lastUpdated: 2026-01-31
+summary: "Live state tracker for TypeScript migration phase, progress, and blockers."
+category: TASK_TRACKER
+status: CURRENT
+implementationStatus: PENDING
+note: "Still the designated migration state file if TypeScript migration resumes."
+changelog:
+  - "2026-01-31: Improve invite flows, notifications, and tests"
+---
+
 # TypeScript Migration State
 
 ## Current Phase

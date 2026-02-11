@@ -24,6 +24,7 @@ import {
 } from "./notifications";
 import { findUserIdByEmail } from "./users";
 import { normalizeEmail } from "../utils";
+import { deleteBasicPollVote } from "./basicPolls";
 
 export const pollPendingInvitesQuery = (email) => {
   const normalized = normalizeEmail(email);
@@ -55,6 +56,16 @@ async function removeVotesByEmail(schedulerId, email) {
 async function removeVotesByUserId(schedulerId, userId) {
   if (!userId) return;
   await deleteDoc(doc(db, "schedulers", schedulerId, "votes", userId));
+}
+
+async function removeEmbeddedBasicPollVotesByUserId(schedulerId, userId) {
+  if (!schedulerId || !userId) return;
+  const pollsSnap = await getDocs(collection(db, "schedulers", schedulerId, "basicPolls"));
+  await Promise.all(
+    pollsSnap.docs.map((pollDoc) =>
+      deleteBasicPollVote("scheduler", schedulerId, pollDoc.id, userId)
+    )
+  );
 }
 
 export async function acceptPollInvite(schedulerId, userEmail, userId = null) {
@@ -208,6 +219,7 @@ export async function removeParticipantFromPoll(
   if (removeVotes) {
     if (resolvedUserId) {
       await removeVotesByUserId(schedulerId, resolvedUserId);
+      await removeEmbeddedBasicPollVotesByUserId(schedulerId, resolvedUserId);
     } else {
       await removeVotesByEmail(schedulerId, normalizedEmail);
     }

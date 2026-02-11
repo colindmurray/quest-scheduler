@@ -1,3 +1,18 @@
+---
+created: 2026-01-06
+lastUpdated: 2026-02-02
+summary: "Operational runbook for local development, plan bootstrap scripts, and deployment-oriented workflows."
+category: RUNBOOK
+status: CURRENT
+note: "Still referenced by active local execution workflows and script conventions."
+changelog:
+  - "2026-02-02: chore: sync notifications, discord, and identity updates"
+  - "2026-01-31: Improve invite flows, notifications, and tests"
+  - "2026-01-28: uuid: phase4 uid-only participants/members"
+  - "2026-01-27: uuid: dual-read + group invite enforcement"
+  - "2026-01-27: chore: document admin access + uuid migration run"
+---
+
 # Runbook
 
 ## Local development
@@ -6,6 +21,45 @@ cd web
 npm install
 npm run dev
 ```
+
+## Local Codex long runs (non-cloud)
+Use these scripts for repeatable long-running implementation cycles via local Codex CLI.
+
+1. Bootstrap a new plan run (generic):
+```bash
+scripts/codex/init-plan-run.sh \
+  --plan-id <plan-id> \
+  --plan-doc docs/<plan-doc>.md \
+  --tasks-doc docs/<task-doc>.md \
+  --archive-task-list
+```
+This creates:
+- `docs/plan-execution/<plan-id>-task-list.md` (execution checklist + checkpoint)
+- `.codex/prompts/<plan-id>-execute.md` (execution prompt scaffold)
+
+2. Bootstrap the current basic-poll plan:
+```bash
+scripts/codex/init-basic-poll-run.sh --force
+```
+
+3. Run a local execution cycle:
+```bash
+scripts/codex/run-local-plan.sh \
+  --prompt-file .codex/prompts/basic-poll-execute.md \
+  --run-name basic-poll-cycle-001
+```
+
+4. Inspect run artifacts:
+- `.codex/runs/<run-name>/events.jsonl`
+- `.codex/runs/<run-name>/final-message.md`
+- `.codex/runs/<run-name>/metadata.txt`
+- `.codex/runs/<run-name>/exit-status.txt`
+
+Notes:
+- The runner is local-only and does not use Codex Cloud commands.
+- Defaults: sandbox=`danger-full-access`, approvals=`never`.
+- Defaults also include `-c model_reasoning_effort="high"` (matches local `codex-yolo` behavior). Override with `--reasoning-effort <value>` or disable via `--reasoning-effort off`.
+- If interrupted early (for example `Ctrl+C`), the runner now exits non-zero when no `final-message.md` is produced.
 
 ## Build for production
 ```

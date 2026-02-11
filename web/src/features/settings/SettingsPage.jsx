@@ -63,6 +63,14 @@ const SIMPLE_NOTIFICATION_EVENTS = new Set([
   NOTIFICATION_TYPES.POLL_DELETED,
   NOTIFICATION_TYPES.GROUP_MEMBER_REMOVED,
   NOTIFICATION_TYPES.GROUP_DELETED,
+  NOTIFICATION_TYPES.BASIC_POLL_CREATED,
+  NOTIFICATION_TYPES.BASIC_POLL_FINALIZED,
+  NOTIFICATION_TYPES.BASIC_POLL_REOPENED,
+  NOTIFICATION_TYPES.BASIC_POLL_REMINDER,
+  NOTIFICATION_TYPES.BASIC_POLL_DEADLINE_CHANGED,
+  NOTIFICATION_TYPES.BASIC_POLL_REQUIRED_CHANGED,
+  NOTIFICATION_TYPES.BASIC_POLL_RESULTS,
+  NOTIFICATION_TYPES.BASIC_POLL_FINALIZED_WITH_MISSING_REQUIRED_VOTES,
 ]);
 
 const SIMPLE_EMAIL_EVENTS = new Set([
@@ -75,6 +83,16 @@ const SIMPLE_EMAIL_EVENTS = new Set([
   NOTIFICATION_TYPES.VOTE_REMINDER,
   NOTIFICATION_TYPES.POLL_FINALIZED,
   NOTIFICATION_TYPES.POLL_CANCELLED,
+  NOTIFICATION_TYPES.BASIC_POLL_CREATED,
+  NOTIFICATION_TYPES.BASIC_POLL_FINALIZED,
+  NOTIFICATION_TYPES.BASIC_POLL_REOPENED,
+  NOTIFICATION_TYPES.BASIC_POLL_REMINDER,
+  NOTIFICATION_TYPES.BASIC_POLL_RESET,
+  NOTIFICATION_TYPES.BASIC_POLL_REMOVED,
+  NOTIFICATION_TYPES.BASIC_POLL_DEADLINE_CHANGED,
+  NOTIFICATION_TYPES.BASIC_POLL_REQUIRED_CHANGED,
+  NOTIFICATION_TYPES.BASIC_POLL_RESULTS,
+  NOTIFICATION_TYPES.BASIC_POLL_FINALIZED_WITH_MISSING_REQUIRED_VOTES,
 ]);
 
 const NOTIFICATION_PREFERENCE_GROUPS = [
@@ -171,6 +189,67 @@ const NOTIFICATION_PREFERENCE_GROUPS = [
       },
     ],
   },
+  {
+    title: "Basic polls",
+    description: "Standalone and embedded basic poll updates.",
+    items: [
+      {
+        eventType: NOTIFICATION_TYPES.BASIC_POLL_CREATED,
+        label: "Basic poll created",
+        description: "When a new basic poll is created.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.BASIC_POLL_FINALIZED,
+        label: "Basic poll finalized",
+        description: "When a basic poll is finalized.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.BASIC_POLL_REOPENED,
+        label: "Basic poll reopened",
+        description: "When a finalized basic poll is reopened.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.BASIC_POLL_VOTE_SUBMITTED,
+        label: "Basic poll vote submitted",
+        description: "When a participant submits a basic poll vote.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.BASIC_POLL_REMINDER,
+        label: "Basic poll reminder",
+        description: "Reminders to vote on an open basic poll.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.BASIC_POLL_RESET,
+        label: "Basic poll votes reset",
+        description: "When existing basic poll votes are reset.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.BASIC_POLL_REMOVED,
+        label: "Basic poll removed",
+        description: "When a basic poll is removed.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.BASIC_POLL_DEADLINE_CHANGED,
+        label: "Basic poll deadline changed",
+        description: "When a basic poll deadline is updated.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.BASIC_POLL_REQUIRED_CHANGED,
+        label: "Basic poll required changed",
+        description: "When an embedded basic poll changes between required and optional.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.BASIC_POLL_RESULTS,
+        label: "Basic poll results posted",
+        description: "When final basic poll results are posted.",
+      },
+      {
+        eventType: NOTIFICATION_TYPES.BASIC_POLL_FINALIZED_WITH_MISSING_REQUIRED_VOTES,
+        label: "Finalized with missing required votes",
+        description: "When a scheduler is finalized with incomplete required basic poll votes.",
+      },
+    ],
+  },
 ];
 
 const resolveNotificationPreferenceValue = ({ eventType, emailNotifications, preferences }) => {
@@ -249,6 +328,7 @@ export default function SettingsPage() {
   );
   const [autoConvertPollTimes, setAutoConvertPollTimes] = useState(true);
   const [hideTimeZone, setHideTimeZone] = useState(false);
+  const [autoBlockConflicts, setAutoBlockConflicts] = useState(false);
   const [calendarIds, setCalendarIds] = useState([]);
   const [calendarNames, setCalendarNames] = useState({});
   const [availableCalendars, setAvailableCalendars] = useState([]);
@@ -322,6 +402,7 @@ export default function SettingsPage() {
           setTimezoneMode(data.settings?.timezoneMode ?? "auto");
           setAutoConvertPollTimes(data.settings?.autoConvertPollTimes ?? true);
           setHideTimeZone(data.settings?.hideTimeZone ?? false);
+          setAutoBlockConflicts(data.settings?.autoBlockConflicts ?? false);
 
           // Load session defaults mode and values
           const savedMode = data.settings?.sessionDefaultsMode ?? "simple";
@@ -729,6 +810,7 @@ export default function SettingsPage() {
             timezone,
             autoConvertPollTimes,
             hideTimeZone,
+            autoBlockConflicts,
             googleCalendarId: primaryCalendarId || null,
             googleCalendarName: primaryCalendarName,
             googleCalendarIds: calendarIds,
@@ -740,6 +822,7 @@ export default function SettingsPage() {
           ...(normalizedDisplayName ? { displayName: normalizedDisplayName } : {}),
           photoURL: resolvedAvatarUrl || null,
           emailNotifications,
+          autoBlockConflicts,
           publicIdentifierType,
           publicIdentifier,
         }
@@ -1204,6 +1287,31 @@ export default function SettingsPage() {
                     />
                   </div>
                 )}
+              </div>
+            </section>
+            <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Conflict Blocking
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Prevent double-booking across finalized session polls you participate in.
+              </p>
+              <div className="mt-4 space-y-3">
+                <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white px-4 py-3 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                  <div className="flex flex-col gap-1">
+                    <span>Auto-block times from finalized sessions</span>
+                    <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                      When you are confirmed for a finalized session, overlapping slots in other polls
+                      will treat you as unavailable. Your votes are still saved, but ignored for those
+                      conflicted slots.
+                    </span>
+                  </div>
+                  <Switch
+                    checked={autoBlockConflicts}
+                    onCheckedChange={setAutoBlockConflicts}
+                    aria-label="Auto-block conflicts"
+                  />
+                </div>
               </div>
             </section>
             <section className="rounded-2xl border border-slate-200/70 p-4 dark:border-slate-700">

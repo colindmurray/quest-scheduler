@@ -8,6 +8,7 @@ const { resolveNotificationEventType } = require("./constants");
 const { getInAppTemplate, getEmailTemplate } = require("./templates");
 const { applyAutoClear } = require("./auto-clear");
 const { sendDiscordNotification } = require("./discord");
+const { DISCORD_BOT_TOKEN } = require("../discord/config");
 const {
   getDefaultPreference,
   preferenceToChannels,
@@ -212,6 +213,7 @@ const writeEmailNotifications = async (eventType, event, recipients) => {
 exports.processNotificationEvent = onDocumentCreated(
   {
     document: "notificationEvents/{eventId}",
+    secrets: [DISCORD_BOT_TOKEN],
   },
   async (event) => {
     const snapshot = event.data;

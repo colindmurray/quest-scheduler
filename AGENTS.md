@@ -65,6 +65,22 @@ This file is the working contract for all agents (including Codex) contributing 
 - Archive `docs/task-list.md` before starting a new long-running plan so it contains only the current plan’s tasks.
 - Use `docs/testing.md` as the source of truth for local test commands and emulator setup.
 
+### 4.1 Docs Metadata & Audit Workflow (Required)
+- For any Markdown create/update in this repo (excluding `README.md` / `README*.md`), use the `docs-frontmatter-maintainer` skill:
+  - `.codex/skills/docs-frontmatter-maintainer/SKILL.md`
+- For stale-risk docs, use the `documentation-auditor` skill:
+  - `.codex/skills/documentation-auditor/SKILL.md`
+- Run `documentation-auditor` when any of these are true:
+  - `lastUpdated` is older than 30 days relative to latest repo commit date.
+  - file's latest commit is > 10 commits behind `HEAD`.
+  - file's latest commit date is > 30 days older than latest repo commit date.
+  - metadata appears inconsistent with code/docs reality.
+- Keep top-level guidance lightweight in this file; the skills are the source of truth for:
+  - required frontmatter fields and enums
+  - warning callout rules
+  - changelog style
+  - status/implementation-status decision criteria
+
 ### Task List Archive Process
 - Before a new long-running task begins, move the current `docs/task-list.md` contents to an archive file:
   - `docs/task-list-archive-YYYY-MM-DD.md` (or `docs/task-list-archive-<plan-stem>-YYYY-MM-DD.md`).
@@ -95,17 +111,14 @@ This file is the working contract for all agents (including Codex) contributing 
 - After each compact step, update `docs/task-list.md` with progress notes.
 - Prefer patching one feature at a time.
 
-### 5.1 Long-Running Test Plan Workflow (Codex)
-- Use `docs/unit-integration-e2e-automated-test-plan.md` as the source of truth.
-- Use the `test-plan-runner` skill when executing the test plan or any testing-overhaul tasks.
-- Execute tasks in priority order (P0 → P1 → P2 → P3…), then numeric order.
-- Mark task `Status` as `[x]` only after the task is completed **and** validated (tests run or explicitly noted).
-- Maintain a persistent checkpoint in `docs/task-list.md` named `Test Plan Execution Checkpoint` with: `Last Completed`, `Next Step`, `Open Issues`, `Last Updated (YYYY-MM-DD)`.
-- At the start of each cycle, read the checkpoint first; after each task and at the end, update it even if no tasks were completed.
-- If dependencies shift, update priorities/order and explain in Notes.
-- If any tool/API/test behavior is unclear, do web research (official docs first) and update the test plan or `docs/decisions.md` with corrections.
-- For long-running chunks, split tasks into smaller prompts and run everything locally in the CLI, but do not pause for user input unless blocked.
-- Always run tests after writing tests or changing test-related code; record results in task notes.
+### 5.1 Legacy Workflows (Archived)
+- Legacy skill folders for prior initiatives were archived on 2026-02-11 under:
+  - `.codex/skills-archive/2026-02-11/`
+- Archived skills:
+  - `execute-plan-unified-notification-overhaul`
+  - `test-plan-runner`
+  - `ts-migration-chunk`
+- For new long-running work, use the generic workflow in **5.4** (`execute-local-plan` + `scripts/codex/*`).
 
 ### 5.2 Autonomy, Decisions, and Commits
 - Operate autonomously and continue through the test plan without interruption unless blocked by missing credentials, conflicting instructions, or destructive risk.
@@ -113,19 +126,34 @@ This file is the working contract for all agents (including Codex) contributing 
 - If a bug is discovered during this process, commit the current state before fixing it, then fix the bug, run tests, and commit again once tests pass.
 
 ### 5.3 TypeScript Migration Protocol (CLI-Focused)
-- Follow `docs/typescript_migraiton_plan.md` for the staged migration order.
-- Maintain durable state in `docs/typescript-migration-state.md` (update after every chunk).
-- Prefer small, reviewable chunks (one folder or <= 20 files).
-- Use the `ts-migration-chunk` skill for ongoing conversions.
-- Gate each chunk with typecheck + lint + relevant tests before marking progress.
+- If TypeScript migration resumes, follow `docs/typescript_migraiton_plan.md` and `docs/typescript-migration-state.md`.
+- Execute migration chunks with the generic local plan workflow in **5.4**.
+- Keep chunks small (one folder or <= 20 files) and gate with typecheck + lint + relevant tests.
 - Record new typing conventions or tsconfig decisions in `docs/decisions.md`.
 
-## Long-Running Plan: Unified Notification Overhaul
-- Plan doc: `docs/unified-notification-overhaul.md`
-- Task list: `docs/plan-execution/unified-notification-overhaul-task-list.md`
-- Execution skill: `execute-plan-unified-notification-overhaul`
-- Autonomy: Continue without interruption; stop only when blocked or complete.
-- Test gate: Update/add tests, run relevant suites, and record results in `docs/task-list.md` and `docs/plan-execution/unified-notification-overhaul-task-list.md` progress notes.
+### 5.4 Generic Long-Running Plan Workflow (Local Codex CLI)
+- Local only: run long tasks through local Codex CLI; do **not** use `codex cloud` commands.
+- Bootstrap a new plan run with:
+  - `scripts/codex/init-plan-run.sh --plan-id <id> --plan-doc <plan-doc> --tasks-doc <tasks-doc> [--archive-task-list]`
+- Run an execution cycle with:
+  - `scripts/codex/run-local-plan.sh --prompt-file .codex/prompts/<id>-execute.md`
+- Use the `execute-local-plan` skill for generic multi-phase plan execution.
+- Keep state in two places:
+  - Global tracker: `docs/task-list.md`
+  - Plan tracker: `docs/plan-execution/<id>-task-list.md`
+- Update both trackers after each compact step with:
+  - checkpoint fields (`Last Completed`, `Next Step`, `Open Issues`, date)
+  - task status changes
+  - test commands and outcomes
+
+## Active Long-Running Plan: Basic Poll Implementation
+- Plan doc: `docs/basic-poll.md`
+- Task doc: `docs/basic-poll-tasks.md`
+- Plan task list: `docs/plan-execution/basic-poll-task-list.md`
+- Execution skill: `execute-local-plan`
+- Prompt scaffold: `.codex/prompts/basic-poll-execute.md`
+- Bootstrap shortcut: `scripts/codex/init-basic-poll-run.sh`
+- Execution command: `scripts/codex/run-local-plan.sh --prompt-file .codex/prompts/basic-poll-execute.md`
 
 ## 6) Deployment Notes
 - Target Firebase Hosting for frontend.

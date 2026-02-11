@@ -6,7 +6,9 @@ import { InviteMemberModal } from "./InviteMemberModal";
 import { AvatarBubble, AvatarStack } from "../../../components/ui/voter-avatars";
 import { buildColorMap } from "../../../components/ui/voter-avatar-utils";
 import { useUserProfiles } from "../../../hooks/useUserProfiles";
+import { useAuth } from "../../../app/useAuth";
 import { generateDiscordLinkCode, fetchDiscordGuildRoles } from "../../../lib/data/discord";
+import { CreateGroupPollModal } from "../../basic-polls/components/CreateGroupPollModal";
 import { UserIdentity } from "../../../components/UserIdentity";
 import {
   SimpleModal,
@@ -15,6 +17,8 @@ import {
   SimpleModalHeader,
   SimpleModalTitle,
 } from "../../../components/ui/simple-modal";
+import { subscribeToBasicPollVotes, subscribeToGroupPolls } from "../../../lib/data/basicPolls";
+
 const toggleBaseClasses =
   "peer inline-flex h-5 w-10 shrink-0 items-center rounded-full border border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus-visible:ring-slate-500 dark:focus-visible:ring-offset-slate-950";
 const toggleThumbClasses =
@@ -44,6 +48,34 @@ const DEFAULT_DISCORD_ALERTS = {
   allVotesIn: false,
 };
 
+function toDate(value) {
+  if (!value) return null;
+  if (typeof value.toDate === "function") return value.toDate();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function toTimestampMs(value) {
+  const parsed = toDate(value);
+  return parsed ? parsed.getTime() : 0;
+}
+
+function getVoteTypeLabel(poll) {
+  return poll?.settings?.voteType === "RANKED_CHOICE" ? "Ranked choice" : "Multiple choice";
+}
+
+function countSubmittedVotes(poll, voteDocs = []) {
+  const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
+  return (voteDocs || []).filter((voteDoc) => {
+    if (voteType === "RANKED_CHOICE") {
+      return Array.isArray(voteDoc?.rankings) && voteDoc.rankings.some(Boolean);
+    }
+    const hasOptionIds = Array.isArray(voteDoc?.optionIds) && voteDoc.optionIds.some(Boolean);
+    const hasWriteIn = String(voteDoc?.otherText || "").trim().length > 0;
+    return hasOptionIds || hasWriteIn;
+  }).length;
+}
+
 export function GroupCard({
   group,
   isOwner,
@@ -58,10 +90,12 @@ export function GroupCard({
   onRevokeInvite,
   friends = [],
 }) {
+  const { user } = useAuth();
   const [inviteOpen, setInviteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
+  const [createPollOpen, setCreatePollOpen] = useState(false);
   const [removeMemberOpen, setRemoveMemberOpen] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -74,6 +108,10 @@ export function GroupCard({
   const [discordRolesLoading, setDiscordRolesLoading] = useState(false);
   const [discordNotifyRoleId, setDiscordNotifyRoleId] = useState(null);
   const [discordAlertSaving, setDiscordAlertSaving] = useState(false);
+  const [groupPolls, setGroupPolls] = useState([]);
+  const [groupPollsLoading, setGroupPollsLoading] = useState(true);
+  const [groupPollsError, setGroupPollsError] = useState(null);
+  const [pollVoteCounts, setPollVoteCounts] = useState({});
 
   const members = useMemo(() => group.members || [], [group.members]);
   const pendingInvites = useMemo(() => group.pendingInvites || [], [group.pendingInvites]);
@@ -233,6 +271,83 @@ export function GroupCard({
     loadDiscordRoles();
   }, [settingsOpen, canManage, group.discord?.guildId, loadDiscordRoles]);
 
+  useEffect(() => {
+    if (!group?.id) {
+      setGroupPolls([]);
+      setGroupPollsLoading(false);
+      setGroupPollsError(null);
+      return;
+    }
+
+    setGroupPollsLoading(true);
+    setGroupPollsError(null);
+    const unsubscribe = subscribeToGroupPolls(
+      group.id,
+      (polls) => {
+        setGroupPolls(polls || []);
+        setGroupPollsLoading(false);
+      },
+      (error) => {
+        setGroupPolls([]);
+        setGroupPollsError(error);
+        setGroupPollsLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [group?.id]);
+
+  useEffect(() => {
+    setPollVoteCounts({});
+    if (!group?.id || groupPolls.length === 0) return () => {};
+
+    const unsubscribers = groupPolls.map((poll) =>
+      subscribeToBasicPollVotes(
+        "group",
+        group.id,
+        poll.id,
+        (votes) => {
+          setPollVoteCounts((previous) => {
+            const nextCount = countSubmittedVotes(poll, votes || []);
+            if (previous[poll.id] === nextCount) return previous;
+            return { ...previous, [poll.id]: nextCount };
+          });
+        },
+        () => {
+          setPollVoteCounts((previous) => ({ ...previous, [poll.id]: 0 }));
+        }
+      )
+    );
+
+    return () => {
+      unsubscribers.forEach((unsubscribe) => {
+        if (typeof unsubscribe === "function") unsubscribe();
+      });
+    };
+  }, [group?.id, groupPolls]);
+
+  const eligibleVoterCount = useMemo(() => {
+    const memberIdsCount = Array.isArray(group?.memberIds) ? group.memberIds.length : 0;
+    if (memberIdsCount > 0) return memberIdsCount;
+    return members.length;
+  }, [group?.memberIds, members.length]);
+
+  const openPolls = useMemo(
+    () => groupPolls.filter((poll) => (poll?.status || "OPEN") !== "FINALIZED"),
+    [groupPolls]
+  );
+
+  const recentFinalizedPolls = useMemo(() => {
+    return groupPolls
+      .filter((poll) => poll?.status === "FINALIZED")
+      .sort((left, right) => {
+        const leftMs = toTimestampMs(left?.finalizedAt || left?.updatedAt || left?.createdAt);
+        const rightMs = toTimestampMs(right?.finalizedAt || right?.updatedAt || right?.createdAt);
+        return rightMs - leftMs;
+      })
+      .slice(0, 5);
+  }, [groupPolls]);
+
   return (
     <>
       <div className="rounded-2xl border border-slate-200/70 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
@@ -318,6 +433,131 @@ export function GroupCard({
               )}
             </div>
           ))}
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-slate-200/70 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/30">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                Polls
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Open polls and recent results for this group.
+              </p>
+            </div>
+            {canManage ? (
+              <button
+                type="button"
+                onClick={() => setCreatePollOpen(true)}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                Create poll
+              </button>
+            ) : null}
+          </div>
+
+          {groupPollsLoading ? (
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Loading polls...</p>
+          ) : null}
+          {groupPollsError ? (
+            <p className="mt-3 text-xs text-rose-600 dark:text-rose-400">
+              Unable to load polls right now.
+            </p>
+          ) : null}
+
+          {!groupPollsLoading && !groupPollsError ? (
+            <div className="mt-3 space-y-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                  Open polls
+                </p>
+                <div className="mt-2 space-y-2">
+                  {openPolls.length === 0 ? (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      No open polls right now.
+                    </p>
+                  ) : (
+                    openPolls.map((poll) => {
+                      const deadlineAt = toDate(poll?.settings?.deadlineAt || poll?.deadlineAt);
+                      const votedCount = pollVoteCounts[poll.id] ?? 0;
+                      return (
+                        <a
+                          key={poll.id}
+                          href={`/groups/${group.id}/polls/${poll.id}`}
+                          className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-slate-800 dark:text-slate-100">
+                              {poll.title || "Untitled poll"}
+                            </p>
+                            <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                              {votedCount}/{eligibleVoterCount} voted
+                              {deadlineAt
+                                ? ` · Deadline ${deadlineAt.toLocaleString([], {
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                  })}`
+                                : ""}
+                            </p>
+                          </div>
+                          <span className="shrink-0 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 dark:border-slate-600 dark:text-slate-300">
+                            {getVoteTypeLabel(poll)}
+                          </span>
+                        </a>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                  Recent finalized
+                </p>
+                <div className="mt-2 space-y-2">
+                  {recentFinalizedPolls.length === 0 ? (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      No finalized polls yet.
+                    </p>
+                  ) : (
+                    recentFinalizedPolls.map((poll) => {
+                      const finalizedAt = toDate(
+                        poll?.finalizedAt || poll?.updatedAt || poll?.createdAt
+                      );
+                      return (
+                        <a
+                          key={poll.id}
+                          href={`/groups/${group.id}/polls/${poll.id}`}
+                          className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-slate-800 dark:text-slate-100">
+                              {poll.title || "Untitled poll"}
+                            </p>
+                            <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                              {finalizedAt
+                                ? `Finalized ${finalizedAt.toLocaleString([], {
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                  })}`
+                                : "Finalized"}
+                            </p>
+                          </div>
+                          <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 dark:border-emerald-700/70 dark:bg-emerald-900/30 dark:text-emerald-300">
+                            Finalized
+                          </span>
+                        </a>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {/* Actions */}
@@ -583,6 +823,14 @@ export function GroupCard({
           </SimpleModalFooter>
         </div>
       </SimpleModal>
+
+      <CreateGroupPollModal
+        open={createPollOpen}
+        onOpenChange={setCreatePollOpen}
+        groupId={group.id}
+        groupName={group.name}
+        creatorId={user?.uid}
+      />
 
       {/* Remove Member Confirmation */}
       <SimpleModal open={removeMemberOpen} onOpenChange={setRemoveMemberOpen}>

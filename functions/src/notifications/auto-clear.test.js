@@ -187,6 +187,136 @@ describe('auto-clear', () => {
     expect(batchUpdateMock).toHaveBeenCalledTimes(1);
   });
 
+  test('clears basic poll reminders for actor on basic poll vote submitted', async () => {
+    const { db, queryChain, batchUpdateMock } = buildDbMock([
+      { ref: { id: 'n10b' }, data: () => ({ type: NOTIFICATION_EVENTS.BASIC_POLL_REMINDER }) },
+    ]);
+
+    await applyAutoClear({
+      db,
+      eventType: NOTIFICATION_EVENTS.BASIC_POLL_VOTE_SUBMITTED,
+      event: { resource: { id: 'basicPoll1' }, actor: { uid: 'voter-basic' } },
+      recipients: { userIds: ['owner-basic'] },
+    });
+
+    expect(queryChain.where).toHaveBeenCalledWith('resource.id', '==', 'basicPoll1');
+    expect(batchUpdateMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('clears stale basic poll notices on basic poll finalization', async () => {
+    const { db, queryChain, batchUpdateMock } = buildDbMock([
+      { ref: { id: 'n11b' }, data: () => ({ type: NOTIFICATION_EVENTS.BASIC_POLL_REMINDER }) },
+      { ref: { id: 'n12b' }, data: () => ({ type: NOTIFICATION_EVENTS.BASIC_POLL_REOPENED }) },
+    ]);
+
+    await applyAutoClear({
+      db,
+      eventType: NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED,
+      event: { resource: { id: 'basicPoll2' } },
+      recipients: { userIds: ['user-basic-1'] },
+    });
+
+    expect(queryChain.where).toHaveBeenCalledWith('resource.id', '==', 'basicPoll2');
+    expect(batchUpdateMock).toHaveBeenCalledTimes(2);
+  });
+
+  test('clears finalized notices when a basic poll is reopened', async () => {
+    const { db, queryChain, batchUpdateMock } = buildDbMock([
+      { ref: { id: 'n12c' }, data: () => ({ type: NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED }) },
+    ]);
+
+    await applyAutoClear({
+      db,
+      eventType: NOTIFICATION_EVENTS.BASIC_POLL_REOPENED,
+      event: { resource: { id: 'basicPoll2b' } },
+      recipients: { userIds: ['user-basic-1'] },
+    });
+
+    expect(queryChain.where).toHaveBeenCalledWith('resource.id', '==', 'basicPoll2b');
+    expect(batchUpdateMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('clears missing-required notices when required flag is changed to optional', async () => {
+    const { db, queryChain, batchUpdateMock } = buildDbMock([
+      {
+        ref: { id: 'n13b' },
+        data: () => ({ type: NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED_WITH_MISSING_REQUIRED_VOTES }),
+      },
+    ]);
+
+    await applyAutoClear({
+      db,
+      eventType: NOTIFICATION_EVENTS.BASIC_POLL_REQUIRED_CHANGED,
+      event: { resource: { id: 'basicPoll3' }, payload: { required: false } },
+      recipients: { userIds: ['user-basic-2'] },
+    });
+
+    expect(queryChain.where).toHaveBeenCalledWith('resource.id', '==', 'basicPoll3');
+    expect(batchUpdateMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not auto-clear required-change notices when poll stays required', async () => {
+    const { db, queryChain, batchUpdateMock } = buildDbMock([
+      {
+        ref: { id: 'n14b' },
+        data: () => ({ type: NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED_WITH_MISSING_REQUIRED_VOTES }),
+      },
+    ]);
+
+    await applyAutoClear({
+      db,
+      eventType: NOTIFICATION_EVENTS.BASIC_POLL_REQUIRED_CHANGED,
+      event: { resource: { id: 'basicPoll4' }, payload: { required: true } },
+      recipients: { userIds: ['user-basic-3'] },
+    });
+
+    expect(queryChain.where).not.toHaveBeenCalled();
+    expect(batchUpdateMock).not.toHaveBeenCalled();
+  });
+
+  test('clears missing-required notices when a basic poll is removed', async () => {
+    const { db, queryChain, batchUpdateMock } = buildDbMock([
+      {
+        ref: { id: 'n15b' },
+        data: () => ({ type: NOTIFICATION_EVENTS.BASIC_POLL_REQUIRED_CHANGED }),
+      },
+    ]);
+
+    await applyAutoClear({
+      db,
+      eventType: NOTIFICATION_EVENTS.BASIC_POLL_REMOVED,
+      event: { resource: { id: 'basicPoll5' } },
+      recipients: { userIds: ['user-basic-4'] },
+    });
+
+    expect(queryChain.where).toHaveBeenCalledWith('resource.id', '==', 'basicPoll5');
+    expect(batchUpdateMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('clears reminder and required-changed notices when basic poll votes are reset', async () => {
+    const { db, queryChain, batchUpdateMock } = buildDbMock([
+      { ref: { id: 'n16b' }, data: () => ({ type: NOTIFICATION_EVENTS.BASIC_POLL_REMINDER }) },
+      {
+        ref: { id: 'n17b' },
+        data: () => ({ type: NOTIFICATION_EVENTS.BASIC_POLL_REQUIRED_CHANGED }),
+      },
+      {
+        ref: { id: 'n18b' },
+        data: () => ({ type: NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED_WITH_MISSING_REQUIRED_VOTES }),
+      },
+    ]);
+
+    await applyAutoClear({
+      db,
+      eventType: NOTIFICATION_EVENTS.BASIC_POLL_RESET,
+      event: { resource: { id: 'basicPoll6' } },
+      recipients: { userIds: ['user-basic-5'] },
+    });
+
+    expect(queryChain.where).toHaveBeenCalledWith('resource.id', '==', 'basicPoll6');
+    expect(batchUpdateMock).toHaveBeenCalledTimes(3);
+  });
+
   test('clears poll deleted notifications for recipients', async () => {
     const { db, queryChain, batchUpdateMock } = buildDbMock([
       { ref: { id: 'n11' }, data: () => ({ type: NOTIFICATION_EVENTS.POLL_INVITE_SENT }) },

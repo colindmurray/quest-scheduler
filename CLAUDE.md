@@ -19,6 +19,18 @@ Quest Scheduler is a Firebase-backed scheduling application for tabletop session
 - **Forward‑looking, not premature scaling.** Prefer designs that can grow later without forcing it now.
 - **Actionable > informative.** Prioritize changes that unblock user actions and reduce confusion.
 
+## Documentation Metadata & Audit Skills (Required)
+- For any Markdown create/update in this repo (excluding `README.md` / `README*.md`), use:
+  - `.claude/skills/docs-frontmatter-maintainer/SKILL.md`
+- For stale-risk or suspicious docs, use:
+  - `.claude/skills/documentation-auditor/SKILL.md`
+- Trigger `documentation-auditor` if any condition is true:
+  - `lastUpdated` is older than 30 days vs latest repo commit date.
+  - file's latest commit is > 10 commits behind `HEAD`.
+  - file's latest commit date is > 30 days older than latest repo commit date.
+  - metadata appears inconsistent with code/docs reality.
+- Keep this file lightweight; detailed frontmatter schema, enums, warnings, and audit rubric are defined in those skills.
+
 ## Commands
 
 ### Development

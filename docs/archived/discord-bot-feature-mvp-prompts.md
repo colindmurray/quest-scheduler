@@ -1,3 +1,17 @@
+---
+created: 2026-01-25
+lastUpdated: 2026-01-25
+summary: "Prompt scaffold library for stepping through historical Discord MVP tasks."
+category: REFERENCE
+status: OBSOLETE
+note: "Historical prompt artifact; no longer a recommended execution path for current plan-driven workflows."
+changelog:
+  - "2026-01-25: discord: add automation workflow and task runner skill"
+---
+
+> [!WARNING]
+> This document is **obsolete/deprecated** and retained for historical context only. Do not use it to drive active implementation decisions.
+
 # MVP Task Prompts (Tasks 1-62)
 
 ## Task 1: **Upgrade to Node.js 22**

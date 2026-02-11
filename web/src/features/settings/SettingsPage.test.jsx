@@ -117,4 +117,28 @@ describe('SettingsPage', () => {
     const pollInviteSelect = await screen.findByLabelText('Poll invites');
     expect(pollInviteSelect.value).toBe('inApp');
   });
+
+  test('renders advanced basic poll notification preferences', async () => {
+    fetchUserSettingsMock.mockImplementationOnce(() =>
+      Promise.resolve({
+        displayName: 'User',
+        settings: {
+          notificationMode: 'advanced',
+          notificationPreferences: {
+            BASIC_POLL_RESULTS: 'inApp+Email',
+          },
+        },
+      })
+    );
+
+    render(
+      <MemoryRouter>
+        <SettingsPage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(fetchUserSettingsMock).toHaveBeenCalled());
+    const basicPollResultsSelect = await screen.findByLabelText('Basic poll results posted');
+    expect(basicPollResultsSelect.value).toBe('inApp+Email');
+  });
 });

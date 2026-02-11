@@ -1,3 +1,20 @@
+---
+created: 2026-01-27
+lastUpdated: 2026-02-11
+summary: "Design for public identifiers, display name rules, and username/identifier visibility semantics."
+category: DESIGN_DOC
+status: STALE
+implementationStatus: COMPLETE
+note: "Public identifier and username flows are implemented (qs usernames, Discord username handling, publicIdentifierType selection), but this document remains a historical design snapshot."
+changelog:
+  - "2026-02-11: Reclassified implementationStatus to COMPLETE after verifying username/public identifier features in web and functions code."
+  - "2026-01-27: identity: uuid migration and display names"
+  - "2026-01-27: chore: save work in progress"
+---
+
+> [!WARNING]
+> This document is marked **stale**. Verify against current code and newer docs before relying on it.
+
 # Display Names and Usernames Design
 
 ## Summary

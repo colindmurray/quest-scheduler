@@ -83,6 +83,8 @@ export async function fetchPublicProfilesByEmails(emails = []) {
             publicIdentifierType: data.publicIdentifierType || null,
             qsUsername: data.qsUsername || null,
             discordUsername: data.discordUsername || null,
+            autoBlockConflicts: data.autoBlockConflicts === true,
+            busyWindows: Array.isArray(data.busyWindows) ? data.busyWindows : [],
           };
         }
       });
@@ -113,6 +115,8 @@ export async function fetchPublicProfilesByIds(userIds = []) {
           publicIdentifierType: data.publicIdentifierType || null,
           qsUsername: data.qsUsername || null,
           discordUsername: data.discordUsername || null,
+          autoBlockConflicts: data.autoBlockConflicts === true,
+          busyWindows: Array.isArray(data.busyWindows) ? data.busyWindows : [],
         };
       });
     })

@@ -1,3 +1,21 @@
+---
+created: 2026-01-27
+lastUpdated: 2026-02-11
+summary: "Migration plan for replacing text/email-based identifiers with UUID-oriented identity references."
+category: DESIGN_DOC
+status: STALE
+implementationStatus: COMPLETE
+note: "Core UID migration outcomes are present in current schema/rules/code paths (participantIds/memberIds/fromUserId/toUserId/blockedUserId), while this document remains a stale planning artifact."
+changelog:
+  - "2026-02-11: Reclassified implementationStatus to COMPLETE after verifying UID-first schema and rules usage across web/functions."
+  - "2026-01-28: uuid: phase4 uid-only participants/members"
+  - "2026-01-27: identity: uuid migration and display names"
+  - "2026-01-27: chore: save work in progress"
+---
+
+> [!WARNING]
+> This document is marked **stale**. Verify against current code and newer docs before relying on it.
+
 # UUID Migration Plan
 
 ## Overview

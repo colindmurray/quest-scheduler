@@ -10,6 +10,8 @@ const DISCORD_REGION = process.env.DISCORD_REGION || "us-central1";
 const DISCORD_TASK_QUEUE = process.env.DISCORD_TASK_QUEUE || "processDiscordInteraction";
 const DISCORD_SCHEDULER_TASK_QUEUE =
   process.env.DISCORD_SCHEDULER_TASK_QUEUE || "processDiscordSchedulerUpdate";
+const DISCORD_BASIC_POLL_TASK_QUEUE =
+  process.env.DISCORD_BASIC_POLL_TASK_QUEUE || "processDiscordBasicPollUpdate";
 const APP_URL = process.env.QS_APP_URL || "https://questscheduler.cc";
 
 const DISCORD_NOTIFICATION_DEFAULTS = {
@@ -28,6 +30,7 @@ module.exports = {
   DISCORD_REGION,
   DISCORD_TASK_QUEUE,
   DISCORD_SCHEDULER_TASK_QUEUE,
+  DISCORD_BASIC_POLL_TASK_QUEUE,
   APP_URL,
   DISCORD_NOTIFICATION_DEFAULTS,
 };

@@ -1,3 +1,20 @@
+---
+created: 2026-01-27
+lastUpdated: 2026-02-11
+summary: "Design document for avatar source priorities, upload handling, and profile photo behavior across providers."
+category: DESIGN_DOC
+status: STALE
+implementationStatus: COMPLETE
+note: "Avatar source selection, custom avatar upload, Discord avatar resolution, and persisted profile fields are implemented; this doc is now primarily historical design context."
+changelog:
+  - "2026-02-11: Reclassified implementationStatus to COMPLETE after verifying avatarSource/customAvatar/Discord avatar flows in Settings + OAuth callback."
+  - "2026-01-28: feat: avatar source selection + storage rules"
+  - "2026-01-27: identity: uuid migration and display names"
+---
+
+> [!WARNING]
+> This document is marked **stale**. Verify against current code and newer docs before relying on it.
+
 # User Icon Customization
 
 ## Overview

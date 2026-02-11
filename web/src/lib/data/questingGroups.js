@@ -2,6 +2,7 @@ import { collection, doc, query, where, serverTimestamp, setDoc, updateDoc, dele
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "../firebase";
 import { findUserIdByEmail } from "./users";
+import { deleteBasicPoll, fetchGroupBasicPolls } from "./basicPolls";
 import { normalizeEmail } from "../utils";
 import { buildNotificationActor, emitNotificationEvent } from "./notification-events";
 import {
@@ -381,6 +382,9 @@ export async function leaveGroup(groupId, userEmail, userId = null, actor = null
 
 // Delete a group
 export async function deleteQuestingGroup(groupId) {
+  if (!groupId) return;
+  const polls = await fetchGroupBasicPolls(groupId);
+  await Promise.all(polls.map((poll) => deleteBasicPoll(groupId, poll.id)));
   const ref = questingGroupRef(groupId);
   await deleteDoc(ref);
 }

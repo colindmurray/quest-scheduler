@@ -1,3 +1,18 @@
+---
+created: 2026-01-28
+lastUpdated: 2026-02-02
+summary: "Source-of-truth testing guide for local test commands, emulator setup, and validation workflow."
+category: TEST_PLAN
+status: CURRENT
+note: "Actively referenced by AGENTS.md testing gate and current development workflow."
+changelog:
+  - "2026-02-02: chore: sync notifications, discord, and identity updates"
+  - "2026-01-28: Add functions coverage tooling and docs"
+  - "2026-01-28: Expand hook/data tests and update testing docs"
+  - "2026-01-28: Add Google OAuth E2E stub and document test creds"
+  - "2026-01-28: Document testing workflow"
+---
+
 # Testing Guide
 
 This project uses Vitest for unit tests, Firebase emulators for rules/integration, and Playwright for E2E.

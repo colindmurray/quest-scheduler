@@ -68,6 +68,17 @@ const titleMap = {
   GROUP_MEMBER_REMOVED: 'Removed from Group',
   GROUP_MEMBER_LEFT: 'Group Member Left',
   GROUP_DELETED: 'Group Deleted',
+  BASIC_POLL_CREATED: 'Basic Poll Created',
+  BASIC_POLL_FINALIZED: 'Basic Poll Finalized',
+  BASIC_POLL_REOPENED: 'Basic Poll Reopened',
+  BASIC_POLL_VOTE_SUBMITTED: 'Basic Poll Vote Submitted',
+  BASIC_POLL_REMINDER: 'Basic Poll Reminder',
+  BASIC_POLL_RESET: 'Basic Poll Reset',
+  BASIC_POLL_REMOVED: 'Basic Poll Removed',
+  BASIC_POLL_DEADLINE_CHANGED: 'Basic Poll Deadline Updated',
+  BASIC_POLL_REQUIRED_CHANGED: 'Basic Poll Requirement Changed',
+  BASIC_POLL_RESULTS: 'Basic Poll Results',
+  BASIC_POLL_FINALIZED_WITH_MISSING_REQUIRED_VOTES: 'Finalized With Missing Required Votes',
 };
 
 const buildEvent = ({
@@ -131,6 +142,20 @@ test.describe.serial('Notification coverage', () => {
       { eventType: 'GROUP_MEMBER_REMOVED', resourceType: 'group' },
       { eventType: 'GROUP_MEMBER_LEFT', resourceType: 'group' },
       { eventType: 'GROUP_DELETED', resourceType: 'group' },
+      { eventType: 'BASIC_POLL_CREATED', resourceType: 'basicPoll' },
+      { eventType: 'BASIC_POLL_FINALIZED', resourceType: 'basicPoll' },
+      { eventType: 'BASIC_POLL_REOPENED', resourceType: 'basicPoll' },
+      { eventType: 'BASIC_POLL_VOTE_SUBMITTED', resourceType: 'basicPoll' },
+      { eventType: 'BASIC_POLL_REMINDER', resourceType: 'basicPoll' },
+      { eventType: 'BASIC_POLL_RESET', resourceType: 'basicPoll' },
+      { eventType: 'BASIC_POLL_REMOVED', resourceType: 'basicPoll' },
+      { eventType: 'BASIC_POLL_DEADLINE_CHANGED', resourceType: 'basicPoll' },
+      { eventType: 'BASIC_POLL_REQUIRED_CHANGED', resourceType: 'basicPoll' },
+      { eventType: 'BASIC_POLL_RESULTS', resourceType: 'basicPoll' },
+      {
+        eventType: 'BASIC_POLL_FINALIZED_WITH_MISSING_REQUIRED_VOTES',
+        resourceType: 'basicPoll',
+      },
     ];
 
     for (const entry of cases) {
@@ -157,6 +182,14 @@ test.describe.serial('Notification coverage', () => {
             groupName: resourceTitle,
             requestId,
             pollId,
+            basicPollTitle:
+              entry.resourceType === 'basicPoll' ? resourceTitle : undefined,
+            basicPollId:
+              entry.resourceType === 'basicPoll' ? resourceId : undefined,
+            parentType:
+              entry.resourceType === 'basicPoll' ? 'group' : undefined,
+            parentId:
+              entry.resourceType === 'basicPoll' ? 'e2e-group-owner' : undefined,
           },
         }),
       });
@@ -299,6 +332,38 @@ test.describe.serial('Notification coverage', () => {
         clear: 'FRIEND_REQUEST_DECLINED',
         actorScope: true,
       },
+      {
+        name: 'basic poll vote submitted clears reminder',
+        resourceType: 'basicPoll',
+        resourceId: 'auto-basic-poll-reminder',
+        initial: 'BASIC_POLL_REMINDER',
+        clear: 'BASIC_POLL_VOTE_SUBMITTED',
+        actorScope: true,
+      },
+      {
+        name: 'basic poll finalized clears reopened notice',
+        resourceType: 'basicPoll',
+        resourceId: 'auto-basic-poll-finalized',
+        initial: 'BASIC_POLL_REOPENED',
+        clear: 'BASIC_POLL_FINALIZED',
+        actorScope: false,
+      },
+      {
+        name: 'basic poll reopened clears finalized notice',
+        resourceType: 'basicPoll',
+        resourceId: 'auto-basic-poll-reopened',
+        initial: 'BASIC_POLL_FINALIZED',
+        clear: 'BASIC_POLL_REOPENED',
+        actorScope: false,
+      },
+      {
+        name: 'basic poll reset clears required-changed notice',
+        resourceType: 'basicPoll',
+        resourceId: 'auto-basic-poll-reset',
+        initial: 'BASIC_POLL_REQUIRED_CHANGED',
+        clear: 'BASIC_POLL_RESET',
+        actorScope: false,
+      },
     ];
 
     for (const scenario of scenarios) {
@@ -320,6 +385,13 @@ test.describe.serial('Notification coverage', () => {
             pollTitle: `Poll ${scenario.resourceId}`,
             groupName: `Group ${scenario.resourceId}`,
             requestId: scenario.resourceId,
+            basicPollTitle:
+              scenario.resourceType === 'basicPoll' ? `Poll ${scenario.resourceId}` : undefined,
+            basicPollId:
+              scenario.resourceType === 'basicPoll' ? scenario.resourceId : undefined,
+            parentType: scenario.resourceType === 'basicPoll' ? 'group' : undefined,
+            parentId:
+              scenario.resourceType === 'basicPoll' ? 'e2e-group-owner' : undefined,
           },
         }),
       });
@@ -348,6 +420,13 @@ test.describe.serial('Notification coverage', () => {
             pollTitle: `Poll ${scenario.resourceId}`,
             groupName: `Group ${scenario.resourceId}`,
             requestId: scenario.resourceId,
+            basicPollTitle:
+              scenario.resourceType === 'basicPoll' ? `Poll ${scenario.resourceId}` : undefined,
+            basicPollId:
+              scenario.resourceType === 'basicPoll' ? scenario.resourceId : undefined,
+            parentType: scenario.resourceType === 'basicPoll' ? 'group' : undefined,
+            parentId:
+              scenario.resourceType === 'basicPoll' ? 'e2e-group-owner' : undefined,
           },
         }),
         recipients: scenario.actorScope

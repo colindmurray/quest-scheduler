@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { formatDistanceToNow } from "date-fns";
 import { Check, Plus, X } from "lucide-react";
 import { useAuth } from "../../app/useAuth";
 import { useSchedulersByCreator, useSchedulersByGroupIds, useSchedulersByParticipant } from "../../hooks/useSchedulers";
@@ -11,6 +12,10 @@ import {
   pollInviteNotificationId,
   pollInviteLegacyNotificationId,
 } from "../../lib/data/notifications";
+import {
+  fetchOpenGroupPollsWithoutVote,
+  fetchRequiredEmbeddedPollsWithoutVote,
+} from "../../lib/data/basicPolls";
 import { LoadingState } from "../../components/ui/spinner";
 import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfiles";
 import { UserIdentity } from "../../components/UserIdentity";
@@ -24,6 +29,24 @@ import { MobileAgendaView } from "./components/MobileAgendaView";
 import { buildAttendanceSummary } from "./lib/attendance";
 import { PastSessionsSection } from "./components/past-sessions-section";
 import { SectionHeader } from "./components/section-header";
+
+function toDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value?.toDate === "function") return value.toDate();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function resolvePollDeadline(poll = {}) {
+  return toDate(poll?.settings?.deadlineAt || poll?.deadlineAt || null);
+}
+
+function formatDeadlineCountdown(deadlineAt) {
+  if (!deadlineAt) return "No deadline";
+  if (deadlineAt.getTime() <= Date.now()) return "Deadline passed";
+  return `Deadline ${formatDistanceToNow(deadlineAt, { addSuffix: true })}`;
+}
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -39,6 +62,7 @@ export default function DashboardPage() {
   const { removeLocal: removeNotification } = useNotifications();
   const [pastSessionsTab, setPastSessionsTab] = useState("finalized");
   const [isMobile, setIsMobile] = useState(false);
+  const [pollsToVote, setPollsToVote] = useState([]);
   const {
     data: groupSchedulers,
     loading: groupPollsLoading,
@@ -190,9 +214,18 @@ export default function DashboardPage() {
       );
       const respondedIds = voteDocs.map((voteDoc) => voteDoc.id).filter(Boolean);
       const respondedSet = new Set(respondedIds);
+      const pollPriorityAtMs =
+        (scheduler.finalizedSlotPriorityAtMs && scheduler.winningSlotId
+          ? scheduler.finalizedSlotPriorityAtMs[scheduler.winningSlotId]
+          : null) ?? scheduler.finalizedAtMs ?? null;
       const { confirmed, unavailable } = buildAttendanceSummary({
+        schedulerId: scheduler.id,
         status: scheduler.status,
         winningSlotId: scheduler.winningSlotId,
+        winningSlotStart: winningSlot?.start || null,
+        winningSlotEnd: winningSlot?.end || null,
+        pollPriorityAtMs,
+        busyByUserId: participantProfilesById,
         voteDocs,
         participantEmailById,
       });
@@ -240,6 +273,24 @@ export default function DashboardPage() {
       (s) => s.status === "OPEN" && !archivedPolls.includes(s.id)
     );
   }, [enrichedSchedulers, archivedPolls]);
+  const openSchedulerIds = useMemo(
+    () => upcomingOpen.map((scheduler) => scheduler.id).filter(Boolean),
+    [upcomingOpen]
+  );
+  const openSchedulerTitleById = useMemo(() => {
+    const map = new Map();
+    upcomingOpen.forEach((scheduler) => {
+      map.set(scheduler.id, scheduler.title || "Session poll");
+    });
+    return map;
+  }, [upcomingOpen]);
+  const groupNameById = useMemo(() => {
+    const map = new Map();
+    (groups || []).forEach((group) => {
+      map.set(group.id, group.name || "Questing group");
+    });
+    return map;
+  }, [groups]);
 
   const upcomingFinalized = useMemo(() => {
     const now = new Date();
@@ -348,6 +399,64 @@ export default function DashboardPage() {
     mine.loading ||
     settingsLoading ||
     pendingInvitesLoading;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPollsToVote() {
+      if (!user?.uid) {
+        setPollsToVote([]);
+        return;
+      }
+
+      try {
+        const [openGroupPolls, requiredEmbeddedPolls] = await Promise.all([
+          fetchOpenGroupPollsWithoutVote(groupIds, user.uid),
+          fetchRequiredEmbeddedPollsWithoutVote(openSchedulerIds, user.uid),
+        ]);
+
+        const toVote = [
+          ...openGroupPolls.map((poll) => ({
+            ...poll,
+            contextLabel: `in ${groupNameById.get(poll.parentId) || "Questing group"}`,
+            voteLink: `/groups/${poll.parentId}/polls/${poll.pollId}`,
+          })),
+          ...requiredEmbeddedPolls.map((poll) => ({
+            ...poll,
+            contextLabel: `in ${openSchedulerTitleById.get(poll.parentId) || "Session poll"}`,
+            voteLink: `/scheduler/${poll.parentId}?poll=${poll.pollId}`,
+          })),
+        ]
+          .map((poll) => ({
+            ...poll,
+            deadlineAt: resolvePollDeadline(poll),
+            voteType: poll?.settings?.voteType === "RANKED_CHOICE" ? "RANKED_CHOICE" : "MULTIPLE_CHOICE",
+          }))
+          .sort((left, right) => {
+            const leftDeadline = left.deadlineAt ? left.deadlineAt.getTime() : Number.MAX_SAFE_INTEGER;
+            const rightDeadline = right.deadlineAt ? right.deadlineAt.getTime() : Number.MAX_SAFE_INTEGER;
+            if (leftDeadline !== rightDeadline) return leftDeadline - rightDeadline;
+            return String(left.title || "").localeCompare(String(right.title || ""));
+          });
+
+        if (!cancelled) {
+          setPollsToVote(toVote);
+        }
+      } catch (error) {
+        console.error("Failed to load polls needing vote:", error);
+        if (!cancelled) setPollsToVote([]);
+      }
+    }
+
+    if (!isLoading) {
+      loadPollsToVote();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [groupIds, groupNameById, isLoading, openSchedulerIds, openSchedulerTitleById, user?.uid]);
+
   const handleOpenInvite = (inviteId) => {
     const target = `/scheduler/${inviteId}`;
     navigate(target);
@@ -604,6 +713,54 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+          {pollsToVote.length > 0 && (
+            <section className="rounded-3xl bg-white p-6 shadow-xl shadow-slate-200 dark:bg-slate-800 dark:shadow-slate-900/50">
+              <SectionHeader
+                title="Polls to vote on"
+                subtitle="Open basic polls that still need your vote"
+              />
+              <div className="mt-4 space-y-2">
+                {pollsToVote.map((poll) => {
+                  const voteTypeLabel =
+                    poll.voteType === "RANKED_CHOICE" ? "Ranked choice" : "Multiple choice";
+                  return (
+                    <Link
+                      key={`${poll.parentType}:${poll.parentId}:${poll.pollId}`}
+                      to={poll.voteLink}
+                      className="block rounded-2xl border border-slate-200/70 bg-slate-50 px-4 py-3 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:bg-slate-700/70"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                            {poll.title || "Untitled poll"}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            {poll.contextLabel}
+                          </p>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-slate-600 dark:text-slate-300">
+                              {voteTypeLabel}
+                            </span>
+                            {poll.required ? (
+                              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-700/70 dark:bg-amber-900/30 dark:text-amber-200">
+                                Required
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                            {formatDeadlineCountdown(poll.deadlineAt)}
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200">
+                          Vote
+                        </span>
+                      </div>
+                    </Link>
                   );
                 })}
               </div>

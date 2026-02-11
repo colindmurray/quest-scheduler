@@ -7,6 +7,13 @@ import { format, parse, startOfWeek, getDay, startOfDay, isBefore, startOfHour }
 import { fromZonedTime } from "date-fns-tz";
 import { enUS } from "date-fns/locale";
 import { toast } from "sonner";
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useAuth } from "../../app/useAuth";
 import { useUserSettings } from "../../hooks/useUserSettings";
 import { useFriends } from "../../hooks/useFriends";
@@ -16,6 +23,15 @@ import { CalendarJumpControls } from "../../components/ui/calendar-jump-controls
 import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfiles";
 import { useSchedulerEditorData } from "./hooks/useSchedulerEditorData";
 import { APP_URL } from "../../lib/config";
+import {
+  createEmbeddedBasicPoll,
+  deleteEmbeddedBasicPoll,
+  notifyEmbeddedBasicPollRequiredChanged,
+  reorderEmbeddedBasicPolls,
+  subscribeToBasicPollVotes,
+  subscribeToEmbeddedBasicPolls,
+  updateEmbeddedBasicPoll,
+} from "../../lib/data/basicPolls";
 import {
   addSchedulerSlot,
   deleteField,
@@ -33,7 +49,14 @@ import { findUserIdsByEmails } from "../../lib/data/users";
 import { buildEmailSet, normalizeEmail, normalizeEmailList } from "../../lib/utils";
 import { formatZonedDateTime, formatZonedTime, shouldShowTimeZone, toDisplayDate } from "../../lib/time";
 import { validateInviteCandidate } from "./utils/invite-utils";
+import {
+  removeEmbeddedPollDraft,
+  reorderEmbeddedPollDrafts,
+  toEmbeddedPollCreatePayloads,
+  upsertEmbeddedPollDraft,
+} from "./utils/embedded-poll-drafts";
 import { InvitePanel } from "./components/invite-panel";
+import { EmbeddedPollEditorModal } from "./components/EmbeddedPollEditorModal";
 import { QuestingGroupSelect } from "./components/questing-group-select";
 import { SchedulerFormHeader } from "./components/scheduler-form-header";
 import {
@@ -71,6 +94,82 @@ const localizer = dateFnsLocalizer({
 
 const DragAndDropCalendar = withDragAndDrop(Calendar);
 
+function SortableEmbeddedPollCard({
+  poll,
+  voteCount,
+  participantCount,
+  onEdit,
+  onRemove,
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: poll.id,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.8 : 1,
+  };
+  const voteTypeLabel =
+    poll?.settings?.voteType === "RANKED_CHOICE" ? "Ranked choice" : "Multiple choice";
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+              {poll.title || "Untitled poll"}
+            </span>
+            <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:border-slate-600 dark:text-slate-300">
+              {voteTypeLabel}
+            </span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                poll.required
+                  ? "border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700/70 dark:bg-amber-900/30 dark:text-amber-200"
+                  : "border border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              }`}
+            >
+              {poll.required ? "Required" : "Optional"}
+            </span>
+          </div>
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            {voteCount}/{participantCount} voted
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-300"
+            aria-label={`Drag ${poll.title || "poll"}`}
+            {...attributes}
+            {...listeners}
+          >
+            Drag
+          </button>
+          <button
+            type="button"
+            onClick={onEdit}
+            className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700 transition-colors hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-900/30"
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CreateSchedulerPage() {
   const { id: editId } = useParams();
   const isEditing = Boolean(editId);
@@ -105,6 +204,16 @@ export default function CreateSchedulerPage() {
   const [initialSlotTimes, setInitialSlotTimes] = useState({});
   const [calendarUpdateOpen, setCalendarUpdateOpen] = useState(false);
   const [calendarUpdateChecked, setCalendarUpdateChecked] = useState(false);
+  const [embeddedPolls, setEmbeddedPolls] = useState([]);
+  const [embeddedPollsLoading, setEmbeddedPollsLoading] = useState(false);
+  const [embeddedPollVoteCounts, setEmbeddedPollVoteCounts] = useState({});
+  const [embeddedPollEditorOpen, setEmbeddedPollEditorOpen] = useState(false);
+  const [editingEmbeddedPoll, setEditingEmbeddedPoll] = useState(null);
+  const [embeddedPollSaveBusy, setEmbeddedPollSaveBusy] = useState(false);
+  const [deleteEmbeddedPollOpen, setDeleteEmbeddedPollOpen] = useState(false);
+  const [embeddedPollToDelete, setEmbeddedPollToDelete] = useState(null);
+  const [embeddedPollDeleteBusy, setEmbeddedPollDeleteBusy] = useState(false);
+  const [draftEmbeddedPolls, setDraftEmbeddedPolls] = useState([]);
 
   const { schedulerDocRef, scheduler, slotsSnapshot, votesSnapshot } = useSchedulerEditorData({
     schedulerId: editId,
@@ -303,6 +412,56 @@ export default function CreateSchedulerPage() {
   }, [selectedGroup, groupMemberSet]);
 
   useEffect(() => {
+    if (!isEditing || !editId) {
+      setEmbeddedPolls([]);
+      setEmbeddedPollsLoading(false);
+      return;
+    }
+    setEmbeddedPollsLoading(true);
+    const unsubscribe = subscribeToEmbeddedBasicPolls(
+      editId,
+      (polls) => {
+        setEmbeddedPolls(polls || []);
+        setEmbeddedPollsLoading(false);
+      },
+      () => {
+        setEmbeddedPolls([]);
+        setEmbeddedPollsLoading(false);
+      }
+    );
+    return () => unsubscribe();
+  }, [editId, isEditing]);
+
+  useEffect(() => {
+    setEmbeddedPollVoteCounts({});
+    if (!isEditing || !editId || embeddedPolls.length === 0) return () => {};
+
+    const unsubscribers = embeddedPolls.map((poll) =>
+      subscribeToBasicPollVotes(
+        "scheduler",
+        editId,
+        poll.id,
+        (voteDocs) => {
+          const count = countSubmittedEmbeddedVotes(poll, voteDocs || []);
+          setEmbeddedPollVoteCounts((previous) => {
+            if (previous[poll.id] === count) return previous;
+            return { ...previous, [poll.id]: count };
+          });
+        },
+        () => {
+          setEmbeddedPollVoteCounts((previous) => ({ ...previous, [poll.id]: 0 }));
+        }
+      )
+    );
+
+    return () => {
+      unsubscribers.forEach((unsubscribe) => {
+        if (typeof unsubscribe === "function") unsubscribe();
+      });
+    };
+  }, [editId, embeddedPolls, isEditing]);
+
+  useEffect(() => {
     if (!isEditing) return;
     const groupId = scheduler.data?.questingGroupId;
     if (!groupId) {
@@ -365,6 +524,44 @@ export default function CreateSchedulerPage() {
     const set = new Set([...(explicitParticipantEmails || []), ...voterEmails]);
     return buildColorMap(Array.from(set).sort((a, b) => a.localeCompare(b)));
   }, [isEditing, explicitParticipantEmails, votesSnapshot.data]);
+  const displayedEmbeddedPolls = isEditing ? embeddedPolls : draftEmbeddedPolls;
+  const embeddedPollParticipantCount = useMemo(() => {
+    if (isEditing) {
+      const participantIds = new Set([
+        ...(scheduler.data?.participantIds || []),
+        ...(groupMemberIds || []),
+      ]);
+      return participantIds.size;
+    }
+
+    const participantEmails = new Set([
+      normalizeEmail(user?.email),
+      ...inviteEmails.map((email) => normalizeEmail(email)),
+      ...groupMemberEmails.map((email) => normalizeEmail(email)),
+    ]);
+    participantEmails.delete("");
+    return participantEmails.size;
+  }, [
+    groupMemberEmails,
+    groupMemberIds,
+    inviteEmails,
+    isEditing,
+    scheduler.data?.participantIds,
+    user?.email,
+  ]);
+  const embeddedPollSensors = useSensors(useSensor(PointerSensor));
+
+  const countSubmittedEmbeddedVotes = (poll, voteDocs = []) => {
+    const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
+    return voteDocs.filter((voteDoc) => {
+      if (voteType === "RANKED_CHOICE") {
+        return Array.isArray(voteDoc?.rankings) && voteDoc.rankings.some(Boolean);
+      }
+      const hasOptionIds = Array.isArray(voteDoc?.optionIds) && voteDoc.optionIds.some(Boolean);
+      const hasWriteIn = String(voteDoc?.otherText || "").trim().length > 0;
+      return hasOptionIds || hasWriteIn;
+    }).length;
+  };
 
 
   const removeSlot = (slotId) => {
@@ -434,6 +631,119 @@ export default function CreateSchedulerPage() {
     setSlots((prev) =>
       prev.map((slot) => (slot.id === slotId ? { ...slot, start, end } : slot))
     );
+  };
+
+  const openAddEmbeddedPoll = () => {
+    setEditingEmbeddedPoll(null);
+    setEmbeddedPollEditorOpen(true);
+  };
+
+  const openEditEmbeddedPoll = (poll) => {
+    setEditingEmbeddedPoll(poll);
+    setEmbeddedPollEditorOpen(true);
+  };
+
+  const handleSaveEmbeddedPoll = async (pollPayload) => {
+    if (isEditing && !editId) return;
+    setEmbeddedPollSaveBusy(true);
+    try {
+      if (editingEmbeddedPoll?.id) {
+        if (isEditing) {
+          const previousRequired = editingEmbeddedPoll.required === true;
+          const nextRequired = pollPayload.required === true;
+          await updateEmbeddedBasicPoll(editId, editingEmbeddedPoll.id, pollPayload);
+          if (previousRequired !== nextRequired) {
+            await notifyEmbeddedBasicPollRequiredChanged(editId, editingEmbeddedPoll.id);
+          }
+        } else {
+          setDraftEmbeddedPolls((previous) =>
+            upsertEmbeddedPollDraft(previous, pollPayload, {
+              pollId: editingEmbeddedPoll.id,
+              creatorId: user?.uid || null,
+            })
+          );
+        }
+        toast.success("Embedded poll updated");
+        setEditingEmbeddedPoll(null);
+        return;
+      }
+      if (isEditing) {
+        const currentMaxOrder = embeddedPolls.reduce((maxOrder, poll) => {
+          const orderValue = Number.isFinite(poll?.order) ? poll.order : 0;
+          return Math.max(maxOrder, orderValue);
+        }, -1);
+        await createEmbeddedBasicPoll(
+          editId,
+          {
+            ...pollPayload,
+            order: currentMaxOrder + 1,
+            creatorId: user?.uid || null,
+          },
+          { useServer: true }
+        );
+      } else {
+        setDraftEmbeddedPolls((previous) =>
+          upsertEmbeddedPollDraft(previous, pollPayload, {
+            pollId: null,
+            creatorId: user?.uid || null,
+          })
+        );
+      }
+      toast.success("Embedded poll added");
+      setEditingEmbeddedPoll(null);
+    } finally {
+      setEmbeddedPollSaveBusy(false);
+    }
+  };
+
+  const confirmDeleteEmbeddedPoll = (poll) => {
+    setEmbeddedPollToDelete(poll);
+    setDeleteEmbeddedPollOpen(true);
+  };
+
+  const handleDeleteEmbeddedPoll = async () => {
+    if (!embeddedPollToDelete?.id || embeddedPollDeleteBusy) return;
+    setEmbeddedPollDeleteBusy(true);
+    try {
+      if (isEditing) {
+        await deleteEmbeddedBasicPoll(editId, embeddedPollToDelete.id, { useServer: true });
+      } else {
+        setDraftEmbeddedPolls((previous) =>
+          removeEmbeddedPollDraft(previous, embeddedPollToDelete.id)
+        );
+      }
+      toast.success("Embedded poll removed");
+      setDeleteEmbeddedPollOpen(false);
+      setEmbeddedPollToDelete(null);
+    } catch (error) {
+      console.error("Failed to delete embedded poll:", error);
+      toast.error(error?.message || "Failed to remove embedded poll");
+    } finally {
+      setEmbeddedPollDeleteBusy(false);
+    }
+  };
+
+  const handleEmbeddedPollDragEnd = async (event) => {
+    const { active, over } = event;
+    if (!active?.id || !over?.id || active.id === over.id) return;
+    const reordered = reorderEmbeddedPollDrafts(displayedEmbeddedPolls, active.id, over.id);
+
+    if (isEditing) {
+      if (!editId) return;
+      setEmbeddedPolls(reordered);
+      try {
+        await reorderEmbeddedBasicPolls(
+          editId,
+          reordered.map((poll) => poll.id)
+        );
+      } catch (error) {
+        console.error("Failed to reorder embedded polls:", error);
+        toast.error(error?.message || "Failed to reorder embedded polls");
+      }
+      return;
+    }
+
+    setDraftEmbeddedPolls(reordered);
   };
 
   const sendPendingInvites = async (pendingRecipients, schedulerId, pollTitle) => {
@@ -740,6 +1050,24 @@ export default function CreateSchedulerPage() {
         })
       );
 
+      let embeddedPollCreateError = null;
+      const embeddedPollPayloads = toEmbeddedPollCreatePayloads(
+        draftEmbeddedPolls,
+        user?.uid || null
+      );
+      if (embeddedPollPayloads.length > 0) {
+        try {
+          await Promise.all(
+            embeddedPollPayloads.map((pollPayload) =>
+              createEmbeddedBasicPoll(schedulerId, pollPayload, { useServer: true })
+            )
+          );
+        } catch (embeddedError) {
+          embeddedPollCreateError = embeddedError;
+          console.error("Failed to create one or more embedded polls:", embeddedError);
+        }
+      }
+
       if (inviteRecipients.length > 0) {
         try {
           await sendPendingInvites(inviteRecipients, schedulerId, pollTitle);
@@ -751,6 +1079,9 @@ export default function CreateSchedulerPage() {
 
       setCreatedId(schedulerId);
       toast.success("Session poll created");
+      if (embeddedPollCreateError) {
+        toast.error("Session created, but one or more embedded polls failed to save.");
+      }
       navigate(`/scheduler/${schedulerId}`);
     } catch (err) {
       console.error("Failed to save session poll:", err);
@@ -1203,6 +1534,70 @@ export default function CreateSchedulerPage() {
             </div>
           </div>
 
+          <div className="mt-8">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  Embedded polls
+                </h3>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {isEditing
+                    ? "Add optional or required polls for participants to complete."
+                    : "Add optional or required polls now. They are saved when you create the session poll."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={openAddEmbeddedPoll}
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
+              >
+                + Add poll
+              </button>
+            </div>
+
+            {displayedEmbeddedPolls.length > 5 ? (
+              <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-700/70 dark:bg-amber-900/30 dark:text-amber-200">
+                This session has many embedded polls. Consider keeping it to 1-5 to reduce voter fatigue.
+              </p>
+            ) : null}
+
+            <div className="mt-4 space-y-3">
+              {isEditing && embeddedPollsLoading ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">Loading embedded polls...</p>
+              ) : null}
+              {(!isEditing || !embeddedPollsLoading) && displayedEmbeddedPolls.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                  No embedded polls yet.
+                </p>
+              ) : null}
+              {displayedEmbeddedPolls.length > 0 ? (
+                <DndContext
+                  sensors={embeddedPollSensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleEmbeddedPollDragEnd}
+                >
+                  <SortableContext
+                    items={displayedEmbeddedPolls.map((poll) => poll.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-3">
+                      {displayedEmbeddedPolls.map((poll) => (
+                        <SortableEmbeddedPollCard
+                          key={poll.id}
+                          poll={poll}
+                          voteCount={embeddedPollVoteCounts[poll.id] || 0}
+                          participantCount={embeddedPollParticipantCount}
+                          onEdit={() => openEditEmbeddedPoll(poll)}
+                          onRemove={() => confirmDeleteEmbeddedPoll(poll)}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              ) : null}
+            </div>
+          </div>
+
           {hasInvalidSlots && (
             <p className="mt-4 text-sm text-red-500 dark:text-red-400">
               Remove past slots before saving changes.
@@ -1333,6 +1728,52 @@ export default function CreateSchedulerPage() {
               className="rounded-full bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary/90"
             >
               Add slot
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <EmbeddedPollEditorModal
+        open={embeddedPollEditorOpen}
+        onOpenChange={(nextOpen) => {
+          setEmbeddedPollEditorOpen(nextOpen);
+          if (!nextOpen) setEditingEmbeddedPoll(null);
+        }}
+        initialPoll={editingEmbeddedPoll}
+        onSave={handleSaveEmbeddedPoll}
+        saving={embeddedPollSaveBusy}
+      />
+      <Dialog
+        open={deleteEmbeddedPollOpen}
+        onOpenChange={(nextOpen) => {
+          setDeleteEmbeddedPollOpen(nextOpen);
+          if (!nextOpen) setEmbeddedPollToDelete(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Remove embedded poll</DialogTitle>
+            <DialogDescription>
+              Remove "{embeddedPollToDelete?.title || "this poll"}"? All embedded poll votes will be deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteEmbeddedPollOpen(false);
+                setEmbeddedPollToDelete(null);
+              }}
+              className="rounded-full border border-slate-200 px-4 py-2 text-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteEmbeddedPoll}
+              disabled={embeddedPollDeleteBusy}
+              className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-rose-500 disabled:opacity-60"
+            >
+              {embeddedPollDeleteBusy ? "Removing..." : "Remove poll"}
             </button>
           </DialogFooter>
         </DialogContent>

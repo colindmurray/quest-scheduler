@@ -1,3 +1,19 @@
+---
+created: 2026-01-31
+lastUpdated: 2026-02-02
+summary: "Execution tracker documenting completion state for the unified notification overhaul plan."
+category: TASK_TRACKER
+status: STALE
+implementationStatus: COMPLETE
+note: "Historical completion tracker for a prior plan; retained for auditability."
+changelog:
+  - "2026-02-02: chore: sync notifications, discord, and identity updates"
+  - "2026-01-31: Improve invite flows, notifications, and tests"
+---
+
+> [!WARNING]
+> This document is marked **stale**. Verify against current code and newer docs before relying on it.
+
 # Unified Notification Overhaul — Task List
 
 ## Execution Checkpoint

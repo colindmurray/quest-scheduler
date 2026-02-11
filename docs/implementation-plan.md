@@ -1,3 +1,21 @@
+---
+created: 2026-01-06
+lastUpdated: 2026-02-11
+summary: "Original master implementation plan describing system goals, stack, and foundational delivery phases."
+category: CORE_DOCUMENTATION
+status: STALE
+implementationStatus: COMPLETE
+note: "This master plan is largely realized and now serves as historical foundation; active delivery is tracked in newer specialized plan/task documents."
+changelog:
+  - "2026-02-11: Reclassified implementationStatus to COMPLETE; active execution moved to specialized plan docs."
+  - "2026-01-27: chore: save work in progress"
+  - "2026-01-25: Sync repo updates"
+  - "2026-01-06: Initial commit"
+---
+
+> [!WARNING]
+> This document is marked **stale**. Verify against current code and newer docs before relying on it.
+
 # Quest Scheduler — Master Implementation Plan
 
 ## 1) Goals & Scope

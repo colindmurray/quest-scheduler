@@ -228,4 +228,64 @@ describe('notification templates', () => {
     expect(result.title).toBe('Discord Nudge Sent');
     expect(result.body).toContain('Poll Title');
   });
+
+  test('basic poll in-app templates render title/body/actionUrl', () => {
+    const basicPollEvents = [
+      NOTIFICATION_EVENTS.BASIC_POLL_CREATED,
+      NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED,
+      NOTIFICATION_EVENTS.BASIC_POLL_REOPENED,
+      NOTIFICATION_EVENTS.BASIC_POLL_VOTE_SUBMITTED,
+      NOTIFICATION_EVENTS.BASIC_POLL_REMINDER,
+      NOTIFICATION_EVENTS.BASIC_POLL_RESET,
+      NOTIFICATION_EVENTS.BASIC_POLL_REMOVED,
+      NOTIFICATION_EVENTS.BASIC_POLL_DEADLINE_CHANGED,
+      NOTIFICATION_EVENTS.BASIC_POLL_REQUIRED_CHANGED,
+      NOTIFICATION_EVENTS.BASIC_POLL_RESULTS,
+      NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED_WITH_MISSING_REQUIRED_VOTES,
+    ];
+
+    basicPollEvents.forEach((eventType) => {
+      const template = getInAppTemplate(eventType);
+      expect(template).toBeTypeOf('function');
+      const result = template({
+        actor: { displayName: 'Host', email: 'host@example.com' },
+        resource: { id: 'basicPoll1', title: 'Food vote' },
+        payload: {
+          parentType: 'group',
+          parentId: 'group1',
+          basicPollTitle: 'Food vote',
+          resultSummary: 'Pizza won.',
+          deadlineLabel: 'Now closes Friday.',
+          required: true,
+          missingCount: 2,
+          resultsSummary: 'Pizza 4, Subs 2',
+        },
+      });
+
+      expect(result.title).toBeTruthy();
+      expect(result.body).toBeTruthy();
+      expect(result.actionUrl).toBe('/groups/group1/polls/basicPoll1');
+    });
+  });
+
+  test('basic poll email template returns subject/text/html', () => {
+    const template = getEmailTemplate(NOTIFICATION_EVENTS.BASIC_POLL_RESULTS);
+    const result = template(
+      {
+        actor: { displayName: 'Host' },
+        resource: { id: 'basicPoll1', title: 'Food vote' },
+        payload: {
+          parentType: 'group',
+          parentId: 'group1',
+          basicPollTitle: 'Food vote',
+          resultsSummary: 'Pizza 4, Subs 2',
+        },
+      },
+      { email: 'recipient@example.com' }
+    );
+
+    expect(result.subject).toContain('Food vote');
+    expect(result.text).toContain('Pizza 4, Subs 2');
+    expect(result.html).toContain('View results');
+  });
 });

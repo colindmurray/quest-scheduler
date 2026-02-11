@@ -220,4 +220,43 @@ describe('notification router', () => {
       })
     );
   });
+
+  test('processes BASIC_POLL_CREATED with in-app routing and basic-poll action URL metadata', async () => {
+    const data = {
+      eventType: 'BASIC_POLL_CREATED',
+      resource: { type: 'basicPoll', id: 'bp-1', title: 'Snack vote' },
+      actor: { uid: 'inviter', email: 'inviter@example.com', displayName: 'Inviter' },
+      payload: {
+        parentType: 'group',
+        parentId: 'group-1',
+        basicPollId: 'bp-1',
+        basicPollTitle: 'Snack vote',
+      },
+      recipients: { userIds: ['user1'], emails: [] },
+    };
+    userDocsById.user1 = {
+      email: 'user1@example.com',
+      settings: {
+        notificationMode: 'advanced',
+        notificationPreferences: {
+          BASIC_POLL_CREATED: 'inApp',
+        },
+      },
+    };
+
+    await processNotificationEvent.run(buildEvent(data));
+
+    expect(notificationSetMock).toHaveBeenCalledTimes(1);
+    expect(mailAddMock).not.toHaveBeenCalled();
+    expect(notificationSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'BASIC_POLL_CREATED',
+        actionUrl: expect.stringContaining('/groups/group-1/polls/bp-1'),
+      })
+    );
+    expect(sendDiscordNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'BASIC_POLL_CREATED' })
+    );
+    expect(eventUpdateMock).toHaveBeenCalledWith(expect.objectContaining({ status: 'processed' }));
+  });
 });

@@ -120,6 +120,7 @@ describe('discord worker handlers', () => {
           linkCodeInvalidOrExpired: 'invalid or expired',
           linkCodeInvalid: 'invalid',
           linkCodeExpired: 'expired',
+          channelAlreadyLinked: 'channel already linked',
           noLinkedGroup: 'no linked group',
         },
         buildUserNotLinkedMessage: vi.fn(),
@@ -212,6 +213,42 @@ describe('discord worker handlers', () => {
         }),
       })
     );
+  });
+
+  test('handleLinkGroup rejects when channel is linked to another group', async () => {
+    codeGetMock.mockResolvedValueOnce(
+      buildDocSnap({
+        type: 'group-link',
+        groupId: 'group1',
+        uid: 'user1',
+        attempts: 0,
+        expiresAt: { toDate: () => new Date(Date.now() + 10000) },
+      })
+    );
+    groupQueryDocs = [
+      {
+        id: 'group2',
+        data: () => ({ discord: { guildId: 'guild1', channelId: 'chan1' } }),
+      },
+    ];
+
+    await worker.__test__.handleLinkGroup({
+      id: 'invalid',
+      token: 'tok',
+      applicationId: 'app',
+      data: { options: [{ name: 'code', value: '123' }] },
+      guildId: 'guild1',
+      channelId: 'chan1',
+      member: { permissions: '8' },
+    });
+
+    expect(editOriginalInteractionResponseMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({ content: 'channel already linked' }),
+      })
+    );
+    expect(groupSetMock).not.toHaveBeenCalled();
+    expect(codeDeleteMock).not.toHaveBeenCalled();
   });
 
   test('handleLinkGroup warns when test message fails', async () => {

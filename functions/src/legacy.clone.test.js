@@ -7,10 +7,13 @@ let schedulerGetMock;
 let newSchedulerSetMock;
 let newSlotsSetMock;
 let newVotesSetMock;
+let newBasicPollSetMock;
+let newBasicPollVoteSetMock;
 let groupGetMock;
 let usersPublicDocs;
 let slotsDocs;
 let votesDocs;
+let basicPollDocs;
 
 describe('legacy cloneSchedulerPoll', () => {
   beforeEach(async () => {
@@ -21,10 +24,13 @@ describe('legacy cloneSchedulerPoll', () => {
     newSchedulerSetMock = vi.fn();
     newSlotsSetMock = vi.fn();
     newVotesSetMock = vi.fn();
+    newBasicPollSetMock = vi.fn();
+    newBasicPollVoteSetMock = vi.fn();
     groupGetMock = vi.fn();
     usersPublicDocs = [];
     slotsDocs = [];
     votesDocs = [];
+    basicPollDocs = [];
 
     const originalRef = {
       get: schedulerGetMock,
@@ -34,6 +40,9 @@ describe('legacy cloneSchedulerPoll', () => {
         }
         if (name === 'votes') {
           return { get: async () => ({ docs: votesDocs }) };
+        }
+        if (name === 'basicPolls') {
+          return { get: async () => ({ docs: basicPollDocs }) };
         }
         return { get: async () => ({ docs: [] }) };
       },
@@ -47,6 +56,19 @@ describe('legacy cloneSchedulerPoll', () => {
         }
         if (name === 'votes') {
           return { doc: () => ({ set: newVotesSetMock }) };
+        }
+        if (name === 'basicPolls') {
+          return {
+            doc: () => ({
+              set: newBasicPollSetMock,
+              collection: (subName) => {
+                if (subName === 'votes') {
+                  return { doc: () => ({ set: newBasicPollVoteSetMock }) };
+                }
+                return { doc: () => ({ set: vi.fn() }) };
+              },
+            }),
+          };
         }
         return { doc: () => ({ set: vi.fn() }) };
       },
@@ -158,6 +180,35 @@ describe('legacy cloneSchedulerPoll', () => {
         }),
       },
     ];
+    basicPollDocs = [
+      {
+        id: 'bp1',
+        data: () => ({
+          title: 'Snack poll',
+          required: true,
+          order: 0,
+          settings: { voteType: 'MULTIPLE_CHOICE' },
+          finalResults: { winnerIds: ['opt-a'] },
+        }),
+        ref: {
+          collection: (name) => {
+            if (name === 'votes') {
+              return {
+                get: async () => ({
+                  docs: [
+                    {
+                      id: 'memberId',
+                      data: () => ({ optionIds: ['opt-a'], source: 'web' }),
+                    },
+                  ],
+                }),
+              };
+            }
+            return { get: async () => ({ docs: [] }) };
+          },
+        },
+      },
+    ];
 
     const result = await legacy.cloneSchedulerPoll.run(
       {
@@ -177,6 +228,26 @@ describe('legacy cloneSchedulerPoll', () => {
     );
     expect(newSlotsSetMock).toHaveBeenCalled();
     expect(newVotesSetMock).toHaveBeenCalled();
+    expect(newBasicPollSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Snack poll',
+        required: true,
+        updatedAt: 'server-time',
+      })
+    );
+    expect(newBasicPollSetMock).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        finalResults: expect.anything(),
+      })
+    );
+    expect(newBasicPollVoteSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        optionIds: ['opt-a'],
+        source: 'web',
+        updatedAt: 'server-time',
+      }),
+      { merge: true }
+    );
 
     Date.now.mockRestore();
     crypto.randomUUID.mockRestore();

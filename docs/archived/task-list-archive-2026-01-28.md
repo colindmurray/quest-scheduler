@@ -1,3 +1,18 @@
+---
+created: 2026-01-29
+lastUpdated: 2026-01-29
+summary: "Archived historical global task list snapshot captured on 2026-01-28."
+category: TASK_TRACKER
+status: OBSOLETE
+implementationStatus: DEPRECATED
+note: "Archive-only tracker superseded by newer task list cycles; retained for historical record."
+changelog:
+  - "2026-01-29: Chore: consolidate audit/docs and recent updates"
+---
+
+> [!WARNING]
+> This document is **obsolete/deprecated** and retained for historical context only. Do not use it to drive active implementation decisions.
+
 # Quest Scheduler — Task List Archive
 
 Archived on: 2026-01-28

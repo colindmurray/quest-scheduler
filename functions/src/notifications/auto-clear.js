@@ -72,6 +72,48 @@ const AUTO_CLEAR_RULES = Object.freeze({
     scope: "recipients",
     types: [NOTIFICATION_EVENTS.POLL_INVITE_SENT],
   },
+  [NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED]: {
+    resource: "basicPoll",
+    scope: "recipients",
+    types: [
+      NOTIFICATION_EVENTS.BASIC_POLL_REMINDER,
+      NOTIFICATION_EVENTS.BASIC_POLL_REOPENED,
+      NOTIFICATION_EVENTS.BASIC_POLL_RESET,
+    ],
+  },
+  [NOTIFICATION_EVENTS.BASIC_POLL_REOPENED]: {
+    resource: "basicPoll",
+    scope: "recipients",
+    types: [NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED],
+  },
+  [NOTIFICATION_EVENTS.BASIC_POLL_RESET]: {
+    resource: "basicPoll",
+    scope: "recipients",
+    types: [
+      NOTIFICATION_EVENTS.BASIC_POLL_REMINDER,
+      NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED_WITH_MISSING_REQUIRED_VOTES,
+      NOTIFICATION_EVENTS.BASIC_POLL_REQUIRED_CHANGED,
+    ],
+  },
+  [NOTIFICATION_EVENTS.BASIC_POLL_VOTE_SUBMITTED]: {
+    resource: "basicPoll",
+    scope: "actor",
+    types: [NOTIFICATION_EVENTS.BASIC_POLL_REMINDER],
+  },
+  [NOTIFICATION_EVENTS.BASIC_POLL_REQUIRED_CHANGED]: {
+    resource: "basicPoll",
+    scope: "recipients",
+    types: [NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED_WITH_MISSING_REQUIRED_VOTES],
+    when: (event) => event?.payload?.required === false,
+  },
+  [NOTIFICATION_EVENTS.BASIC_POLL_REMOVED]: {
+    resource: "basicPoll",
+    scope: "recipients",
+    types: [
+      NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED_WITH_MISSING_REQUIRED_VOTES,
+      NOTIFICATION_EVENTS.BASIC_POLL_REQUIRED_CHANGED,
+    ],
+  },
   [NOTIFICATION_EVENTS.FRIEND_REQUEST_ACCEPTED]: {
     resource: "friend",
     scope: "actor",
@@ -123,6 +165,7 @@ const applyAutoClear = async ({ db, eventType, event, recipients }) => {
   const rule = AUTO_CLEAR_RULES[eventType];
   if (!rule) return;
   if (!event.resource?.id) return;
+  if (typeof rule.when === "function" && !rule.when(event)) return;
 
   const targetUserIds = resolveTargetUserIds(rule, event, recipients);
   if (!targetUserIds.length) return;

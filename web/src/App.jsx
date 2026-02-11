@@ -12,6 +12,7 @@ import CreateSchedulerPage from "./features/scheduler/CreateSchedulerPage";
 import PrivacyPage from "./features/legal/PrivacyPage";
 import TermsPage from "./features/legal/TermsPage";
 import DiscordBotPage from "./features/discord/DiscordBotPage";
+import GroupPollPage from "./features/basic-polls/GroupPollPage";
 import ProtectedRoute from "./app/ProtectedRoute";
 import { useAuth } from "./app/useAuth";
 import AppLayout from "./app/AppLayout";
@@ -28,10 +29,11 @@ function RedirectWhenSignedIn({ children }) {
         localStorage.removeItem("postLoginRedirect");
         const [pathname, search] = redirectPath.split("?");
         const isPollRoute = /^\/scheduler\/[^/]+$/.test(pathname);
+        const isGroupPollRoute = /^\/groups\/[^/]+\/polls\/[^/]+$/.test(pathname);
         const searchParams = new URLSearchParams(search || "");
         const isFriendRequestRoute = pathname === "/friends" && searchParams.has("request");
         const isFriendInviteRoute = pathname === "/friends" && searchParams.has("invite");
-        if (isPollRoute || isFriendRequestRoute || isFriendInviteRoute) {
+        if (isPollRoute || isGroupPollRoute || isFriendRequestRoute || isFriendInviteRoute) {
           navigate(redirectPath, { replace: true });
           return;
         }
@@ -109,6 +111,16 @@ export default function App() {
           <ProtectedRoute>
             <AppLayout>
               <FriendsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/groups/:groupId/polls/:pollId"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <GroupPollPage />
             </AppLayout>
           </ProtectedRoute>
         }

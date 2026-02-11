@@ -89,6 +89,20 @@ test('removeParticipantFromPoll removes participantId and votes', async () => {
       userEmail: email,
       votes: { slot1: 'FEASIBLE' },
     });
+    await setDoc(doc(context.firestore(), 'schedulers', schedulerId, 'basicPolls', 'bp1'), {
+      title: 'Embedded poll',
+      creatorId: user.uid,
+      deadlineAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    await setDoc(
+      doc(context.firestore(), 'schedulers', schedulerId, 'basicPolls', 'bp1', 'votes', user.uid),
+      {
+        optionIds: ['opt-a'],
+        updatedAt: new Date(),
+      }
+    );
   });
 
   await removeParticipantFromPoll(schedulerId, email, true, false, null);
@@ -97,4 +111,8 @@ test('removeParticipantFromPoll removes participantId and votes', async () => {
   expect(schedulerSnap.data().participantIds || []).not.toContain(user.uid);
   const voteSnap = await getDoc(doc(db, 'schedulers', schedulerId, 'votes', user.uid));
   expect(voteSnap.exists()).toBe(false);
+  const basicPollVoteSnap = await getDoc(
+    doc(db, 'schedulers', schedulerId, 'basicPolls', 'bp1', 'votes', user.uid)
+  );
+  expect(basicPollVoteSnap.exists()).toBe(false);
 });

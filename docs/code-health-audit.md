@@ -1,3 +1,18 @@
+---
+created: 2026-01-29
+lastUpdated: 2026-01-31
+summary: "Repository code health audit listing structural risks, refactor opportunities, and prioritized remediation tasks."
+category: REFERENCE
+status: STALE
+note: "Audit reflects point-in-time findings and should be re-audited before using as a current backlog source."
+changelog:
+  - "2026-01-31: Improve invite flows, notifications, and tests"
+  - "2026-01-29: Chore: consolidate audit/docs and recent updates"
+---
+
+> [!WARNING]
+> This document is marked **stale**. Verify against current code and newer docs before relying on it.
+
 # Code Health Audit
 
 Date: 2026-01-29

@@ -1,3 +1,18 @@
+---
+created: 2026-01-27
+lastUpdated: 2026-01-27
+summary: "Design for synchronizing finalized scheduler polls with Google Calendar event mutations and cancellation semantics."
+category: DESIGN_DOC
+status: STALE
+implementationStatus: PENDING
+note: "Planned behavior is detailed, but this is not currently the active implementation stream and needs re-validation before execution."
+changelog:
+  - "2026-01-27: chore: save work in progress"
+---
+
+> [!WARNING]
+> This document is marked **stale**. Verify against current code and newer docs before relying on it.
+
 # Calendar Event Synchronization Design Doc
 
 ## Summary

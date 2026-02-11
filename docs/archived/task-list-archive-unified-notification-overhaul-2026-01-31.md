@@ -1,3 +1,18 @@
+---
+created: 2026-01-31
+lastUpdated: 2026-01-31
+summary: "Archived task list entries for unified-notification-overhaul planning transitions."
+category: TASK_TRACKER
+status: OBSOLETE
+implementationStatus: DEPRECATED
+note: "Historical archive preserved for process traceability; not active planning state."
+changelog:
+  - "2026-01-31: Improve invite flows, notifications, and tests"
+---
+
+> [!WARNING]
+> This document is **obsolete/deprecated** and retained for historical context only. Do not use it to drive active implementation decisions.
+
 # Quest Scheduler — Task List
 
 ## Test Plan Execution Checkpoint

@@ -23,6 +23,9 @@ export function VoteDialog({
   onToggleNoTimesWork,
   draftVotes = {},
   pastSlotIds = new Set(),
+  blockersBySlotId = {},
+  blockerTitleBySchedulerId = {},
+  onNavigateToSchedulerId,
   onSetVote,
 }) {
   const tzLabel = showTimeZone
@@ -58,13 +61,19 @@ export function VoteDialog({
           {slots.map((slot) => {
             const vote = draftVotes[slot.id];
             const isPast = pastSlotIds.has(slot.id);
+            const blocker = blockersBySlotId?.[slot.id] || null;
+            const blockerTitle = blocker?.sourceSchedulerId
+              ? blockerTitleBySchedulerId?.[blocker.sourceSchedulerId] || null
+              : null;
             return (
               <div
                 key={slot.id}
                 className={`grid gap-2 rounded-2xl border px-4 py-3 dark:border-slate-700 ${
                   isPast
                     ? "border-red-300 bg-red-50/60 dark:border-red-700 dark:bg-red-900/20"
-                    : "border-slate-200/70"
+                    : blocker
+                      ? "border-slate-200/70 bg-slate-100/70 dark:bg-slate-800/60"
+                      : "border-slate-200/70"
                 }`}
               >
                 <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -72,6 +81,23 @@ export function VoteDialog({
                     showTimeZone,
                   })}
                 </p>
+                {blocker && (
+                  <div className="text-xs text-slate-600 dark:text-slate-300">
+                    <span className="font-semibold">Busy</span>{" "}
+                    <span className="text-slate-500 dark:text-slate-400">
+                      (ignored in results)
+                    </span>
+                    {blocker?.sourceSchedulerId && onNavigateToSchedulerId && (
+                      <button
+                        type="button"
+                        className="ml-2 font-semibold text-brand-primary hover:underline"
+                        onClick={() => onNavigateToSchedulerId(blocker.sourceSchedulerId)}
+                      >
+                        View {blockerTitle ? `"${blockerTitle}"` : "blocking session"}
+                      </button>
+                    )}
+                  </div>
+                )}
                 <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                   <span>Feasible</span>
                   <VoteToggle

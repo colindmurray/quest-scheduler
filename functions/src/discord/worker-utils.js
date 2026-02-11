@@ -209,6 +209,7 @@ function buildVoteComponents({
 }
 
 module.exports = {
+  MAX_SELECT_OPTIONS,
   parseSnowflakeTimestamp,
   isTokenExpired,
   getDiscordUserId,

@@ -1,3 +1,18 @@
+---
+created: 2026-01-27
+lastUpdated: 2026-01-27
+summary: "Task tracker for login/registration overhaul execution and acceptance criteria."
+category: TASK_TRACKER
+status: STALE
+implementationStatus: COMPLETE
+note: "Execution tracker for a completed stream; useful for audit history, not active planning."
+changelog:
+  - "2026-01-27: chore: save work in progress"
+---
+
+> [!WARNING]
+> This document is marked **stale**. Verify against current code and newer docs before relying on it.
+
 # Login & Registration Overhaul — Task List
 
 > Status legend: [ ] not started, [~] in progress, [x] done

@@ -1,3 +1,15 @@
+---
+created: 2026-01-29
+lastUpdated: 2026-01-29
+summary: "Phased piecemeal strategy for migrating web/functions JavaScript code to TypeScript."
+category: DESIGN_DOC
+status: CURRENT
+implementationStatus: PENDING
+note: "Still referenced by AGENTS.md as the migration approach when migration resumes."
+changelog:
+  - "2026-01-29: Chore: consolidate audit/docs and recent updates"
+---
+
 # TypeScript Migration Plan (Piece-Meal)
 
 ## Summary

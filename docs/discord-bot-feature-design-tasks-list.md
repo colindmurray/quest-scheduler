@@ -1,3 +1,23 @@
+---
+created: 2026-01-25
+lastUpdated: 2026-02-11
+summary: "Detailed phased implementation checklist for Discord bot feature delivery and post-MVP hardening."
+category: TASK_TRACKER
+status: STALE
+implementationStatus: COMPLETE
+note: "Primary Discord integration work is complete; remaining unchecked items are explicitly lower-priority optional backlog entries."
+changelog:
+  - "2026-02-11: Reclassified implementationStatus to COMPLETE; open items are optional future backlog, not active delivery scope."
+  - "2026-01-26: discord: hide closed vote UI and reopen alert"
+  - "2026-01-25: discord: add structured logging"
+  - "2026-01-25: discord: add poll sync status"
+  - "2026-01-25: discord: add link rate limits"
+  - "2026-01-25: discord: add unlink-group command"
+---
+
+> [!WARNING]
+> This document is marked **stale**. Verify against current code and newer docs before relying on it.
+
 # Discord Bot Feature - Implementation Task List
 
 This task list is derived from the [Discord Bot Feature Design Doc](./discord-bot-feature-design-doc.md) and organized by priority and implementation sequence.

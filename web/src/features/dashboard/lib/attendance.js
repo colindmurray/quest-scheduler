@@ -1,8 +1,15 @@
 import { normalizeEmail } from "../../../lib/utils";
+import { isUserBlockedForSlot } from "../../../lib/conflict-utils";
+import { isAttendingVote } from "../../../lib/vote-utils";
 
 export function buildAttendanceSummary({
+  schedulerId = null,
   status,
   winningSlotId,
+  winningSlotStart = null,
+  winningSlotEnd = null,
+  pollPriorityAtMs = null,
+  busyByUserId = null,
   voteDocs,
   participantEmailById,
 }) {
@@ -10,27 +17,28 @@ export function buildAttendanceSummary({
     return { confirmed: [], unavailable: [] };
   }
 
-  const attendanceByEmail = new Map();
-  const normalizeVoteValue = (value) => {
-    if (!value) return null;
-    if (typeof value === "string") return value.toUpperCase();
-    if (value === true) return "FEASIBLE";
-    if (typeof value === "object") {
-      if (value.preferred) return "PREFERRED";
-      if (value.feasible) return "FEASIBLE";
-    }
-    return null;
-  };
+  const slotStartMs = winningSlotStart ? Date.parse(winningSlotStart) : null;
+  const slotEndMs = winningSlotEnd ? Date.parse(winningSlotEnd) : null;
 
+  const attendanceByEmail = new Map();
   (voteDocs || []).forEach((voteDoc) => {
     const email = normalizeEmail(voteDoc.userEmail || participantEmailById?.get(voteDoc.id));
     if (!email) return;
 
     let statusValue = "unavailable";
     if (!voteDoc.noTimesWork) {
-      const voteValue = normalizeVoteValue(voteDoc.votes?.[winningSlotId]);
-      if (voteValue === "PREFERRED" || voteValue === "FEASIBLE") {
-        statusValue = "confirmed";
+      if (isAttendingVote(voteDoc.votes?.[winningSlotId])) {
+        const busyProfile = busyByUserId?.[voteDoc.id] || null;
+        const blocked = isUserBlockedForSlot({
+          autoBlockConflicts: busyProfile?.autoBlockConflicts === true,
+          busyWindows: busyProfile?.busyWindows || [],
+          slotStartMs,
+          slotEndMs,
+          currentSchedulerId: schedulerId,
+          currentStatus: "FINALIZED",
+          currentPriorityAtMs: pollPriorityAtMs,
+        });
+        statusValue = blocked ? "unavailable" : "confirmed";
       }
     }
 

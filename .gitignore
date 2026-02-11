@@ -37,3 +37,6 @@ Thumbs.db
 
 # Local tooling
 .gemini/settings.json
+
+# Codex local run artifacts
+.codex/runs/

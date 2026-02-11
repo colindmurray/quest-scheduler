@@ -1,3 +1,15 @@
+---
+created: 2026-01-27
+lastUpdated: 2026-01-27
+summary: "Design for explicit login/registration UX, profile bootstrap guarantees, and account-linking behavior."
+category: DESIGN_DOC
+status: CURRENT
+implementationStatus: COMPLETE
+note: "Core auth/profile bootstrap behavior described here is reflected in current app architecture."
+changelog:
+  - "2026-01-27: chore: save work in progress"
+---
+
 # Login and Registration Flow Redesign
 
 ## Summary

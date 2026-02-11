@@ -30,6 +30,21 @@ describe('notification preference resolution', () => {
     expect(getDefaultPreference(mutedEvent, { emailNotifications: true })).toBe(
       NOTIFICATION_PREFERENCES.MUTED
     );
+
+    const basicPollEvent = NOTIFICATION_EVENTS.BASIC_POLL_FINALIZED;
+    expect(SIMPLE_DEFAULT_EVENTS.has(basicPollEvent)).toBe(true);
+    expect(getDefaultPreference(basicPollEvent, { emailNotifications: true })).toBe(
+      NOTIFICATION_PREFERENCES.IN_APP_EMAIL
+    );
+    expect(getDefaultPreference(basicPollEvent, { emailNotifications: false })).toBe(
+      NOTIFICATION_PREFERENCES.IN_APP
+    );
+
+    const mutedBasicPollEvent = NOTIFICATION_EVENTS.BASIC_POLL_VOTE_SUBMITTED;
+    expect(SIMPLE_DEFAULT_EVENTS.has(mutedBasicPollEvent)).toBe(false);
+    expect(getDefaultPreference(mutedBasicPollEvent, { emailNotifications: true })).toBe(
+      NOTIFICATION_PREFERENCES.MUTED
+    );
   });
 
   test('advanced preferences override defaults when valid', () => {
@@ -72,6 +87,20 @@ describe('notification preference resolution', () => {
 
     expect(resolveNotificationPreference(eventType, settings)).toBe(
       NOTIFICATION_PREFERENCES.IN_APP
+    );
+  });
+
+  test('advanced preferences support basic poll events', () => {
+    const eventType = NOTIFICATION_EVENTS.BASIC_POLL_RESULTS;
+    const settings = {
+      notificationMode: 'advanced',
+      notificationPreferences: {
+        [eventType]: NOTIFICATION_PREFERENCES.IN_APP_EMAIL,
+      },
+    };
+
+    expect(resolveNotificationPreference(eventType, settings)).toBe(
+      NOTIFICATION_PREFERENCES.IN_APP_EMAIL
     );
   });
 

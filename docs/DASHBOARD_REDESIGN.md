@@ -1,3 +1,17 @@
+---
+created: 2026-01-25
+lastUpdated: 2026-01-25
+summary: "Design proposal for a calendar-centric dashboard redesign, questing groups UX, and notification-centric improvements."
+category: DESIGN_DOC
+status: STALE
+note: "Predates current implementation direction and still uses legacy Session Forge framing; treat as ideation input only."
+changelog:
+  - "2026-01-25: Sync repo updates"
+---
+
+> [!WARNING]
+> This document is marked **stale**. Verify against current code and newer docs before relying on it.
+
 # Session Forge Dashboard Redesign - Design Document
 
 ## Table of Contents

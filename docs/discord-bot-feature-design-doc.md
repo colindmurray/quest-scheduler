@@ -1,3 +1,23 @@
+---
+created: 2026-01-24
+lastUpdated: 2026-02-11
+summary: "Comprehensive Discord bot integration design for linking, notifications, and interaction-based voting workflows."
+category: DESIGN_DOC
+status: STALE
+implementationStatus: COMPLETE
+note: "Core Discord bot integration scope has been implemented; remaining Discord enhancements are optional backlog items and newer docs now carry active execution details."
+changelog:
+  - "2026-02-11: Reclassified as STALE+COMPLETE after verifying implemented Discord integration scope and active tracker shift."
+  - "2026-01-26: discord: hide closed vote UI and reopen alert"
+  - "2026-01-26: discord: add no-ping option"
+  - "2026-01-26: discord: sync poll state changes"
+  - "2026-01-25: discord: announce poll finalization"
+  - "2026-01-25: discord: mvp bot integration"
+---
+
+> [!WARNING]
+> This document is marked **stale**. Verify against current code and newer docs before relying on it.
+
 # Discord Bot Feature Design Doc
 
 ## Summary
