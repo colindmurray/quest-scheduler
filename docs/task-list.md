@@ -1,103 +1,508 @@
+---
+created: 2026-01-06
+lastUpdated: 2026-02-11
+summary: "Primary global execution tracker for current long-running work, checkpoints, and validation notes."
+category: TASK_TRACKER
+status: CURRENT
+implementationStatus: ONGOING
+note: "Canonical global tracker for active work and progress logging."
+changelog:
+  - "2026-02-11: Added embedded poll independent finalize/reopen flow for scheduler polls and validated unit/rules/integration/e2e coverage."
+  - "2026-02-11: Rechecked pending/ongoing doc statuses and corrected completed design docs."
+  - "2026-02-02: chore: ignore local env and gemini settings"
+  - "2026-02-02: chore: sync notifications, discord, and identity updates"
+  - "2026-01-31: Add scheduler pending invite indexes"
+  - "2026-01-31: Log production deploy"
+  - "2026-01-31: Improve invite flows, notifications, and tests"
+---
+
 # Quest Scheduler — Task List
 
-## Test Plan Execution Checkpoint
-- Last Completed: P3.1 Discord routing + rate limits
-- Next Step: Complete
-- Open Issues: None
-- Last Updated (YYYY-MM-DD): 2026-01-31
+## Plan Execution Checkpoint
+- Last Completed: `basic-poll` `P1 A.16`
+- Next Step: Execute `basic-poll` `P3 12.1` (Discord `/session-create` post-core phase)
+- Open Issues: Firestore indexes deploy currently fails in staging with HTTP 400 for at least one unnecessary composite index in `firestore.indexes.json`; deploys succeed when scoping Firestore to rules only.
+- Last Updated (YYYY-MM-DD): 2026-02-11
 
 ## Progress Notes
-- 2026-01-31: Archived prior task list to docs/task-list-archive-unified-notification-overhaul-2026-01-31.md.
-- 2026-01-31: Ran Claude + Gemini reviews for the plan and task list; incorporated feedback into docs/unified-notification-overhaul.md and docs/decisions.md.
-- 2026-01-31: Created docs/plan-execution/unified-notification-overhaul-task-list.md and the execute-plan-unified-notification-overhaul skill.
-- 2026-01-31: Tests not run (docs-only changes).
-- 2026-01-31: Completed P0.1 (notification constants + alias resolver + rules skeleton). Tests: `npm --prefix functions run test` (pass, 1 skipped).
-- 2026-01-31: Completed P0.2 (Firestore rules + rules tests; adjusted pendingNotifications path). Tests: `npm --prefix web run test:rules` (pass).
-- 2026-01-31: Completed P0.3 (emitNotificationEvent callable + web wrapper + tests). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass).
-- 2026-01-31: Completed P0.4 (notification type normalization + UI compatibility). Tests: `npm --prefix web run test` (pass).
-- 2026-01-31: Completed P1.1 (template module + poll invite templates). Tests: `npm --prefix functions run test` (pass, 1 skipped).
-- 2026-01-31: Completed P1.2 (router trigger + in-app/email delivery for poll invites + tests). Tests: `npm --prefix functions run test` (pass, 1 skipped).
-- 2026-01-31: Completed P1.3 (auto-clear rules + dedupe support + tests). Tests: `npm --prefix functions run test` (pass, 1 skipped).
-- 2026-01-31: Completed P1.4 (pending notification reconciliation + callable + web hook). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass).
-- 2026-01-31: Completed P2.1 (poll invite flow now emits events; router handles email/in-app). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass), `npm --prefix web run test:e2e:emulators` (pass).
-- 2026-01-31: Completed P2.2 (vote/finalize/reopen/slot change emit events + new templates). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass), `npm --prefix web run test:e2e:emulators` (pass).
-- 2026-01-31: Completed P2.3 (friend/group invites emit events; removed legacy sync + emails). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass).
-- 2026-01-31: Completed P2.4 (notification settings UI + preference-aware router). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass).
-- 2026-01-31: Completed P2.5 (notificationEvents TTL + expiresAt + client-side email opt-out removal). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass).
-- 2026-01-31: Added staging Firebase config overrides + build script + runbook updates. Tests: `npm --prefix web run test` (pass).
-- 2026-01-31: Added `web/.env.staging` with staging Firebase config. Tests not run (env-only change).
-- 2026-01-31: Ignored staging OAuth client secret file in `.gitignore`. Tests not run (config change only).
-- 2026-01-31: Set `QS_GOOGLE_OAUTH_CLIENT_JSON` Secret Manager value for staging (version 1). Tests not run (infra change only).
-- 2026-01-31: Deploy attempt failed; missing secret `DISCORD_APPLICATION_ID` for staging. Need value before retry.
-- 2026-01-31: Set staging Discord secrets `DISCORD_PUBLIC_KEY`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_APPLICATION_ID` (v1). Missing `DISCORD_BOT_TOKEN` to deploy.
-- 2026-01-31: Set staging `DISCORD_BOT_TOKEN` (v1). Deploy succeeded for hosting/rules/extensions, but some 2nd-gen functions failed due to Eventarc service agent propagation; retry needed.
-- 2026-01-31: Updated Discord OAuth tests to read env client values when present. Tests: `npm --prefix functions run test` (pass; 1 skipped: worker integration requires emulator).
-- 2026-01-31: Ran functions tests with Firestore emulator. Tests: `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npm --prefix functions run test` (pass).
-- 2026-01-31: Deployed staging (hosting/functions/firestore/storage/extensions). Follow-up: set Functions artifacts cleanup policy in us-central1.
-- 2026-01-31: Re-deployed hosting to finalize live release. Hosting URL live at https://quest-scheduler-stg.web.app (and firebaseapp.com alias).
-- 2026-01-31: Set staging Google OAuth client ID in `web/.env.staging` and re-deployed hosting. Tests not run (env-only change + deploy).
-- 2026-01-31: Allowed Discord (custom provider) to pass email verification check in Firestore rules. Tests: `npm --prefix web run test:rules` (pass).
-- 2026-01-31: Deployed updated Firestore rules to staging project.
-- 2026-01-31: Granted `roles/iam.serviceAccountTokenCreator` to quest-scheduler-stg@appspot.gserviceaccount.com for Discord custom token signing.
-- 2026-01-31: Completed P3.2 (removed legacy notification writes in web/functions; emit events for group member removed/left and poll invite revokes; added in-app templates + preference gating). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass).
-- 2026-01-31: Completed P3.1 (router Discord delivery, discord message builder + tests; removed direct Discord sends in scheduler triggers). Tests: `npm --prefix functions run test` (pass, 1 skipped), `npm --prefix web run test` (pass).
-- 2026-01-31: Re-ran function tests after Timestamp expiry fix in legacy functions. Tests: `npm --prefix functions run test` (pass, 1 skipped).
-- 2026-01-31: Ran E2E emulator suite. Tests: `npm --prefix web run test:e2e:emulators` (pass).
-- 2026-01-31: Quieted emulator/deprecation noise in `scripts/run-e2e.sh` and re-ran E2E suite. Tests: `npm --prefix web run test:e2e:emulators` (pass).
-- 2026-01-31: Added composite Firestore indexes for notification queries and deployed to staging. Tests not run (index-only change).
-- 2026-01-31: Fixed `userVoteRef` undefined in scheduler voting flow by returning it from `useSchedulerData`. Tests: `npm --prefix web run test` (pass).
-- 2026-01-31: Deployed staging hosting with the `userVoteRef` fix. Tests: `npm --prefix web run test` (pass).
-- 2026-01-31: Ran coverage. Tests: `npm --prefix web run test:coverage` (pass), `npm --prefix functions run test -- --coverage` (pass, 1 skipped).
-- 2026-01-31: Enabled Discord worker integration test by auto-starting Firestore emulator when needed. Tests: `npm --prefix functions run test -- --coverage` (pass).
-- 2026-01-31: Fixed leave poll flow to delete votes before removing participant; added call-order assertions. Tests: `npm --prefix web run test -- pollInvites.test.js` (pass).
-- 2026-01-31: Added account dropdown feedback form + feedback data layer, Firestore/Storage rules, and tests. Tests: `npm --prefix web run test -- feedback` (pass), `npm --prefix web run test:rules` (pass).
-- 2026-01-31: Switched feedback flow to modal launched from account dropdown. Tests: `npm --prefix web run test -- feedback` (pass).
-- 2026-01-31: Deployed feedback modal + rules to staging. Deploy: `firebase deploy --project staging --only hosting,firestore:rules,storage` (success).
-- 2026-01-31: Re-deployed staging hosting with `VITE_BUILD_MODE=staging` to fix Google OAuth origin mismatch. Deploy: `VITE_BUILD_MODE=staging firebase deploy --project staging --only hosting` (success).
-- 2026-01-31: Added `scripts/deploy-staging.sh` and `scripts/deploy-prod.sh` to enforce build mode; updated runbook. Tests not run (script/docs change).
-- 2026-01-31: Updated poll invite flow so pending invites are participants, declines remove votes/participants, and UI now distinguishes pending invites; excluded pending invites from active dashboard lists. Tests: `npm --prefix web run test -- pollInvites.test.js` (pass), `npm --prefix web run test:rules` (pass; emulator warnings), `npm --prefix functions run test -- legacy.callables.test.js` (pass; legacy stderr logged).
-- 2026-01-31: Fixed dashboard pending invite filtering fallback, forced invite modal open when pending, and normalized auth email in Firestore rules. Tests: `npm --prefix web run test:rules` (pass; emulator warnings).
-- 2026-01-31: Added dashboard quick accept/decline buttons for pending invites and covered with tests. Tests: `npm --prefix web run test -- DashboardPage.test.jsx` (pass; JSX transform warning).
-- 2026-01-31: Adjusted poll invite creation/edit/clone to treat all invitees as pending, updated clone callable pendingInvites, and kept dashboard quick actions. Tests: `npm --prefix functions run test -- legacy.clone.test.js` (pass), `npm --prefix web run test -- DashboardPage.test.jsx` (pass; JSX transform warning).
-- 2026-01-31: Reworked poll invite saving/creation to send all invites as pending, adjusted cloneSchedulerPoll pendingInvites, and redeployed staging (hosting + functions). Tests: `npm --prefix functions run test -- legacy.clone.test.js` (pass), `npm --prefix web run test -- DashboardPage.test.jsx` (pass; JSX transform warning).
-- 2026-01-31: Fixed sendPollInvites to keep pending invites even when invitees are already participants (non-group), expanded e2e seed data for poll invite scenarios, and added poll-invite flow e2e coverage (chromium-only, stateful). Tests: `npm --prefix functions run test -- legacy.callables.test.js` (pass), `npm --prefix web run test:e2e:emulators` (pass; poll-invite-flow skipped on firefox/mobile).
-- 2026-01-31: Deployed updated functions (sendPollInvites pending-invite fix) to staging. Deploy: `firebase deploy --only functions --project quest-scheduler-stg` (success).
-- 2026-01-31: Added edge-case coverage updates (poll invite e2e pending-session assertions, decline-by-email unit test, invitee-accept rules test). Tests pending.
-- 2026-01-31: Edge-case pass tests. Tests: `npm --prefix web run test -- pollInvites.test.js` (pass), `npm --prefix web run test:rules` (pass; emulator permission warnings), `npm --prefix web run test:e2e:emulators` (pass; poll-invite-flow skipped on firefox/mobile).
-- 2026-01-31: Added auto-dismiss of poll invite notifications on accept/decline, e2e check for auto-clear on decline, and function coverage for email-only invites. Tests pending.
-- 2026-01-31: Auto-clear notifications on poll invite accept/decline implemented + coverage. Tests: `npm --prefix functions run test -- legacy.callables.test.js` (pass), `npm --prefix web run test -- pollInvites.test.js` (pass), `npm --prefix web run test:rules` (pass; emulator permission warnings), `npm --prefix web run test:e2e:emulators` (pass; poll-invite-flow skipped on firefox/mobile).
-- 2026-01-31: Added friend/group invite auto-dismiss handling (accept/decline), suppressed blocked group invites, added friend request revoke callable + outgoing cancel UI, and expanded auto-clear coverage. Tests: `npm --prefix web run test -- friends.test.js questingGroups.test.js` (pass), `npm --prefix functions run test -- legacy.callables.test.js notifications/auto-clear.test.js` (pass; legacy stderr logged).
-- 2026-01-31: Hardened invite notification clearing (delete fallback + waitForPendingWrites), verified pending invite persistence, and stabilized friend/group invite e2e selectors/timing (modal targeting + invite button scoping). Tests: `npm --prefix web run test -- pollInvites.test.js` (pass), `npm --prefix web run test -- friends.test.js` (pass), `npm --prefix web run test -- questingGroups.test.js` (pass), `npm --prefix web run test:e2e:emulators` (pass).
-- 2026-01-31: Sanity run all test suites (web/functions/unit/rules/e2e/coverage). Tests: `npm --prefix web run test` (pass), `npm --prefix functions run test` (pass), `npm --prefix web run test:rules` (pass; emulator permission warnings), `npm --prefix web run test:e2e:emulators` (pass; 20 skipped), `npm --prefix web run test:coverage` (pass), `npm --prefix functions run test -- --coverage` (pass).
-- 2026-01-31: Deployed staging (hosting + firestore rules/indexes + storage rules) with `VITE_BUILD_MODE=staging`. Deploy: `scripts/deploy-staging.sh` (success; rules ternary type warning).
-- 2026-01-31: Deployed production (hosting + functions + firestore rules/indexes + storage rules) with `VITE_BUILD_MODE=production`. Deploy: `DEPLOY_ONLY=hosting,functions,firestore,storage scripts/deploy-prod.sh` (success; rules ternary type warning).
-- 2026-02-01: Added composite Firestore indexes for schedulers pending invite queries (creatorEmail/creatorId + pendingInvites). Tests not run (index-only change).
-- 2026-02-01: Added missing in-app notification templates (poll created/ready/reminder/cancelled/restored/deleted, friend removed, group deleted) and expanded auto-clear rules/tests for poll delete/restore and group delete; documented auto-clear rationale in decisions. Tests pending.
-- 2026-02-01: Expanded notification E2E coverage (all in-app templates + auto-clear flows), added notifier seed data for auto-clear invite scenarios, and stabilized revoke-invite selectors. Tests: `npm --prefix functions run test -- notifications/auto-clear.test.js notifications/templates.test.js` (pass), `npm --prefix web run test:e2e:emulators` (pass; 24 skipped).
-- 2026-02-01: Added WebKit project to Playwright E2E and adjusted auth profile sync to avoid indefinite loading in WebKit; set emulator host to `localhost` for E2E. Tests: `npm --prefix web run test:e2e:emulators` (pass; 36 skipped).
-- 2026-02-01: Added pending-notification cleanup for revoked/blocked invites (poll/friend/group), expanded unit coverage for email-only revoke paths + blocked poll invites, and tightened auto-clear E2E scenarios (poll invite revoked, friend decline). Tests: `npm --prefix functions run test -- legacy.callables.test.js` (pass; legacy stderr logged), `npm --prefix web run test:e2e:emulators` (pass; 36 skipped).
-- 2026-02-02: Investigated Discord OAuth invalid redirect reports; prod deploys may be inheriting `DISCORD_OAUTH_REDIRECT_URI` from `functions/.env` (localhost) because `functions/.env.studio-473406021-87ead` does not override it, leading to mismatched redirect URIs in Discord. Tests not run (investigation only).
-- 2026-02-02: Hardened Discord OAuth redirect handling (ignore localhost override outside emulator), set prod redirect in `functions/.env.studio-473406021-87ead`, and documented env guidance. Tests: `npm --prefix functions run test -- src/discord/oauth.test.js` (pass).
-- 2026-02-02: Deployed functions to staging via `DEPLOY_ONLY=functions ./scripts/deploy-staging.sh`. Tests not run.
-- 2026-02-02: Moved local-only functions env to `functions/.env.local`, added staging env file, and introduced `scripts/run-emulators-local.sh` for emulator startup; updated runbook/testing docs and gitignore. Tests: `npm --prefix functions run test -- src/discord/oauth.test.js` (pass).
-- 2026-02-02: Re-deployed staging functions after env separation (`DEPLOY_ONLY=functions ./scripts/deploy-staging.sh`). Tests not run.
-- 2026-02-02: Switched staging Discord OAuth redirect to the Cloud Run URL and updated local emulator redirect; redeployed staging functions (`DEPLOY_ONLY=functions ./scripts/deploy-staging.sh`). Tests not run.
-- 2026-02-02: Switched prod Discord OAuth redirect to Cloud Run URL and re-deployed prod functions (`DEPLOY_ONLY=functions ./scripts/deploy-prod.sh`). Tests not run.
-- 2026-02-02: Added Discord link test-message cleanup, Discord poll repost callable + UI menu option, and private-channel warning text. Tests: `npm --prefix functions run test -- src/discord/worker.handlers.test.js src/discord/discord-client.test.js src/discord/repost.test.js` (pass), `npm --prefix web run test -- src/lib/data/discord.test.js src/features/settings/components/GroupCard.test.jsx` (pass).
-- 2026-02-02: Added Discord link permission preflight + test message, plus private-channel warning in settings UI. Tests: `npm --prefix functions run test -- src/discord/worker.handlers.test.js` (pass), `npm --prefix web run test -- GroupCard.test.jsx` (pass).
-- 2026-02-02: Added poll timezone display + auto-convert setting across web + Discord (timezone abbreviations everywhere; Discord vote labels/poll cards updated). Tests: `npm --prefix web run test -- poll-card-utils.test.js time.test.js` (pass), `npm --prefix functions run test -- discord/poll-card.test.js discord/worker.helpers.test.js` (pass).
-- 2026-02-02: Deployed staging hosting/storage/firestore via `scripts/deploy-staging.sh` (success). Tests not run as part of deploy.
-- 2026-02-02: Deployed production hosting/storage/firestore via `scripts/deploy-prod.sh` (success). Tests not run as part of deploy.
-- 2026-02-02: Fixed session poll header timezone to respect auto-convert display timezone. Tests: `npm --prefix web run test -- poll-status-meta.test.jsx` (pass).
-- 2026-02-02: Re-deployed staging + production hosting/storage/firestore for poll header timezone fix (`scripts/deploy-staging.sh`, `scripts/deploy-prod.sh`). Tests not run as part of deploy.
-- 2026-02-02: Added conditional "Hide timezone" setting when auto-convert is enabled; hide TZ labels across scheduler/dashboard when checked. Tests: `npm --prefix web run test -- time.test.js poll-status-meta.test.jsx` (pass).
-- 2026-02-02: Re-ran settings/timezone tests after hide-timezone toggle update. Tests: `npm --prefix web run test -- time.test.js poll-status-meta.test.jsx` (pass).
-- 2026-02-02: Deployed staging hosting/storage/firestore via `scripts/deploy-staging.sh` (success).
-- 2026-02-02: Deployed production hosting/storage/firestore via `scripts/deploy-prod.sh` (success).
-- 2026-02-02: Added all-votes-in notifications (creator + participant opt-in), Discord toggle, and updated templates/docs. Tests: `npm --prefix functions run test -- notifications/constants.test.js notifications/templates.test.js notifications/discord.test.js notifications/auto-clear.test.js` (pass), `npm --prefix web run test -- GroupCard.test.jsx` (pass), `npm --prefix web run test:e2e:emulators` (fail: notification-types timeout), `npm --prefix web run test:e2e:emulators` (pass).
-- 2026-02-02: Added required attendance filter selector to session poll results panel, plus filtering helpers and tests. Tests: `npm --prefix web run test -- required-attendance.test.js` (pass).
-- 2026-02-02: Ran full test suite for avatar/identity consolidation + Discord worker fix. Tests: `npm --prefix web run test` (pass), `npm --prefix functions run test` (pass), `npm --prefix web run test:rules` (pass), `npm --prefix web run test:e2e:emulators` (pass; 36 skipped).
-- 2026-02-02: Deployed staging (hosting/functions/firestore/storage) with `DEPLOY_ONLY=hosting,functions,firestore,storage scripts/deploy-staging.sh` (success).
-- 2026-02-02: Deployed production (hosting/functions/firestore/storage) with `DEPLOY_ONLY=hosting,functions,firestore,storage scripts/deploy-prod.sh` (success).
-- 2026-02-02: Ignored local env + Gemini settings files in `.gitignore`. Tests not run (ignore-only change).
-- 2026-02-02: Centralized avatar + identity rendering for user bubbles across scheduler/friends/groups/invites; updated identity helpers and avatar components. Tests: `npm --prefix web run test -- --run src/lib/identity.test.js src/components/UserIdentity.test.jsx src/components/ui/avatar.test.jsx src/components/ui/voter-avatars.test.jsx` (pass).
+
+- 2026-02-11: Implemented independent embedded-poll finalize/reopen controls for scheduler polls and updated scheduler finalization UX:
+  - Scheduler creators can now finalize or reopen any embedded poll individually from the embedded poll card (`Finalize poll` / `Re-open poll`).
+  - Finalizing a session winner now prompts when unfinalized embedded polls exist: choose `Finalize session only` or `Finalize session + embedded polls`.
+  - If `Finalize session only` is chosen, scheduler finalizes while embedded polls remain votable until individually finalized.
+  - Backend callable support now includes scheduler parent paths for poll finalize/reopen (`finalizeBasicPoll`, `reopenBasicPoll`).
+  - Firestore rules now allow embedded poll voting when scheduler is `FINALIZED` as long as embedded poll is `OPEN`, deadline not passed, and scheduler is not `CANCELLED`.
+- 2026-02-11: Validation for embedded poll independent finalize/reopen flow:
+  - `npm --prefix functions run test -- src/basic-polls/callables.test.js` (pass, `19 passed`, exit code `0`).
+  - `npm --prefix web run test -- src/lib/data/basicPolls.test.js src/features/scheduler/components/finalize-embedded-polls-choice-dialog.test.jsx` (pass, `26 passed`, exit code `0`).
+  - `XDG_CONFIG_HOME=/tmp/firebase-config npm --prefix web run test:rules` (pass, `21 passed`, exit code `0`).
+  - `firebase emulators:exec --only auth,functions,firestore,storage "npm --prefix web run test -- --config vitest.integration.config.js --run src/__tests__/integration/basic-polls.integration.test.js"` (pass, exit code `0`; emulator logs include unrelated notification trigger noise but suite completed successfully).
+  - `set -a; source web/.env.e2e.local; set +a; firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT "node functions/scripts/seed-e2e-scheduler.js && npm --prefix web run test:e2e -- e2e/basic-poll-embedded-finalize-controls.spec.js"` (pass, `2 passed`, `6 skipped`, exit code `0`).
+
+- 2026-02-11: Re-pushed staging after Tailwind typography plugin enablement for markdown rendering:
+  - Command: `DEPLOY_ONLY=hosting,functions,storage,firestore:rules ./scripts/deploy-staging.sh`
+  - Result: deploy succeeded; hosting released, unchanged functions skipped.
+  - Staging URL: `https://quest-scheduler-stg.web.app`
+
+- 2026-02-11: Fixed markdown styling (headings/emphasis/link appearance) for all ReactMarkdown surfaces:
+  - Root cause: `@tailwindcss/typography` plugin was not installed/configured, so `prose` classes had no generated styles.
+  - Added dependency: `@tailwindcss/typography` in `web/package.json`.
+  - Updated `web/tailwind.config.js` to include `tailwindTypography` plugin.
+  - Standardized markdown wrapper classes across basic-poll and embedded-poll components to use:
+    - `prose prose-sm prose-slate ... dark:prose-invert`
+    - explicit link styling via `prose-a:text-brand-primary prose-a:underline`.
+  - Affected files:
+    - `web/src/features/basic-polls/GroupPollPage.jsx`
+    - `web/src/features/basic-polls/components/CreateGroupPollModal.jsx`
+    - `web/src/features/scheduler/SchedulerPage.jsx`
+    - `web/src/features/scheduler/components/EmbeddedPollEditorModal.jsx`
+- 2026-02-11: Validation for markdown styling fix:
+  - `npm --prefix web run test -- src/features/basic-polls/GroupPollPage.test.jsx` (pass, `16 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warning).
+
+- 2026-02-11: Re-pushed latest markdown/note-view fixes to staging:
+  - Command: `DEPLOY_ONLY=hosting,functions,storage,firestore:rules ./scripts/deploy-staging.sh`
+  - Result: deploy succeeded (hosting, functions, storage rules, firestore rules).
+  - Staging URL: `https://quest-scheduler-stg.web.app`
+
+- 2026-02-11: Fixed basic-poll markdown rendering + option-note visibility regressions in both standalone and embedded poll views:
+  - Updated `web/src/features/basic-polls/GroupPollPage.jsx`:
+    - Rendered poll description markdown in read mode via `ReactMarkdown` + `remark-gfm`.
+    - Added read-mode `View note` affordances across vote/results rows and a scrollable markdown note modal.
+  - Updated `web/src/features/scheduler/SchedulerPage.jsx`:
+    - Rendered embedded poll descriptions as markdown in scheduler vote cards.
+    - Added embedded poll `View note` actions (multiple-choice, ranked, and finalized/result rows) with a read-only markdown note modal.
+  - Added/updated coverage:
+    - `web/src/features/basic-polls/GroupPollPage.test.jsx` now covers read-mode markdown description rendering and option-note modal rendering.
+    - `web/e2e/basic-poll-dashboard-embedded.spec.js` now validates opening/closing an embedded option-note modal from a deep-linked scheduler poll.
+    - `functions/scripts/seed-e2e-scheduler.js` now seeds markdown description + option note for the dashboard embedded poll fixture.
+- 2026-02-11: Validation for markdown + option-note fixes:
+  - `npm --prefix web run test -- src/features/basic-polls/GroupPollPage.test.jsx` (pass, `16 passed`, exit code `0`).
+  - `set -a; source web/.env.e2e.local; set +a; firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT "node functions/scripts/seed-e2e-scheduler.js && npm --prefix web run test:e2e -- e2e/basic-poll-dashboard-embedded.spec.js"` (pass, chromium `1 passed`; non-chromium projects skipped by spec guard).
+
+- 2026-02-11: Added E2E coverage for embedded poll management on scheduler edit pages:
+  - Added dedicated seed fixtures in `functions/scripts/seed-e2e-scheduler.js`:
+    - `E2E_EMBEDDED_EDITOR_SCHEDULER_ID` (`e2e-embedded-editor-scheduler`)
+    - `E2E_EMBEDDED_EDITOR_POLL_ID` (`e2e-embedded-editor-existing-poll`)
+  - Added Playwright spec `web/e2e/basic-poll-embedded-editor.spec.js` covering:
+    - add embedded poll
+    - edit embedded poll (including required/optional toggle)
+    - remove embedded poll
+    - modify an existing embedded poll
+- 2026-02-11: Validation for embedded poll editor E2E coverage:
+  - `set -a; source web/.env.e2e.local; set +a; firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT "node functions/scripts/seed-e2e-scheduler.js && npm --prefix web run test:e2e -- e2e/basic-poll-embedded-editor.spec.js"` (pass; chromium `1 passed`, non-chromium projects skipped by spec guard).
+
+- 2026-02-11: Added E2E coverage for embedded polls in scheduler `/create` flow:
+  - Added Playwright spec `web/e2e/basic-poll-embedded-create.spec.js` covering:
+    - create scheduler from `/create`
+    - add embedded poll before submit
+    - create session poll
+    - verify embedded poll persists on resulting scheduler edit page
+- 2026-02-11: Validation for embedded poll create-flow E2E coverage:
+  - `set -a; source web/.env.e2e.local; set +a; firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT "node functions/scripts/seed-e2e-scheduler.js && npm --prefix web run test:e2e -- e2e/basic-poll-embedded-create.spec.js"` (pass; chromium `1 passed`, non-chromium projects skipped by spec guard).
+
+- 2026-02-11: Fixed create-mode embedded poll authoring on `Create Session Poll`:
+  - `web/src/features/scheduler/CreateSchedulerPage.jsx` now shows the Embedded polls section in both create and edit flows.
+  - Added local draft embedded poll management for create flow (add/edit/remove/reorder before scheduler exists), then persisted drafts immediately after scheduler creation.
+  - Existing edit-mode behavior remains server-backed and unchanged.
+  - Added helper utilities in `web/src/features/scheduler/utils/embedded-poll-drafts.js`.
+  - Added focused unit coverage in `web/src/features/scheduler/utils/embedded-poll-drafts.test.js`.
+- 2026-02-11: Validation for create-mode embedded poll fix:
+  - `npm --prefix web run test -- src/features/scheduler/utils/embedded-poll-drafts.test.js src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx` (pass, `2 files`, `7 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warning).
+
+- 2026-02-11: Configured ADC quota project for this environment and removed the prior integration-test blocker:
+  - Ran `gcloud auth application-default set-quota-project studio-473406021-87ead` and `gcloud config set billing/quota_project studio-473406021-87ead`.
+  - Validation:
+    - `jq -r '.quota_project_id // "<missing>"' ~/.config/gcloud/application_default_credentials.json` -> `studio-473406021-87ead`.
+    - `npm --prefix web run test:integration` (pass, exit code `0`).
+
+- 2026-02-11: Deployed current app state to staging (`quest-scheduler-stg`):
+  - Initial full deploy attempt failed on Firestore indexes:
+    - `DEPLOY_ONLY=hosting,functions,firestore,storage ./scripts/deploy-staging.sh`
+    - Failure: Firestore index API HTTP 400: "this index is not necessary, configure using single field index controls".
+  - Successful retry with Firestore rules only:
+    - `DEPLOY_ONLY=hosting,functions,storage,firestore:rules ./scripts/deploy-staging.sh` (pass, exit code `0`).
+  - Result:
+    - Hosting URL: `https://quest-scheduler-stg.web.app`
+    - Functions updated (including basic-poll and notification handlers), hosting released, storage/firestore rules published.
+
+- 2026-02-11: Completed `basic-poll` Testing Gate A (`A.1`–`A.16`) and validated phase 1–11 robustness with full test reruns:
+  - Stabilized flaky standalone poll E2E by updating `web/e2e/basic-poll-standalone.spec.js` to clear pre-existing user vote state before submit/clear assertions.
+  - Confirmed full E2E emulator suite passes after fix.
+- 2026-02-11: Test results for Testing Gate A completion:
+  - `npm --prefix web run test -- --run` (pass, `62 files`, `312 passed`, exit code `0`).
+  - `npm --prefix functions run test -- --run` (pass, `44 files`, `336 passed`, exit code `0`).
+  - `XDG_CONFIG_HOME=/tmp/firebase-config npm --prefix web run test:rules` (pass, `21 passed`, exit code `0`).
+  - `XDG_CONFIG_HOME=/tmp/firebase-config npm --prefix web run test:integration` (fails in this environment: Firebase Extensions API ADC quota-project `403` while reading `extensions`).
+  - `XDG_CONFIG_HOME=/tmp/firebase-config firebase emulators:exec --only auth,functions,firestore,storage "npm --prefix web run test -- --config vitest.integration.config.js --run"` (pass, `3 files`, `11 passed`, exit code `0`).
+  - `npm --prefix web run test:e2e:emulators` (pass, `46 passed`, `54 skipped`, exit code `0`).
+  - `npm --prefix web run test:coverage` (pass; `web/src/lib/basic-polls` `90.78%` lines, `web/src/lib/data/basicPolls.js` `85.2%` lines).
+  - `npm --prefix functions run test -- --coverage` (pass; `functions/src/basic-polls` `90.46%` lines, `functions/src/discord` `82.62%` lines, `functions/src/notifications/auto-clear.js` `100%` lines).
+
+- 2026-02-11: Moved all docs marked `status: OBSOLETE` or `implementationStatus: DEPRECATED` into `docs/archived/`:
+  - `docs/archived/discord-bot-feature-mvp-prompts.md`
+  - `docs/archived/external-feedback/claude-request.md`
+  - `docs/archived/external-feedback/claude-response.md`
+  - `docs/archived/external-feedback/gemini-request.md`
+  - `docs/archived/external-feedback/gemini-response.md`
+  - `docs/archived/task-list-archive-2026-01-28.md`
+  - `docs/archived/task-list-archive-2026-01-31.md`
+  - `docs/archived/task-list-archive-basic-poll-2026-02-11.md`
+  - `docs/archived/task-list-archive-unified-notification-overhaul-2026-01-31.md`
+- 2026-02-11: Validation for archived-docs move:
+  - Verified no obsolete/deprecated docs remain outside `docs/archived/` (pass).
+  - Documentation-only file move; runtime tests not run (not applicable).
+
+- 2026-02-11: Re-audited all docs with `implementationStatus: PENDING|ONGOING` after metadata feedback and corrected overstated in-progress statuses:
+  - Updated to `COMPLETE` (kept `status: STALE` where appropriate) for completed past design/workstreams:
+    - `docs/discord-login-portal.md`
+    - `docs/display-names-and-usernames.md`
+    - `docs/user-icon-customization.md`
+    - `docs/discord-bot-feature-design-doc.md`
+    - `docs/discord-bot-feature-design-tasks-list.md`
+    - `docs/implementation-plan.md`
+    - `docs/uuid_migration_plan.md`
+  - Kept `PENDING`/`ONGOING` only for active or genuinely pending streams:
+    - `docs/basic-poll.md`, `docs/basic-poll-tasks.md`, `docs/plan-execution/basic-poll-task-list.md`, `docs/task-list.md`
+    - `docs/calendar_event_sync_design_doc.md`
+    - `docs/typescript-migration-state.md`, `docs/typescript_migraiton_plan.md`
+    - `docs/v2-functions-migration-plan.md`
+  - Added frontmatter changelog entries and refreshed `lastUpdated` dates on corrected docs.
+- 2026-02-11: Validation for pending/ongoing status recheck:
+  - `node` frontmatter schema validator across `docs/**/*.md` (pass: `Validated 35 docs.`).
+  - Documentation-only metadata correction; runtime tests not run (not applicable).
+
+- 2026-02-11: Completed `basic-poll` task `P2 11.1` (Discord finalize from `poll-create`):
+  - Added `handleBasicPollFinalize(...)` in `functions/src/discord/worker.js` and wired `bp_finalize:{pollId}` routing in `processDiscordInteraction`.
+  - Implemented finalize flow with:
+    - Discord user link resolution and group manager authorization checks
+    - poll status guards (`pollAlreadyFinalized`, closed-state handling)
+    - ranked-choice tie detection with Discord->web handoff message (`pollTieBreakWeb`)
+    - final results snapshot computation (multiple-choice + IRV) and poll finalize write (`status`, `finalizedAt`, `finalizedByUserId`, `finalResults`)
+    - finalized card update via `editChannelMessage`
+    - channel results post for both MC and RC formats with web results link
+    - queued `BASIC_POLL_FINALIZED` and `BASIC_POLL_RESULTS` notification events (Discord source)
+  - Added/expanded worker tests in `functions/src/discord/worker.basic-poll.test.js` for:
+    - finalize success path (state write + card update + results post + notification enqueue)
+    - ranked-choice tie rejection path
+    - manager authorization rejection path
+- 2026-02-11: Test results for `P2 11.1` validation:
+  - `npm --prefix functions run test -- src/discord/worker.basic-poll.test.js` (pass, `7 passed`, exit code `0`).
+  - `npm --prefix functions run test -- src/discord/worker.poll-create.test.js src/discord/worker.handlers.test.js src/discord/worker.test.js src/discord/ingress.test.js src/discord/basic-poll-card.test.js` (pass, `33 passed`, exit code `0`).
+
+- 2026-02-11: Completed full `docs/` frontmatter audit across all Markdown docs (`35` files):
+  - Added YAML metadata to every `docs/**/*.md` file with: `created`, `lastUpdated`, `summary`, `category`, `status`, `note`, `changelog`, and conditional `implementationStatus`.
+  - Derived `created`/`lastUpdated`/`changelog` from `git log --follow` where available; for files with no commit history, used local file timestamp fallback and explicit no-history changelog note.
+  - Classified each doc into enum categories (`DESIGN_DOC`, `TASK_TRACKER`, `CORE_DOCUMENTATION`, `RUNBOOK`, `DECISION_LOG`, `TEST_PLAN`, `REFERENCE`) and statuses (`CURRENT`, `STALE`, `OBSOLETE`) using doc content, recency, and alignment with active plans.
+  - Added top-of-doc warning callouts for all `STALE` and `OBSOLETE`/`DEPRECATED` docs.
+  - Used task manager tracking with one task per doc (35 tasks created and completed under project `Docs frontmatter audit`).
+- 2026-02-11: Validation for docs frontmatter audit:
+  - `node` schema validation script across all `docs/**/*.md` confirmed required fields + conditional rules + warning callout presence for stale/obsolete files (pass: `Validated 35 docs with no frontmatter schema issues.`).
+  - Documentation-only change; runtime tests not run (not applicable).
+
+- 2026-02-11: Completed `basic-poll` tasks `P2 10.1`, `P2 10.2`, and `P2 10.3` (Discord `/poll-create`):
+  - `P2 10.1`:
+    - Added top-level `/poll-create` command registration in `functions/scripts/register-discord-commands.js` with options for `title`, `options`, `mode`, `multi`, `allow_other`, and `deadline`.
+  - `P2 10.2`:
+    - Added `handlePollCreate(...)` flow in `functions/src/discord/worker.js` with:
+      - Discord user link resolution
+      - linked group lookup by `discord.channelId`
+      - group manager authorization checks
+      - options parsing/validation (2–25, pipe-delimited)
+      - mode validation (`ranked-choice` + write-in guard)
+      - deadline parsing/validation (ISO date + relative `Nd`/`Nw`)
+      - basic poll doc creation + Discord card post + Discord metadata write
+      - `BASIC_POLL_CREATED` notification event enqueue
+      - ephemeral success confirmation with `Edit on Web` link button
+  - `P2 10.3`:
+    - Added Phase 10 Discord error constants in `functions/src/discord/error-messages.js`:
+      - `noLinkedGroupForPoll`, `notGroupManager`, `tooFewOptions`, `tooManyOptionsDiscord`, `writeInNotRanked`, `deadlineInPast`, `pollAlreadyFinalized`, `pollTieBreakWeb`, `basicPollNotFound`, `basicPollClosed`
+    - Added focused coverage in `functions/src/discord/worker.poll-create.test.js` for command success and key error paths.
+- 2026-02-11: Test results for `P2 10.1` + `P2 10.2` + `P2 10.3` validation:
+  - `npm --prefix functions run test -- src/discord/worker.poll-create.test.js` (pass, `5 passed`, exit code `0`).
+  - `npm --prefix functions run test -- src/discord/worker.basic-poll.test.js src/discord/worker.handlers.test.js src/discord/worker.test.js src/discord/ingress.test.js src/discord/basic-poll-card.test.js` (pass, `32 passed`, exit code `0`).
+
+- 2026-02-11: Added consistent docs frontmatter metadata policy to `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`:
+  - Required metadata fields for every Markdown file in `docs/`: `created`, `lastUpdated`, `summary`, `category`, `status`, `changelog`, and `note`.
+  - Required conditional field: `implementationStatus` for task trackers/TDD/implementation-plan docs.
+  - Added shared enum sets for `category`, `status`, and `implementationStatus`.
+  - Added lifecycle semantics for `CURRENT`, `STALE`, `OBSOLETE`, and `DEPRECATED`.
+  - Added mandatory freshness warning guidance (including `CURRENT` + `lastUpdated > 90 days` warning requirement).
+  - Added a minimal frontmatter template and concise changelog format requirements.
+- 2026-02-11: Validation for docs metadata policy update:
+  - Documentation-only change; no runtime code paths modified.
+  - Tests not run (not applicable for this docs-only update).
+
+- 2026-02-11: Completed `basic-poll` tasks `P2 9.1`, `P2 9.2`, `P2 9.3`, and `P2 9.4` (Discord basic poll card + voting + card sync):
+  - `P2 9.1`:
+    - Added `functions/src/discord/basic-poll-card.js` with open/finalized card builder output (type/status/options/votes/deadline/results/footer), `bp_vote`/`bp_finalize` controls while open, and finalized `View Results` link state.
+    - Added card builder tests in `functions/src/discord/basic-poll-card.test.js`.
+  - `P2 9.2` + `P2 9.3`:
+    - Extended `functions/src/discord/worker.js` with group basic poll voting handlers:
+      - multiple-choice: `bp_vote`, `bp_mc_select`, `bp_submit`, `bp_clear`
+      - ranked-choice: `bp_vote`, `bp_rank_select`, `bp_rank_prev`, `bp_rank_next`, `bp_rank_undo`, `bp_rank_reset`, `bp_rank_submit`, `bp_clear`
+    - Added session model `discordVoteSessions/{discordUserId}:basicPoll:{pollId}` and server-side poll re-fetch/writable validation before vote writes.
+    - Updated ingress behavior in `functions/src/discord/ingress.js` so `bp_vote:*` uses ephemeral defer responses.
+    - Added tests in `functions/src/discord/worker.basic-poll.test.js` and updated ingress tests.
+  - `P2 9.4`:
+    - Added `functions/src/triggers/basic-poll-card.js` with poll + vote write enqueue triggers and `processDiscordBasicPollUpdate` queue worker using sync hashes, create/edit card updates, and delete-message handling when polls are removed.
+    - Added `DISCORD_BASIC_POLL_TASK_QUEUE` config in `functions/src/discord/config.js`.
+    - Exported new trigger module in `functions/src/index.js`.
+    - Added trigger tests in `functions/src/triggers/basic-poll-card.test.js`.
+- 2026-02-11: Test results for `P2 9.1` + `P2 9.2` + `P2 9.3` + `P2 9.4` validation:
+  - `npm --prefix functions run test -- src/discord/basic-poll-card.test.js src/discord/worker.basic-poll.test.js src/discord/ingress.test.js src/triggers/basic-poll-card.test.js` (pass, `20 passed`, exit code `0`).
+  - `npm --prefix functions run test -- src/discord/ingress.test.js src/discord/worker.test.js src/discord/worker.vote.test.js src/discord/worker.handlers.test.js src/discord/worker.basic-poll.test.js src/discord/basic-poll-card.test.js src/triggers/basic-polls.test.js src/triggers/basic-poll-card.test.js src/basic-polls/callables.test.js` (pass, `63 passed`, exit code `0`).
+
+- 2026-02-11: Hardened Discord group-channel linking to prevent channel reuse across different questing groups:
+  - Added `channelAlreadyLinked` error in `functions/src/discord/error-messages.js`.
+  - Updated `functions/src/discord/worker.js` `handleLinkGroup(...)` to reject linking when `discord.channelId` is already linked on another `questingGroups/{groupId}` doc.
+  - Added coverage in `functions/src/discord/worker.handlers.test.js` for the conflict path (no link overwrite, clear user-facing error).
+- 2026-02-11: Validation for Discord channel-link conflict guard:
+  - `npm --prefix functions run test -- src/discord/worker.handlers.test.js src/discord/worker.vote.test.js` (pass, `17 passed`, exit code `0`).
+
+- 2026-02-11: Extended `docs/v2-functions-migration-plan.md` with a new post-migration phase for replacing v1 `onUserCreate` after initial v1->v2 migration stabilizes:
+  - Added target architecture (`bootstrapUserProfileV2` callable + client bootstrap + reconciliation job), rollout sequence, acceptance criteria, and rollback plan.
+  - Explicitly scoped this as a follow-up phase after initial migration is complete/tested.
+- 2026-02-11: Validation for `onUserCreate` migration-plan doc update:
+  - Documentation-only change; no runtime code paths modified.
+  - Tests not run (not applicable for this docs-only update).
+
+- 2026-02-11: Completed `basic-poll` tasks `P2 4.3`, `P2 4.5`, and `P2 4.6`:
+  - `P2 4.3` (`?poll=` embedded poll deep links):
+    - Added `parseEmbeddedPollIdFromSearch` utility (`web/src/features/scheduler/utils/embedded-poll-deep-link.js`) and tests.
+    - Updated `web/src/features/scheduler/SchedulerPage.jsx` to parse `?poll`, auto-scroll to the targeted embedded poll card, and temporarily highlight it.
+    - Updated dashboard embedded poll links to `/scheduler/:id?poll=:pollId` (`web/src/features/dashboard/DashboardPage.jsx`).
+  - `P2 4.5` (finalization warning for missing required embedded polls):
+    - Added server summary helper `functions/src/basic-polls/required-summary.js`.
+    - Added callable `getRequiredEmbeddedPollFinalizeSummary` in `functions/src/basic-polls/callables.js`.
+    - Added warning modal `RequiredEmbeddedFinalizeWarningDialog` and integrated finalize pre-check flow in `web/src/features/scheduler/SchedulerPage.jsx` with explicit “Finalize anyway”.
+    - Updated `functions/src/legacy.js` finalization to persist:
+      - `finalizedWithMissingRequiredBasicPollVotes`
+      - `missingRequiredBasicPollVotesSummary`
+      - `missingRequiredBasicPollVotesCapturedAt`
+  - `P2 4.6` (clone embedded polls):
+    - Updated `functions/src/legacy.js` `cloneSchedulerPoll` to clone embedded poll docs and clone embedded vote docs when votes are retained.
+    - Added client fallback clone support for embedded polls via `cloneEmbeddedBasicPolls(...)` (`web/src/lib/data/basicPolls.js`) and integrated it in `web/src/features/scheduler/SchedulerPage.jsx`.
+- 2026-02-11: Test results for `P2 4.3` + `P2 4.5` + `P2 4.6` validation:
+  - `npm --prefix functions run test -- src/basic-polls/callables.test.js src/legacy.clone.test.js src/legacy.calendar.test.js` (pass, `21 passed`, exit code `0`).
+  - `npm --prefix web run test -- src/lib/data/basicPolls.test.js src/features/dashboard/DashboardPage.test.jsx src/features/scheduler/utils/embedded-poll-deep-link.test.js` (pass, `30 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; Vite build completed with existing non-blocking chunk-size warnings).
+
+- 2026-02-11: Completed `basic-poll` task `P2 7.3` (required embedded poll callable for `BASIC_POLL_REQUIRED_CHANGED`):
+  - Added/validated `notifyBasicPollRequiredChanged` server callable in `functions/src/basic-polls/callables.js` to compute eligible scheduler voters (`participantIds` + linked questing group members), detect missing voters (no submitted vote), and emit `BASIC_POLL_REQUIRED_CHANGED` to missing recipients.
+  - Wired scheduler edit flow in `web/src/features/scheduler/CreateSchedulerPage.jsx` to invoke required-change notification via `notifyEmbeddedBasicPollRequiredChanged`.
+  - Added `notifyEmbeddedBasicPollRequiredChanged` helper in `web/src/lib/data/basicPolls.js`.
+  - Expanded callable test coverage in `functions/src/basic-polls/callables.test.js` for unauthenticated + invalid-argument error paths in addition to missing-voter recipient assertions.
+- 2026-02-11: Test results for `P2 7.3` validation:
+  - `npm --prefix functions run test -- src/basic-polls/callables.test.js` (pass, `12 passed`, exit code `0`).
+
+- 2026-02-11: Completed `basic-poll` task `P2 8.1` (Dashboard "Polls to vote on"):
+  - Added web data helpers in `web/src/lib/data/basicPolls.js`:
+    - `fetchOpenGroupPollsWithoutVote(groupIds, userId)`
+    - `fetchRequiredEmbeddedPollsWithoutVote(schedulerIds, userId)`
+  - Added dashboard section in `web/src/features/dashboard/DashboardPage.jsx` that appears only when unvoted polls exist and shows per-poll title, context (`in [Group]` / `in [Scheduler]`), vote-type badge, required badge, deadline countdown, and "Vote" link.
+  - Added dashboard tests in `web/src/features/dashboard/DashboardPage.test.jsx` for rendering/link navigation and empty-state suppression.
+  - Added unit coverage in `web/src/lib/data/basicPolls.test.js` for both new unvoted-poll query helpers.
+- 2026-02-11: Test results for `P2 8.1` validation:
+  - `npm --prefix web run test -- src/lib/data/basicPolls.test.js src/features/dashboard/DashboardPage.test.jsx` (pass, `26 passed`, exit code `0`).
+
+- 2026-02-11: Added `docs/v2-functions-migration-plan.md` with a codebase-specific Cloud Functions migration analysis and phased v1->v2 plan that accounts for active `basic-poll` execution state (`docs/basic-poll.md`, `docs/basic-poll-tasks.md`, `docs/fixtures/basic-polls-irv-fixtures.json`, `docs/plan-execution/basic-poll-task-list.md`, `docs/task-list.md`).
+- 2026-02-11: Validation for v2 migration plan doc task:
+  - Documentation-only change; no runtime code paths modified.
+  - Tests not run (not applicable for this docs-only update).
+
+- 2026-02-11: Completed `basic-poll` task `P2 6.4` by adding basic poll notification preferences across server and settings UI:
+  - Added `BASIC_POLL_*` preference support in `functions/src/notifications/preferences.js` (email-eligible + simple-default sets).
+  - Added preference coverage in `functions/src/notifications/preferences.test.js`.
+  - Extended web notification event constants in `web/src/lib/data/notifications.js`.
+  - Added a new "Basic polls" advanced notification group in `web/src/features/settings/SettingsPage.jsx` with per-event controls (`muted` / `inApp` / `inApp+Email`).
+  - Extended settings tests in `web/src/features/settings/SettingsPage.test.jsx` for basic poll preference rendering.
+- 2026-02-11: Test results for `P2 6.4` validation:
+  - `npm --prefix functions run test -- src/legacy.callables.test.js src/notifications/preferences.test.js src/notifications/auto-clear.test.js src/notifications/router.test.js src/notifications/constants.test.js src/notifications/templates.test.js src/notifications/emit.test.js src/notifications/write-event.test.js src/basic-polls/callables.test.js src/triggers/basic-polls.test.js` (pass, `95 passed`, exit code `0`).
+  - `npm --prefix web run test -- src/features/settings/SettingsPage.test.jsx src/features/settings/components/GroupCard.test.jsx src/lib/data/basicPolls.test.js src/features/basic-polls/GroupPollPage.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx` (pass, `44 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; Vite build completed with existing non-blocking chunk-size warnings).
+
+- 2026-02-11: Completed `basic-poll` task `P1 7.2` by extending `deleteUserAccount` cleanup for basic poll votes in `functions/src/legacy.js`:
+  - Added explicit basic poll vote pruning across `questingGroups/{groupId}/basicPolls/*/votes/{uid}` and scheduler embedded basic poll vote paths for schedulers the user created or participated in.
+  - Kept collection-group vote cleanup as a broad fallback and added explicit path-based cleanup before scheduler deletion/removal passes.
+  - Reused scheduler snapshots to avoid redundant participant/creator scheduler queries.
+- 2026-02-11: Added/updated `P1 7.2` callable tests in `functions/src/legacy.callables.test.js`:
+  - Verified explicit basic poll vote deletion occurs during account deletion.
+  - Added coverage for explicit basic poll cleanup behavior even when collection-group vote queries are empty.
+- 2026-02-11: Test results for `P1 7.2` validation:
+  - `npm --prefix functions run test -- src/legacy.callables.test.js src/notifications/auto-clear.test.js src/notifications/router.test.js src/notifications/constants.test.js src/notifications/templates.test.js src/notifications/emit.test.js src/notifications/write-event.test.js src/basic-polls/callables.test.js src/triggers/basic-polls.test.js` (pass, `89 passed`, exit code `0`).
+  - `npm --prefix web run test -- src/lib/data/basicPolls.test.js src/features/basic-polls/GroupPollPage.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx src/features/settings/components/GroupCard.test.jsx` (pass, `41 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; Vite build completed with existing non-blocking chunk-size warnings).
+
+- 2026-02-11: Completed `basic-poll` task `P1 7.1` by extending `functions/src/legacy.js` `removeGroupMemberFromPolls` to prune basic poll votes for removed members:
+  - Group-linked basic polls: removes member votes under `questingGroups/{groupId}/basicPolls/*/votes/{uid}` (with email-query fallback), gated to `OPEN` polls.
+  - Scheduler-embedded basic polls: removes member votes under `schedulers/{schedulerId}/basicPolls/*/votes/{uid}` (with email-query fallback) when parent scheduler status is `OPEN`.
+  - Added returned counters (`embeddedBasicPollsPruned`, `groupBasicPollsPruned`) for visibility in callable results.
+- 2026-02-11: Added callable coverage in `functions/src/legacy.callables.test.js` for `removeGroupMemberFromPolls` to verify scheduler/group basic poll vote pruning and open-only behavior, and updated mocks to support group basic poll subcollection traversal.
+- 2026-02-11: Test results for `P1 7.1` validation:
+  - `npm --prefix functions run test -- src/legacy.callables.test.js src/notifications/auto-clear.test.js src/notifications/router.test.js src/basic-polls/callables.test.js src/triggers/basic-polls.test.js` (pass, `58 passed`, exit code `0`).
+  - `npm --prefix web run test -- src/lib/data/basicPolls.test.js src/features/basic-polls/GroupPollPage.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx src/features/settings/components/GroupCard.test.jsx` (pass, `41 passed`, exit code `0`).
+
+- 2026-02-11: Completed `basic-poll` task `P1 6.3` by extending `functions/src/notifications/auto-clear.js` with basic poll auto-clear rules:
+  - `BASIC_POLL_FINALIZED` clears reminder/reopened/reset notifications for the same basic poll.
+  - `BASIC_POLL_REOPENED` clears finalized notifications.
+  - `BASIC_POLL_RESET` clears reminder + missing-required notices.
+  - `BASIC_POLL_VOTE_SUBMITTED` clears the actor’s own basic poll reminder.
+  - `BASIC_POLL_REQUIRED_CHANGED` conditionally clears missing-required notices only when the payload marks the poll optional.
+  - `BASIC_POLL_REMOVED` clears related missing-required notices.
+- 2026-02-11: Added `P1 6.3` coverage in `functions/src/notifications/auto-clear.test.js` for each new basic poll auto-clear scenario, including the required→optional conditional behavior.
+- 2026-02-11: Test results for `P1 6.3` validation:
+  - `npm --prefix functions run test -- src/notifications/auto-clear.test.js src/notifications/router.test.js src/notifications/constants.test.js src/notifications/templates.test.js src/notifications/emit.test.js src/notifications/write-event.test.js src/basic-polls/callables.test.js src/triggers/basic-polls.test.js` (pass, `65 passed`, exit code `0`).
+
+- 2026-02-11: Completed `basic-poll` task `P1 6.1` by registering all `BASIC_POLL_*` notification events in `functions/src/notifications/constants.js`, adding shared basic poll template helpers (`functions/src/notifications/templates/basic-polls-shared.js`), adding in-app + email templates for each basic poll event, and wiring all mappings in `functions/src/notifications/templates/index.js`.
+- 2026-02-11: Completed `basic-poll` task `P1 6.2` by moving basic poll notification emission onto server-owned paths:
+  - Added privileged basic poll callables in `functions/src/basic-polls/callables.js` for create/finalize/reopen/remove/reset with server-side auth checks and notification event writes.
+  - Added vote/deadline notification triggers in `functions/src/triggers/basic-polls.js` for `BASIC_POLL_VOTE_SUBMITTED` and `BASIC_POLL_DEADLINE_CHANGED`.
+  - Added shared event writer `functions/src/notifications/write-event.js` and reused it from `functions/src/notifications/emit.js`.
+  - Exported new callables/triggers in `functions/src/index.js`.
+  - Updated web flows to use server paths for user actions (`createBasicPoll`, `createEmbeddedBasicPoll`, `deleteEmbeddedBasicPoll`, unsafe `resetBasicPollVotes`) with local fallback retained for cleanup/integration flows.
+- 2026-02-11: Test results for `P1 6.1` + `P1 6.2`:
+  - `npm --prefix functions run test -- src/notifications/constants.test.js src/notifications/templates.test.js src/notifications/emit.test.js src/notifications/write-event.test.js src/basic-polls/callables.test.js src/triggers/basic-polls.test.js` (pass, `41 passed`, exit code `0`).
+  - `npm --prefix web run test -- src/lib/data/basicPolls.test.js src/features/basic-polls/GroupPollPage.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx src/features/settings/components/GroupCard.test.jsx` (pass, `41 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; Vite build completed with existing non-blocking chunk-size warnings).
+
+- 2026-02-11: Improved local plan-run output UX in `scripts/codex/run-local-plan.sh` by making terminal output human-readable by default, and adding `--verbose` to keep raw JSON event streaming; added renderer `scripts/codex/render-codex-events.js` while preserving raw logs in `events.jsonl`.
+- 2026-02-11: Validation for local plan-run output update: `bash -n scripts/codex/run-local-plan.sh` (pass), `node --check scripts/codex/render-codex-events.js` (pass), `scripts/codex/run-local-plan.sh --prompt-file .codex/prompts/basic-poll-execute.md --dry-run` (pass), `scripts/codex/run-local-plan.sh --prompt-file .codex/prompts/basic-poll-execute.md --verbose --dry-run` (pass), formatter smoke test via `cat <<'EOF' | node scripts/codex/render-codex-events.js ... EOF` (pass), end-to-end smoke tests with temporary stub `codex` for default and `--verbose` modes (pass).
+- 2026-02-11: Archived previous task list to `docs/task-list-archive-basic-poll-2026-02-11.md` and reset `docs/task-list.md` for basic-poll plan setup.
+- 2026-02-11: Ensured `docs/external-feedback/` exists and verified consult scripts for Claude and Gemini are present/executable.
+- 2026-02-11: Added a generic local Codex long-run setup: `scripts/codex/archive-task-list.sh`, `scripts/codex/bootstrap-plan-execution.sh`, `scripts/codex/init-plan-run.sh`, `scripts/codex/run-local-plan.sh`, plus the new skill `.codex/skills/execute-local-plan/SKILL.md`.
+- 2026-02-11: Bootstrapped basic-poll execution artifacts: `docs/plan-execution/basic-poll-task-list.md` and `.codex/prompts/basic-poll-execute.md`.
+- 2026-02-11: Validated Codex setup scripts. Commands: `bash -n scripts/codex/archive-task-list.sh scripts/codex/bootstrap-plan-execution.sh scripts/codex/init-plan-run.sh scripts/codex/init-basic-poll-run.sh scripts/codex/run-local-plan.sh` (pass), `scripts/codex/run-local-plan.sh --prompt-file .codex/prompts/basic-poll-execute.md --dry-run` (pass), `scripts/codex/bootstrap-plan-execution.sh --plan-id sample --plan-doc docs/basic-poll.md --tasks-doc docs/basic-poll-tasks.md --output docs/plan-execution/sample-task-list.md --force` (pass; temporary file removed).
+- 2026-02-11: Re-validated script portability with absolute paths. Commands: `scripts/codex/run-local-plan.sh --prompt-file $(pwd)/.codex/prompts/basic-poll-execute.md --output-dir $(pwd)/.codex/runs --dry-run` (pass), `scripts/codex/init-plan-run.sh --plan-id basic-poll-temp --plan-doc $(pwd)/docs/basic-poll.md --tasks-doc $(pwd)/docs/basic-poll-tasks.md --execution-task-list $(pwd)/docs/plan-execution/basic-poll-temp-task-list.md --prompt-file $(pwd)/.codex/prompts/basic-poll-temp-execute.md --force` (pass; temporary files removed).
+- 2026-02-11: Archived legacy skills to `.codex/skills-archive/2026-02-11/`: `execute-plan-unified-notification-overhaul`, `test-plan-runner`, `ts-migration-chunk`; updated `AGENTS.md` to remove active references to archived skills. Tests not run (docs/file-move only).
+- 2026-02-11: Matched local plan runner defaults to `codex-yolo` by adding `-c model_reasoning_effort="high"` to `scripts/codex/run-local-plan.sh` (override: `--reasoning-effort`, disable: `--reasoning-effort off`). Validation: `bash -n scripts/codex/run-local-plan.sh` (pass), `scripts/codex/run-local-plan.sh --prompt-file .codex/prompts/basic-poll-execute.md --dry-run` (pass; command includes high reasoning), `scripts/codex/run-local-plan.sh --prompt-file .codex/prompts/basic-poll-execute.md --reasoning-effort off --dry-run` (pass).
+- 2026-02-11: Hardened local run success detection so `scripts/codex/run-local-plan.sh` now fails if `final-message.md` is missing (common with early Ctrl+C), avoiding false-success output. Validation: `bash -n scripts/codex/run-local-plan.sh` (pass), `scripts/codex/run-local-plan.sh --prompt-file .codex/prompts/basic-poll-execute.md --dry-run` (pass).
+- 2026-02-11: Completed `basic-poll` task `P1 1.1` (group-linked basic poll Firestore rules + acceptance tests). Updated `firestore.rules` with `questingGroups/{groupId}/basicPolls/{pollId}` and `.../votes/{userId}` permissions, and expanded `web/src/__tests__/rules/rules.test.js` to cover member read, manager create/edit/finalize/reopen, non-member denial, own-vote-only writes, and vote blocking after finalization/deadline.
+- 2026-02-11: Test results for `P1 1.1`:
+  - `npm --prefix web run test:rules` → tests passed (`18 passed`) but command exited non-zero due Firebase CLI update-check config permission issue.
+  - `mkdir -p /tmp/firebase-config && XDG_CONFIG_HOME=/tmp/firebase-config npm --prefix web run test:rules` → pass (`18 passed`, exit code `0`).
+- 2026-02-11: Completed `basic-poll` task `P1 1.2` (scheduler-embedded basic poll Firestore rules + acceptance tests). Added `schedulers/{schedulerId}/basicPolls/{pollId}` and embedded vote rules in `firestore.rules`, and expanded `web/src/__tests__/rules/rules.test.js` with creator CRUD checks, participant vote checks, non-participant denial, and closed/deadline write blocking.
+- 2026-02-11: Test results for `P1 1.2`: `mkdir -p /tmp/firebase-config && XDG_CONFIG_HOME=/tmp/firebase-config npm --prefix web run test:rules` → pass (`21 passed`, exit code `0`).
+- 2026-02-11: Completed `basic-poll` task `P1 1.3` by adding Firestore indexes for `basicPolls` (`status + createdAt`, `order`) and collection-group `votes` support in `firestore.indexes.json`.
+- 2026-02-11: Test/validation results for `P1 1.3`: `node -e "const fs=require('fs'); JSON.parse(fs.readFileSync('firestore.indexes.json','utf8')); console.log('firestore.indexes.json parse: ok');"` (pass), `mkdir -p /tmp/firebase-config && XDG_CONFIG_HOME=/tmp/firebase-config npm --prefix web run test:rules` (pass, `21 passed`, exit code `0`).
+- 2026-02-11: Completed `basic-poll` task `P1 2.1` by adding `web/src/lib/data/basicPolls.js` (group-linked poll CRUD + finalize/reopen + batched vote cleanup delete + subscriptions), plus `web/src/lib/data/basicPolls.test.js` and `web/src/__tests__/integration/basic-polls.integration.test.js`.
+- 2026-02-11: During `P1 2.1` integration validation, fixed two rule null-safety issues in `firestore.rules`: `isGroupInvitee` now guards missing `pendingInvites`, and basic poll writable checks now guard missing `deadlineAt`.
+- 2026-02-11: Test results for `P1 2.1`: `npm --prefix web run test -- src/lib/data/basicPolls.test.js` (pass, `8 passed`), `mkdir -p /tmp/firebase-config && XDG_CONFIG_HOME=/tmp/firebase-config npm --prefix web run test:rules` (pass, `21 passed`), `mkdir -p /tmp/firebase-config && XDG_CONFIG_HOME=/tmp/firebase-config npm --prefix web run test:integration` (failed before tests due extension emulator API permissions), `mkdir -p /tmp/firebase-config && XDG_CONFIG_HOME=/tmp/firebase-config firebase emulators:exec --project studio-473406021-87ead --only auth,firestore "cd web && npx vitest run --config vitest.integration.config.js src/__tests__/integration/basic-polls.integration.test.js"` (pass, `2 passed`, exit code `0`).
+- 2026-02-11: Completed `basic-poll` task `P1 2.2` by extending `web/src/lib/data/basicPolls.js` with cross-parent vote helpers (`submitBasicPollVote`, `deleteBasicPollVote`, `subscribeToBasicPollVotes`, `subscribeToMyBasicPollVote`) for both `group` and `scheduler` paths.
+- 2026-02-11: Added `P1 2.2` tests in `web/src/lib/data/basicPolls.test.js` (unit) and expanded `web/src/__tests__/integration/basic-polls.integration.test.js` (emulator integration) to cover vote create/update/delete + subscriptions.
+- 2026-02-11: Test results for `P1 2.2`: `npm --prefix web run test -- src/lib/data/basicPolls.test.js` (pass, `12 passed`), `mkdir -p /tmp/firebase-config && XDG_CONFIG_HOME=/tmp/firebase-config firebase emulators:exec --project studio-473406021-87ead --only auth,firestore "cd web && npx vitest run --config vitest.integration.config.js src/__tests__/integration/basic-polls.integration.test.js"` (pass, `4 passed`, exit code `0`).
+- 2026-02-11: Completed `basic-poll` task `P1 2.3` by adding scheduler-embedded basic poll data helpers in `web/src/lib/data/basicPolls.js`: `createEmbeddedBasicPoll`, `updateEmbeddedBasicPoll`, `deleteEmbeddedBasicPoll`, `reorderEmbeddedBasicPolls`, and `subscribeToEmbeddedBasicPolls`.
+- 2026-02-11: Added `P1 2.3` tests in `web/src/lib/data/basicPolls.test.js` and `web/src/__tests__/integration/basic-polls.integration.test.js` for embedded CRUD/reorder/delete cleanup + subscription behavior.
+- 2026-02-11: Test results for `P1 2.3`: `npm --prefix web run test -- src/lib/data/basicPolls.test.js` (pass, `17 passed`), `mkdir -p /tmp/firebase-config && XDG_CONFIG_HOME=/tmp/firebase-config firebase emulators:exec --project studio-473406021-87ead --only auth,firestore "cd web && npx vitest run --config vitest.integration.config.js src/__tests__/integration/basic-polls.integration.test.js"` (pass, `5 passed`, exit code `0`).
+- 2026-02-11: Completed `basic-poll` task `P1 2.4` by extending deletion cleanup flows:
+  - `web/src/lib/data/pollInvites.js`: `removeParticipantFromPoll` now removes scheduler embedded basic poll votes for resolved participant UID.
+  - `web/src/lib/data/questingGroups.js`: `deleteQuestingGroup` now deletes `questingGroups/{groupId}/basicPolls/*` and vote subdocs before deleting the group doc.
+  - `web/src/lib/data/schedulers.js`: added `deleteSchedulerWithRelatedData` to delete scheduler slots, scheduler votes, embedded basic polls, and embedded poll votes before scheduler deletion.
+  - `web/src/features/scheduler/SchedulerPage.jsx`: delete flow now uses `deleteSchedulerWithRelatedData`.
+- 2026-02-11: Updated integration harness for reliable `P1 2.4` validation:
+  - `web/src/__tests__/integration/basic-polls.integration.test.js`: post-delete existence checks now read under `withSecurityRulesDisabled` for deleted parent resources.
+  - `web/vitest.integration.config.js`: set `fileParallelism: false` so integration files run serially with shared emulator/auth state.
+- 2026-02-11: Test results for `P1 2.4`:
+  - `npm --prefix web run test -- src/lib/data/basicPolls.test.js src/lib/data/pollInvites.test.js src/lib/data/questingGroups.test.js` (pass, `41 passed`, exit code `0`).
+  - `mkdir -p /tmp/firebase-config && XDG_CONFIG_HOME=/tmp/firebase-config firebase emulators:exec --project studio-473406021-87ead --only auth,firestore "cd web && npx vitest run --config vitest.integration.config.js src/__tests__/integration/poll-invites.integration.test.js src/__tests__/integration/basic-polls.integration.test.js"` (pass, `9 passed`, exit code `0`).
+- 2026-02-11: Completed `basic-poll` task `P1 3.1` by adding standalone group poll routing and shell:
+  - New `web/src/features/basic-polls/GroupPollPage.jsx` with group-member gating and poll loading through `subscribeToBasicPoll(groupId, pollId)`.
+  - Added explicit loading/error/not-found/access-denied states for the group poll route.
+  - Wired `/groups/:groupId/polls/:pollId` in `web/src/App.jsx` and included this path in post-login redirect handling.
+- 2026-02-11: Added `P1 3.1` component tests in `web/src/features/basic-polls/GroupPollPage.test.jsx` for shell rendering (member) and access denied (non-member).
+- 2026-02-11: Test results for `P1 3.1`: `npm --prefix web run test -- src/features/basic-polls/GroupPollPage.test.jsx` (pass, `2 passed`, exit code `0`).
+- 2026-02-11: Completed `basic-poll` task `P1 3.2` by implementing GroupPollPage multiple-choice voting:
+  - Added single/multi-select option UI, `maxSelections` handling, submit/clear actions, and write-in Other support with validation.
+  - Added live results bars sorted by vote count, empty state ("No votes yet"), and expandable voter breakdown with avatar chips.
+  - Added read-only behavior when poll status is not writable or deadline has passed.
+- 2026-02-11: Expanded `P1 3.2` component coverage in `web/src/features/basic-polls/GroupPollPage.test.jsx` for cast/change/clear flows and live result updates.
+- 2026-02-11: Test results for `P1 3.2`: `npm --prefix web run test -- src/features/basic-polls/GroupPollPage.test.jsx` (pass, `5 passed`, exit code `0`).
+- 2026-02-11: Completed `basic-poll` task `P1 3.3` by adding ranked-choice voting on `GroupPollPage`:
+  - Implemented drag-to-rank with `@dnd-kit` and mobile arrow fallback controls.
+  - Added partial ranking support with ranked + unranked sections.
+  - Added submit/clear ranking actions and live first-choice results view for open polls.
+- 2026-02-11: Installed ranked voting drag dependencies in `web`: `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`.
+- 2026-02-11: Expanded `P1 3.3` tests in `web/src/features/basic-polls/GroupPollPage.test.jsx` for ranked submit, arrow reorder behavior, drag-handle presence, and live first-choice counts.
+- 2026-02-11: Test results for `P1 3.3`: `npm --prefix web run test -- src/features/basic-polls/GroupPollPage.test.jsx` (pass, `7 passed`, exit code `0`).
+- 2026-02-11: Completed `basic-poll` task `P1 3.4` by refining multiple-choice results in `GroupPollPage`:
+  - Added winner highlighting (badge + accent), tie-safe winner display, and finalized read-only behavior.
+  - Updated multi-select result labels to `X of N voters` with percentages.
+  - Grouped write-ins case-insensitively by trimmed text for result bars.
+- 2026-02-11: Expanded `P1 3.4` tests in `web/src/features/basic-polls/GroupPollPage.test.jsx` for write-in grouping, winner highlighting, and finalized poll read-only results.
+- 2026-02-11: Test results for `P1 3.4`: `npm --prefix web run test -- src/features/basic-polls/GroupPollPage.test.jsx` (pass, `9 passed`, exit code `0`).
+- 2026-02-11: Completed `basic-poll` task `P1 3.5` by adding finalized ranked-choice results:
+  - Added IRV utility `web/src/lib/basic-polls/irv.js` and connected it to ranked poll results when voting is closed.
+  - Implemented static round-by-round result summary with exhausted ballot counts and tie messaging for creators.
+  - Kept open ranked polls on live first-choice tallies.
+- 2026-02-11: Added tests for `P1 3.5` in `web/src/lib/basic-polls/irv.test.js` and expanded `web/src/features/basic-polls/GroupPollPage.test.jsx`.
+- 2026-02-11: Test results for `P1 3.5`: `npm --prefix web run test -- src/lib/basic-polls/irv.test.js src/features/basic-polls/GroupPollPage.test.jsx` (pass, `13 passed`, exit code `0`).
+- 2026-02-11: Completed `basic-poll` task `P1 3.6` by validating manager edit mode acceptance for `GroupPollPage` and tightening test coverage:
+  - Updated unsafe-edit vote-type test selector to target the edit form combobox reliably.
+  - Added coverage confirming non-manager group members cannot access edit mode controls.
+- 2026-02-11: Test results for `P1 3.6`: `npm --prefix web run test -- src/features/basic-polls/GroupPollPage.test.jsx src/lib/data/basicPolls.test.js src/lib/basic-polls/irv.test.js` (pass, `36 passed`, exit code `0`).
+- 2026-02-11: Completed `basic-poll` task `P1 3.7` by adding a Polls section to the questing group card:
+  - `web/src/features/settings/components/GroupCard.jsx` now shows open polls with `X/Y voted` progress, vote-type badges, deadlines, and links to `/groups/:groupId/polls/:pollId`.
+  - Added a recent finalized poll list (last five) and manager-only "Create poll" entry-point modal shell.
+- 2026-02-11: Added/updated `P1 3.7` tests in `web/src/features/settings/components/GroupCard.test.jsx` for poll section rendering, link paths, and create-poll modal opening.
+- 2026-02-11: Test results for `P1 3.7`: `npm --prefix web run test -- src/features/settings/components/GroupCard.test.jsx` (pass, `4 passed`, exit code `0`).
+- 2026-02-11: Completed `basic-poll` task `P1 3.8` by implementing the standalone group poll creation modal and wiring it into group cards:
+  - Added `web/src/features/basic-polls/components/CreateGroupPollModal.jsx` with required title, markdown description write/preview, vote type/settings controls, options editor (add/remove/reorder), option note markdown modal, optional deadline, and save via `createBasicPoll`.
+  - Updated `web/src/features/settings/components/GroupCard.jsx` to use this modal for manager "Create poll" actions.
+  - Expanded tests so creation from the modal is validated and newly-created polls appear in the group card list.
+- 2026-02-11: Test results for `P1 3.8`:
+  - `npm --prefix web run test -- src/features/settings/components/GroupCard.test.jsx` (pass, `5 passed`, exit code `0`).
+  - `npm --prefix web run test -- src/features/settings/components/GroupCard.test.jsx src/features/basic-polls/GroupPollPage.test.jsx src/lib/data/basicPolls.test.js src/lib/basic-polls/irv.test.js` (pass, `41 passed`, exit code `0`).
+- 2026-02-11: Completed `basic-poll` task `P1 4.1` by adding embedded poll management in scheduler edit mode:
+  - `web/src/features/scheduler/CreateSchedulerPage.jsx` now includes an "Embedded polls" section with add/edit/remove actions, required/optional and vote-type badges, `X/Y voted` status, and drag-to-reorder with persisted `order`.
+  - Added `web/src/features/scheduler/components/EmbeddedPollEditorModal.jsx` for embedded poll create/edit flow (markdown description + option notes, vote settings, required toggle, optional deadline, option list management).
+  - Added deletion confirmation and integrated embedded poll CRUD data-layer helpers.
+- 2026-02-11: Added `P1 4.1` tests in `web/src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx` for create payload and edit-state initialization.
+- 2026-02-11: Test results for `P1 4.1`:
+  - `npm --prefix web run test -- src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx src/features/settings/components/GroupCard.test.jsx` (pass, `7 passed`, exit code `0`).
+  - `npm --prefix web run test -- src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx src/features/settings/components/GroupCard.test.jsx src/features/basic-polls/GroupPollPage.test.jsx src/lib/data/basicPolls.test.js src/lib/basic-polls/irv.test.js` (pass, `43 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; Vite build completed with existing non-blocking chunk-size warnings).
+- 2026-02-11: Completed `basic-poll` task `P1 4.2` by adding embedded poll voting to the scheduler page:
+  - `web/src/features/scheduler/SchedulerPage.jsx` now subscribes to embedded polls + votes and renders stacked poll cards with inline voting controls.
+  - Added per-card multiple-choice and ranked-choice vote submission/clearing, required-poll pending badges, `X/Y voted` status, and progress tracking (`completed/total`).
+  - Embedded voting actions are gated by scheduler writability (`OPEN` + participant) and show per-poll errors when invalid.
+- 2026-02-11: Test results for `P1 4.2`:
+  - `npm --prefix web run test -- src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx src/features/settings/components/GroupCard.test.jsx src/features/basic-polls/GroupPollPage.test.jsx src/lib/data/basicPolls.test.js src/lib/basic-polls/irv.test.js` (pass, `43 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; Vite build completed with existing non-blocking chunk-size warnings).
+- 2026-02-11: Completed `basic-poll` task `P1 4.4` by aligning embedded poll status with parent scheduler state:
+  - `web/src/features/scheduler/SchedulerPage.jsx` now renders embedded poll cards as read-only summaries when the scheduler is not writable (`FINALIZED`/`CANCELLED`), while keeping vote controls active only when scheduler status is `OPEN` and the user is vote-eligible.
+  - Embedded poll status remains parent-derived (no independent embedded status field management in docs/writes).
+  - Firestore parent-status write enforcement from `P1 1.2` continues to backstop UI gating.
+- 2026-02-11: Test results for `P1 4.4`:
+  - `npm --prefix web run test -- src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx src/features/settings/components/GroupCard.test.jsx src/features/basic-polls/GroupPollPage.test.jsx src/lib/data/basicPolls.test.js src/lib/basic-polls/irv.test.js` (pass, `43 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; Vite build completed with existing non-blocking chunk-size warnings).
+- 2026-02-11: Completed `basic-poll` task `P1 5.1` by implementing and validating IRV parity across web/functions:
+  - Replaced `web/src/lib/basic-polls/irv.js` with enhanced IRV tie-handling (backward tie-break + safe batch elimination) and exhausted ballot accounting.
+  - Added `functions/src/basic-polls/irv.js` so server-side and web-side use equivalent IRV behavior.
+  - Added shared fixture contracts in `docs/fixtures/basic-polls-irv-fixtures.json` and wired both web/functions IRV tests to the same fixtures.
+  - Added explicit parity assertions in `web/src/lib/basic-polls/irv.test.js` against the functions implementation.
+- 2026-02-11: Test results for `P1 5.1`:
+  - `npm --prefix web run test -- src/lib/basic-polls/irv.test.js` (pass, `14 passed`, exit code `0`).
+  - `npm --prefix functions run test -- src/basic-polls/irv.test.js` (pass, `7 passed`, exit code `0`).
+  - `npm --prefix web run test -- src/lib/basic-polls/irv.test.js src/features/basic-polls/GroupPollPage.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx src/features/settings/components/GroupCard.test.jsx src/lib/data/basicPolls.test.js` (pass, `53 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; Vite build completed with existing non-blocking chunk-size warnings).
+- 2026-02-11: Completed `basic-poll` task `P1 5.2` by introducing a dedicated multiple-choice tally utility:
+  - Added `web/src/lib/basic-polls/multiple-choice.js` to compute per-option tallies, percentages, sorting, and write-in grouping.
+  - Rewired `web/src/features/basic-polls/GroupPollPage.jsx` to consume this utility for multiple-choice results.
+  - Added focused utility tests in `web/src/lib/basic-polls/multiple-choice.test.js`.
+- 2026-02-11: Test results for `P1 5.2`:
+  - `npm --prefix web run test -- src/lib/basic-polls/multiple-choice.test.js src/lib/basic-polls/irv.test.js src/features/basic-polls/GroupPollPage.test.jsx` (pass, `30 passed`, exit code `0`).
+  - `npm --prefix web run test -- src/lib/basic-polls/multiple-choice.test.js src/lib/basic-polls/irv.test.js src/features/basic-polls/GroupPollPage.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx src/features/settings/components/GroupCard.test.jsx src/lib/data/basicPolls.test.js` (pass, `57 passed`, exit code `0`).
+  - `npm --prefix functions run test -- src/basic-polls/irv.test.js` (pass, `7 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; Vite build completed with existing non-blocking chunk-size warnings).
+- 2026-02-11: Completed `basic-poll` task `P1 5.3` (Finalized result snapshots):
+  - `web/src/lib/data/basicPolls.js`: `finalizeBasicPoll(...)` now computes immutable `finalResults` snapshots from current vote docs (multiple-choice and ranked-choice) and writes `status`, `finalizedAt`, `finalResults`, and `updatedAt` together.
+  - `functions/src/legacy.js`: `googleCalendarFinalizePoll` now computes and stores `finalResults` snapshots for each embedded basic poll before finalizing the parent scheduler.
+  - `web/src/features/basic-polls/GroupPollPage.jsx`: finalized polls now read `poll.finalResults` as the canonical source for closed results (fallbacks preserved for non-snapshot legacy docs).
+  - `web/src/features/scheduler/SchedulerPage.jsx`: embedded poll cards now render closed-state final results from each poll’s `finalResults` snapshot and use snapshot `voterCount` when available.
+  - Added functions multiple-choice utility for server snapshots at `functions/src/basic-polls/multiple-choice.js`.
+- 2026-02-11: Test results for `P1 5.3`:
+  - `npm --prefix web run test -- src/lib/data/basicPolls.test.js src/features/basic-polls/GroupPollPage.test.jsx` (pass, `34 passed`, exit code `0`).
+  - `mkdir -p /tmp/firebase-config && XDG_CONFIG_HOME=/tmp/firebase-config firebase emulators:exec --project studio-473406021-87ead --only auth,firestore "cd web && npx vitest run --config vitest.integration.config.js src/__tests__/integration/basic-polls.integration.test.js"` (pass, `8 passed`, exit code `0`).
+  - `npm --prefix functions run test -- src/basic-polls/irv.test.js src/basic-polls/multiple-choice.test.js src/legacy.calendar.test.js` (pass, `16 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; Vite build completed with existing non-blocking chunk-size warnings).

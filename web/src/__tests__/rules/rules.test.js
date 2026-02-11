@@ -6,7 +6,7 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes } from 'firebase/storage';
 
 const projectId = 'quest-scheduler-test';
@@ -33,6 +33,60 @@ afterAll(async () => {
 describe('Firestore rules', () => {
   beforeEach(async () => {
     await testEnv.clearFirestore();
+  });
+
+  test('usersPublic: signed-in users can read; owners cannot write busyWindows', async () => {
+    const alice = testEnv.authenticatedContext('alice', {
+      email: 'alice@example.com',
+      email_verified: true,
+    });
+    const bob = testEnv.authenticatedContext('bob', {
+      email: 'bob@example.com',
+      email_verified: true,
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'usersPublic', 'bob'), {
+        email: 'bob@example.com',
+        displayName: 'Bob',
+        busyWindows: [
+          {
+            startUtc: '2026-02-10T20:00:00.000Z',
+            endUtc: '2026-02-10T22:00:00.000Z',
+            sourceSchedulerId: 'schedA',
+            sourceWinningSlotId: 'slot1',
+            priorityAtMs: 1,
+          },
+        ],
+      });
+    });
+
+    await assertSucceeds(getDoc(doc(alice.firestore(), 'usersPublic', 'bob')));
+    await assertSucceeds(
+      updateDoc(doc(bob.firestore(), 'usersPublic', 'bob'), {
+        displayName: 'Bob Updated',
+      })
+    );
+
+    await assertFails(
+      updateDoc(doc(bob.firestore(), 'usersPublic', 'bob'), {
+        busyWindows: [],
+      })
+    );
+
+    await assertFails(
+      setDoc(doc(alice.firestore(), 'usersPublic', 'alice'), {
+        email: 'alice@example.com',
+        busyWindows: [],
+      })
+    );
+
+    await assertSucceeds(
+      setDoc(doc(alice.firestore(), 'usersPublic', 'alice'), {
+        email: 'alice@example.com',
+        displayName: 'Alice',
+      })
+    );
   });
 
   test('users: owner can read/write; protected fields are blocked', async () => {
@@ -158,6 +212,289 @@ describe('Firestore rules', () => {
     );
   });
 
+  test('group basic polls: member read allowed, non-member denied', async () => {
+    const manager = testEnv.authenticatedContext('manager', {
+      email: 'manager@example.com',
+      email_verified: true,
+    });
+    const member = testEnv.authenticatedContext('member', {
+      email: 'member@example.com',
+      email_verified: true,
+    });
+    const outsider = testEnv.authenticatedContext('outsider', {
+      email: 'outsider@example.com',
+      email_verified: true,
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'questingGroups', 'group-polls-read'), {
+        creatorId: 'manager',
+        memberManaged: false,
+        memberIds: ['manager', 'member'],
+      });
+      await setDoc(
+        doc(context.firestore(), 'questingGroups', 'group-polls-read', 'basicPolls', 'poll-1'),
+        {
+          title: 'Snack vote',
+          creatorId: 'manager',
+          status: 'OPEN',
+          deadlineAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }
+      );
+    });
+
+    await assertSucceeds(
+      getDoc(doc(manager.firestore(), 'questingGroups', 'group-polls-read', 'basicPolls', 'poll-1'))
+    );
+    await assertSucceeds(
+      getDoc(doc(member.firestore(), 'questingGroups', 'group-polls-read', 'basicPolls', 'poll-1'))
+    );
+    await assertFails(
+      getDoc(doc(outsider.firestore(), 'questingGroups', 'group-polls-read', 'basicPolls', 'poll-1'))
+    );
+  });
+
+  test('group basic polls: manager can create/edit/finalize/reopen/delete, non-manager denied', async () => {
+    const manager = testEnv.authenticatedContext('manager', {
+      email: 'manager@example.com',
+      email_verified: true,
+    });
+    const member = testEnv.authenticatedContext('member', {
+      email: 'member@example.com',
+      email_verified: true,
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'questingGroups', 'group-polls-manage'), {
+        creatorId: 'manager',
+        memberManaged: false,
+        memberIds: ['manager', 'member'],
+      });
+    });
+
+    const managerPollRef = doc(
+      manager.firestore(),
+      'questingGroups',
+      'group-polls-manage',
+      'basicPolls',
+      'poll-1'
+    );
+    const memberPollRef = doc(
+      member.firestore(),
+      'questingGroups',
+      'group-polls-manage',
+      'basicPolls',
+      'poll-2'
+    );
+
+    await assertSucceeds(
+      setDoc(managerPollRef, {
+        title: 'Campaign vote',
+        creatorId: 'manager',
+        status: 'OPEN',
+        deadlineAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+    );
+
+    await assertFails(
+      setDoc(memberPollRef, {
+        title: 'Unauthorized poll',
+        creatorId: 'member',
+        status: 'OPEN',
+        deadlineAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+    );
+
+    await assertSucceeds(updateDoc(managerPollRef, { title: 'Updated title', updatedAt: new Date() }));
+    await assertSucceeds(updateDoc(managerPollRef, { status: 'FINALIZED', updatedAt: new Date() }));
+    await assertSucceeds(updateDoc(managerPollRef, { status: 'OPEN', updatedAt: new Date() }));
+
+    await assertFails(updateDoc(doc(member.firestore(), managerPollRef.path), { status: 'FINALIZED' }));
+    await assertFails(deleteDoc(doc(member.firestore(), managerPollRef.path)));
+
+    await assertSucceeds(deleteDoc(managerPollRef));
+  });
+
+  test('group basic polls: votes are own-write-only for members', async () => {
+    const manager = testEnv.authenticatedContext('manager', {
+      email: 'manager@example.com',
+      email_verified: true,
+    });
+    const member = testEnv.authenticatedContext('member', {
+      email: 'member@example.com',
+      email_verified: true,
+    });
+    const otherMember = testEnv.authenticatedContext('other-member', {
+      email: 'other-member@example.com',
+      email_verified: true,
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'questingGroups', 'group-polls-votes'), {
+        creatorId: 'manager',
+        memberManaged: false,
+        memberIds: ['manager', 'member', 'other-member'],
+      });
+      await setDoc(
+        doc(context.firestore(), 'questingGroups', 'group-polls-votes', 'basicPolls', 'poll-1'),
+        {
+          title: 'Poll',
+          creatorId: 'manager',
+          status: 'OPEN',
+          deadlineAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }
+      );
+    });
+
+    const ownVoteRef = doc(
+      member.firestore(),
+      'questingGroups',
+      'group-polls-votes',
+      'basicPolls',
+      'poll-1',
+      'votes',
+      'member'
+    );
+    const otherVoteRef = doc(
+      member.firestore(),
+      'questingGroups',
+      'group-polls-votes',
+      'basicPolls',
+      'poll-1',
+      'votes',
+      'other-member'
+    );
+
+    await assertSucceeds(
+      setDoc(ownVoteRef, {
+        optionIds: ['opt-a'],
+        updatedAt: new Date(),
+      })
+    );
+    await assertFails(
+      setDoc(otherVoteRef, {
+        optionIds: ['opt-a'],
+        updatedAt: new Date(),
+      })
+    );
+    await assertFails(
+      setDoc(
+        doc(
+          manager.firestore(),
+          'questingGroups',
+          'group-polls-votes',
+          'basicPolls',
+          'poll-1',
+          'votes',
+          'member'
+        ),
+        {
+          optionIds: ['opt-a'],
+          updatedAt: new Date(),
+        }
+      )
+    );
+
+    await assertSucceeds(deleteDoc(doc(manager.firestore(), ownVoteRef.path)));
+    await assertSucceeds(
+      setDoc(doc(otherMember.firestore(), otherVoteRef.path), {
+        optionIds: ['opt-b'],
+        updatedAt: new Date(),
+      })
+    );
+    await assertSucceeds(deleteDoc(doc(otherMember.firestore(), otherVoteRef.path)));
+  });
+
+  test('group basic polls: vote writes are blocked when finalized or deadline has passed', async () => {
+    const manager = testEnv.authenticatedContext('manager', {
+      email: 'manager@example.com',
+      email_verified: true,
+    });
+    const member = testEnv.authenticatedContext('member', {
+      email: 'member@example.com',
+      email_verified: true,
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'questingGroups', 'group-polls-closed'), {
+        creatorId: 'manager',
+        memberManaged: false,
+        memberIds: ['manager', 'member'],
+      });
+      await setDoc(
+        doc(context.firestore(), 'questingGroups', 'group-polls-closed', 'basicPolls', 'poll-finalized'),
+        {
+          title: 'Finalized poll',
+          creatorId: 'manager',
+          status: 'FINALIZED',
+          deadlineAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }
+      );
+      await setDoc(
+        doc(context.firestore(), 'questingGroups', 'group-polls-closed', 'basicPolls', 'poll-finalized', 'votes', 'member'),
+        {
+          optionIds: ['opt-a'],
+          updatedAt: new Date(),
+        }
+      );
+      await setDoc(
+        doc(context.firestore(), 'questingGroups', 'group-polls-closed', 'basicPolls', 'poll-deadline'),
+        {
+          title: 'Deadline poll',
+          creatorId: 'manager',
+          status: 'OPEN',
+          deadlineAt: new Date(Date.now() - 60_000),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }
+      );
+    });
+
+    const finalizedVoteRef = doc(
+      member.firestore(),
+      'questingGroups',
+      'group-polls-closed',
+      'basicPolls',
+      'poll-finalized',
+      'votes',
+      'member'
+    );
+    const expiredVoteRef = doc(
+      member.firestore(),
+      'questingGroups',
+      'group-polls-closed',
+      'basicPolls',
+      'poll-deadline',
+      'votes',
+      'member'
+    );
+
+    await assertFails(
+      setDoc(finalizedVoteRef, {
+        optionIds: ['opt-b'],
+        updatedAt: new Date(),
+      })
+    );
+    await assertFails(
+      setDoc(expiredVoteRef, {
+        optionIds: ['opt-b'],
+        updatedAt: new Date(),
+      })
+    );
+    await assertFails(deleteDoc(finalizedVoteRef));
+    await assertFails(deleteDoc(doc(manager.firestore(), finalizedVoteRef.path)));
+  });
+
   test('schedulers: custom provider can create with unverified email', async () => {
     const discordUser = testEnv.authenticatedContext('dora', {
       email: 'dora@example.com',
@@ -255,6 +592,310 @@ describe('Firestore rules', () => {
         updatedAt: new Date(),
       })
     );
+  });
+
+  test('scheduler embedded basic polls: creator can CRUD poll docs; non-creator denied', async () => {
+    const creator = testEnv.authenticatedContext('creator', {
+      email: 'creator@example.com',
+      email_verified: true,
+    });
+    const participant = testEnv.authenticatedContext('participant', {
+      email: 'participant@example.com',
+      email_verified: true,
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'schedulers', 'sched-basic-manage'), {
+        creatorId: 'creator',
+        creatorEmail: 'creator@example.com',
+        status: 'OPEN',
+        participantIds: ['participant'],
+        pendingInvites: [],
+        allowLinkSharing: false,
+      });
+    });
+
+    const creatorPollRef = doc(
+      creator.firestore(),
+      'schedulers',
+      'sched-basic-manage',
+      'basicPolls',
+      'poll-1'
+    );
+    const participantPollRef = doc(
+      participant.firestore(),
+      'schedulers',
+      'sched-basic-manage',
+      'basicPolls',
+      'poll-2'
+    );
+
+    await assertSucceeds(
+      setDoc(creatorPollRef, {
+        title: 'Embedded poll',
+        creatorId: 'creator',
+        deadlineAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+    );
+    await assertFails(
+      setDoc(participantPollRef, {
+        title: 'Not allowed',
+        creatorId: 'participant',
+        deadlineAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+    );
+
+    await assertSucceeds(updateDoc(creatorPollRef, { title: 'Updated', updatedAt: new Date() }));
+    await assertFails(deleteDoc(doc(participant.firestore(), creatorPollRef.path)));
+    await assertSucceeds(deleteDoc(creatorPollRef));
+  });
+
+  test('scheduler embedded basic polls: participant can vote, non-participant denied, own-vote-only enforced', async () => {
+    const creator = testEnv.authenticatedContext('creator', {
+      email: 'creator@example.com',
+      email_verified: true,
+    });
+    const participant = testEnv.authenticatedContext('participant', {
+      email: 'participant@example.com',
+      email_verified: true,
+    });
+    const outsider = testEnv.authenticatedContext('outsider', {
+      email: 'outsider@example.com',
+      email_verified: true,
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'schedulers', 'sched-basic-vote'), {
+        creatorId: 'creator',
+        creatorEmail: 'creator@example.com',
+        status: 'OPEN',
+        participantIds: ['participant'],
+        pendingInvites: [],
+        allowLinkSharing: false,
+      });
+      await setDoc(doc(context.firestore(), 'schedulers', 'sched-basic-vote', 'basicPolls', 'poll-1'), {
+        title: 'Embedded poll',
+        creatorId: 'creator',
+        deadlineAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    });
+
+    const participantVoteRef = doc(
+      participant.firestore(),
+      'schedulers',
+      'sched-basic-vote',
+      'basicPolls',
+      'poll-1',
+      'votes',
+      'participant'
+    );
+    const creatorVoteRefFromParticipantContext = doc(
+      participant.firestore(),
+      'schedulers',
+      'sched-basic-vote',
+      'basicPolls',
+      'poll-1',
+      'votes',
+      'creator'
+    );
+
+    await assertSucceeds(
+      getDoc(doc(participant.firestore(), 'schedulers', 'sched-basic-vote', 'basicPolls', 'poll-1'))
+    );
+    await assertFails(
+      getDoc(doc(outsider.firestore(), 'schedulers', 'sched-basic-vote', 'basicPolls', 'poll-1'))
+    );
+    await assertSucceeds(
+      setDoc(participantVoteRef, {
+        optionIds: ['opt-a'],
+        updatedAt: new Date(),
+      })
+    );
+    await assertFails(
+      setDoc(creatorVoteRefFromParticipantContext, {
+        optionIds: ['opt-a'],
+        updatedAt: new Date(),
+      })
+    );
+    await assertFails(
+      setDoc(doc(outsider.firestore(), participantVoteRef.path), {
+        optionIds: ['opt-a'],
+        updatedAt: new Date(),
+      })
+    );
+
+    await assertSucceeds(deleteDoc(doc(creator.firestore(), participantVoteRef.path)));
+  });
+
+  test('scheduler embedded basic polls: vote writes allowed after session finalize unless poll finalized/deadline passed/cancelled', async () => {
+    const creator = testEnv.authenticatedContext('creator', {
+      email: 'creator@example.com',
+      email_verified: true,
+    });
+    const participant = testEnv.authenticatedContext('participant', {
+      email: 'participant@example.com',
+      email_verified: true,
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'schedulers', 'sched-basic-finalized'), {
+        creatorId: 'creator',
+        creatorEmail: 'creator@example.com',
+        status: 'FINALIZED',
+        participantIds: ['participant'],
+        pendingInvites: [],
+        allowLinkSharing: false,
+      });
+      await setDoc(
+        doc(context.firestore(), 'schedulers', 'sched-basic-finalized', 'basicPolls', 'poll-1'),
+        {
+          title: 'Embedded poll',
+          creatorId: 'creator',
+          status: 'OPEN',
+          deadlineAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }
+      );
+      await setDoc(
+        doc(context.firestore(), 'schedulers', 'sched-basic-finalized', 'basicPolls', 'poll-1', 'votes', 'participant'),
+        {
+          optionIds: ['opt-a'],
+          updatedAt: new Date(),
+        }
+      );
+
+      await setDoc(doc(context.firestore(), 'schedulers', 'sched-basic-cancelled'), {
+        creatorId: 'creator',
+        creatorEmail: 'creator@example.com',
+        status: 'CANCELLED',
+        participantIds: ['participant'],
+        pendingInvites: [],
+        allowLinkSharing: false,
+      });
+      await setDoc(
+        doc(context.firestore(), 'schedulers', 'sched-basic-cancelled', 'basicPolls', 'poll-1'),
+        {
+          title: 'Embedded poll',
+          creatorId: 'creator',
+          status: 'OPEN',
+          deadlineAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }
+      );
+
+      await setDoc(doc(context.firestore(), 'schedulers', 'sched-basic-expired'), {
+        creatorId: 'creator',
+        creatorEmail: 'creator@example.com',
+        status: 'OPEN',
+        participantIds: ['participant'],
+        pendingInvites: [],
+        allowLinkSharing: false,
+      });
+      await setDoc(
+        doc(context.firestore(), 'schedulers', 'sched-basic-expired', 'basicPolls', 'poll-1'),
+        {
+          title: 'Embedded poll',
+          creatorId: 'creator',
+          status: 'OPEN',
+          deadlineAt: new Date(Date.now() - 60_000),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }
+      );
+
+      await setDoc(doc(context.firestore(), 'schedulers', 'sched-basic-poll-finalized'), {
+        creatorId: 'creator',
+        creatorEmail: 'creator@example.com',
+        status: 'OPEN',
+        participantIds: ['participant'],
+        pendingInvites: [],
+        allowLinkSharing: false,
+      });
+      await setDoc(
+        doc(context.firestore(), 'schedulers', 'sched-basic-poll-finalized', 'basicPolls', 'poll-1'),
+        {
+          title: 'Embedded poll',
+          creatorId: 'creator',
+          status: 'FINALIZED',
+          deadlineAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }
+      );
+    });
+
+    const finalizedVoteRef = doc(
+      participant.firestore(),
+      'schedulers',
+      'sched-basic-finalized',
+      'basicPolls',
+      'poll-1',
+      'votes',
+      'participant'
+    );
+    const cancelledVoteRef = doc(
+      participant.firestore(),
+      'schedulers',
+      'sched-basic-cancelled',
+      'basicPolls',
+      'poll-1',
+      'votes',
+      'participant'
+    );
+    const expiredVoteRef = doc(
+      participant.firestore(),
+      'schedulers',
+      'sched-basic-expired',
+      'basicPolls',
+      'poll-1',
+      'votes',
+      'participant'
+    );
+    const pollFinalizedVoteRef = doc(
+      participant.firestore(),
+      'schedulers',
+      'sched-basic-poll-finalized',
+      'basicPolls',
+      'poll-1',
+      'votes',
+      'participant'
+    );
+
+    await assertSucceeds(
+      setDoc(finalizedVoteRef, {
+        optionIds: ['opt-b'],
+        updatedAt: new Date(),
+      })
+    );
+    await assertFails(
+      setDoc(cancelledVoteRef, {
+        optionIds: ['opt-b'],
+        updatedAt: new Date(),
+      })
+    );
+    await assertFails(
+      setDoc(expiredVoteRef, {
+        optionIds: ['opt-b'],
+        updatedAt: new Date(),
+      })
+    );
+    await assertFails(
+      setDoc(pollFinalizedVoteRef, {
+        optionIds: ['opt-b'],
+        updatedAt: new Date(),
+      })
+    );
+
+    await assertSucceeds(deleteDoc(finalizedVoteRef));
+    await assertSucceeds(deleteDoc(doc(creator.firestore(), finalizedVoteRef.path)));
   });
 
   test('friendRequests: invitee can accept or decline pending request', async () => {

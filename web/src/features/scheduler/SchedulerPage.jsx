@@ -1,8 +1,10 @@
 import { serverTimestamp } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { format, parse, startOfWeek, getDay, isSameDay, isBefore, startOfDay, startOfHour } from "date-fns";
 import { enUS } from "date-fns/locale";
 import { toast } from "sonner";
@@ -27,11 +29,8 @@ import { useSchedulerData } from "./hooks/useSchedulerData";
 import { useNotifications } from "../../hooks/useNotifications";
 import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfiles";
 import {
-  deleteScheduler,
-  deleteSchedulerSlot,
-  deleteSchedulerVote,
-  fetchSchedulerSlots,
-  fetchSchedulerVotes,
+  deleteSchedulerWithRelatedData,
+  fetchSchedulersByIds,
   setScheduler,
   updateScheduler,
   upsertSchedulerSlot,
@@ -47,7 +46,7 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { AvatarBubble, AvatarStack, VotingAvatarStack } from "../../components/ui/voter-avatars";
-import { buildColorMap, uniqueUsers } from "../../components/ui/voter-avatar-utils";
+import { buildColorMap } from "../../components/ui/voter-avatar-utils";
 import { UserIdentity } from "../../components/UserIdentity";
 import { LoadingState } from "../../components/ui/spinner";
 import { CalendarJumpControls } from "../../components/ui/calendar-jump-controls";
@@ -61,6 +60,17 @@ import {
 } from "../../lib/data/notifications";
 import { fetchPublicProfilesByIds, findUserIdByEmail, findUserIdsByEmails } from "../../lib/data/users";
 import { acceptPollInvite, declinePollInvite, removeParticipantFromPoll, revokePollInvite } from "../../lib/data/pollInvites";
+import {
+  cloneEmbeddedBasicPolls,
+  deleteBasicPollVote,
+  finalizeEmbeddedBasicPoll,
+  fetchRequiredEmbeddedPollFinalizeSummary,
+  reopenEmbeddedBasicPoll,
+  submitBasicPollVote,
+  subscribeToBasicPollVotes,
+  subscribeToEmbeddedBasicPolls,
+  subscribeToMyBasicPollVote,
+} from "../../lib/data/basicPolls";
 import { buildNotificationActor, emitPollEvent } from "../../lib/data/notification-events";
 import { validateInviteCandidate } from "./utils/invite-utils";
 import { repostDiscordPollCard } from "../../lib/data/discord";
@@ -75,8 +85,11 @@ import {
   toDisplayDate,
 } from "../../lib/time";
 import { CloneDialog } from "./components/clone-dialog";
+import { CopyVotesDialog } from "./components/copy-votes-dialog";
 import { FinalizeDialog } from "./components/finalize-dialog";
 import { PendingVotesDialog } from "./components/pending-votes-dialog";
+import { FinalizeEmbeddedPollsChoiceDialog } from "./components/finalize-embedded-polls-choice-dialog";
+import { RequiredEmbeddedFinalizeWarningDialog } from "./components/required-embedded-finalize-warning-dialog";
 import { VoteDialog } from "./components/vote-dialog";
 import { VoteToggle } from "./components/vote-toggle";
 import { ReopenDialog } from "./components/reopen-dialog";
@@ -87,6 +100,10 @@ import { LeaveDialog } from "./components/leave-dialog";
 import { RemoveParticipantDialog } from "./components/remove-participant-dialog";
 import { RevokeInviteDialog } from "./components/revoke-invite-dialog";
 import { CalendarToolbar } from "./components/CalendarToolbar";
+import { buildEffectiveTallies, buildUserBlockInfo } from "./utils/effective-votes";
+import { canUserCopyVotes } from "./utils/copy-votes-eligibility";
+import { shouldEmitPollLifecycleEvent } from "./utils/poll-lifecycle-notifications";
+import { parseEmbeddedPollIdFromSearch } from "./utils/embedded-poll-deep-link";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "./calendar-styles.css";
 
@@ -100,6 +117,7 @@ const localizer = dateFnsLocalizer({
 
 export default function SchedulerPage() {
   const { id } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { settings, archivePoll, unarchivePoll, isArchived } = useUserSettings();
@@ -109,7 +127,6 @@ export default function SchedulerPage() {
   const {
     scheduler,
     schedulerDocRef,
-    creator,
     questingGroup,
     slots,
     allVotes,
@@ -135,6 +152,11 @@ export default function SchedulerPage() {
   const [pendingVotesOpen, setPendingVotesOpen] = useState(false);
   const [pendingFinalizeSlotId, setPendingFinalizeSlotId] = useState(null);
   const [pendingFinalizeBusy, setPendingFinalizeBusy] = useState(false);
+  const [requiredFinalizeWarningOpen, setRequiredFinalizeWarningOpen] = useState(false);
+  const [requiredFinalizeSummary, setRequiredFinalizeSummary] = useState([]);
+  const [requiredFinalizeChecking, setRequiredFinalizeChecking] = useState(false);
+  const [finalizeEmbeddedChoiceOpen, setFinalizeEmbeddedChoiceOpen] = useState(false);
+  const [finalizeOutstandingEmbeddedPolls, setFinalizeOutstandingEmbeddedPolls] = useState(false);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [cloneTitle, setCloneTitle] = useState("");
   const [cloneInvites, setCloneInvites] = useState([]);
@@ -162,6 +184,22 @@ export default function SchedulerPage() {
   const [memberToRemove, setMemberToRemove] = useState(null);
   const [revokeInviteOpen, setRevokeInviteOpen] = useState(false);
   const [inviteToRevoke, setInviteToRevoke] = useState(null);
+  const [copyVotesOpen, setCopyVotesOpen] = useState(false);
+  const [blockingSchedulersById, setBlockingSchedulersById] = useState({});
+  const [embeddedPolls, setEmbeddedPolls] = useState([]);
+  const [embeddedPollsLoading, setEmbeddedPollsLoading] = useState(true);
+  const [embeddedPollVoteCounts, setEmbeddedPollVoteCounts] = useState({});
+  const [embeddedMyVotes, setEmbeddedMyVotes] = useState({});
+  const [embeddedVoteDrafts, setEmbeddedVoteDrafts] = useState({});
+  const [embeddedSubmittingByPoll, setEmbeddedSubmittingByPoll] = useState({});
+  const [embeddedClearingByPoll, setEmbeddedClearingByPoll] = useState({});
+  const [embeddedVoteErrors, setEmbeddedVoteErrors] = useState({});
+  const [embeddedLifecycleBusyByPoll, setEmbeddedLifecycleBusyByPoll] = useState({});
+  const [embeddedOptionNoteViewer, setEmbeddedOptionNoteViewer] = useState(null);
+  const embeddedPollCardRefs = useRef({});
+  const [targetEmbeddedPollId, setTargetEmbeddedPollId] = useState(null);
+  const [handledEmbeddedPollId, setHandledEmbeddedPollId] = useState(null);
+  const [highlightedEmbeddedPollId, setHighlightedEmbeddedPollId] = useState(null);
   const isLocked = scheduler.data?.status !== "OPEN";
   const isPollArchived = isArchived(id);
   const isCreator = scheduler.data?.creatorId === user?.uid;
@@ -380,47 +418,166 @@ export default function SchedulerPage() {
     setNoTimesWork(Boolean(userVote.data.noTimesWork));
   }, [userVote.data]);
 
-  const tallies = useMemo(() => {
-    const map = {};
-    allVotes.data.forEach((voteDoc) => {
-      if (voteDoc.noTimesWork) return;
-      Object.entries(voteDoc.votes || {}).forEach(([slotId, value]) => {
-        if (!map[slotId]) map[slotId] = { feasible: 0, preferred: 0 };
-        if (value === "PREFERRED") {
-          map[slotId].preferred += 1;
-          map[slotId].feasible += 1;
-        } else if (value === "FEASIBLE") {
-          map[slotId].feasible += 1;
-        }
-      });
-    });
-    return map;
-  }, [allVotes.data]);
+  function hasSubmittedEmbeddedVote(poll, voteDoc) {
+    if (!poll || !voteDoc) return false;
+    const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
+    if (voteType === "RANKED_CHOICE") {
+      return Array.isArray(voteDoc.rankings) && voteDoc.rankings.some(Boolean);
+    }
+    const hasOptionIds = Array.isArray(voteDoc.optionIds) && voteDoc.optionIds.some(Boolean);
+    const hasWriteIn = String(voteDoc.otherText || "").trim().length > 0;
+    return hasOptionIds || hasWriteIn;
+  }
 
-  const slotVoters = useMemo(() => {
-    const map = {};
-    allVotes.data.forEach((voteDoc) => {
-      if (!voteDoc?.userEmail) return;
-      if (voteDoc.noTimesWork) return;
-      const userInfo = {
-        email: voteDoc.userEmail,
-        avatar: voteDoc.userAvatar,
-        source: voteDoc.source || voteDoc.lastVotedFrom || "web",
-      };
-      Object.entries(voteDoc.votes || {}).forEach(([slotId, value]) => {
-        if (!map[slotId]) {
-          map[slotId] = { preferred: [], feasible: [] };
-        }
-        if (value === "PREFERRED") {
-          map[slotId].preferred = uniqueUsers([...map[slotId].preferred, userInfo]);
-          map[slotId].feasible = uniqueUsers([...map[slotId].feasible, userInfo]);
-        } else if (value === "FEASIBLE") {
-          map[slotId].feasible = uniqueUsers([...map[slotId].feasible, userInfo]);
-        }
-      });
+  function openEmbeddedOptionNoteViewer(pollTitle, option) {
+    const note = String(option?.note || "").trim();
+    if (!note) return;
+    setEmbeddedOptionNoteViewer({
+      pollTitle: String(pollTitle || "Embedded poll"),
+      optionLabel: String(option?.label || "Option"),
+      note,
     });
-    return map;
-  }, [allVotes.data]);
+  }
+
+  function canVoteEmbeddedPoll(poll) {
+    const pollStatus = poll?.status || "OPEN";
+    return Boolean(
+      isAcceptedParticipant &&
+        scheduler.data?.status !== "CANCELLED" &&
+        pollStatus !== "FINALIZED"
+    );
+  }
+
+  useEffect(() => {
+    if (!id) {
+      setEmbeddedPolls([]);
+      setEmbeddedPollsLoading(false);
+      return;
+    }
+    setEmbeddedPollsLoading(true);
+    const unsubscribe = subscribeToEmbeddedBasicPolls(
+      id,
+      (polls) => {
+        setEmbeddedPolls(polls || []);
+        setEmbeddedPollsLoading(false);
+      },
+      () => {
+        setEmbeddedPolls([]);
+        setEmbeddedPollsLoading(false);
+      }
+    );
+    return () => unsubscribe();
+  }, [id]);
+
+  useEffect(() => {
+    const pollId = parseEmbeddedPollIdFromSearch(location.search);
+    setTargetEmbeddedPollId(pollId);
+    setHandledEmbeddedPollId(null);
+    if (!pollId) {
+      setHighlightedEmbeddedPollId(null);
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    if (!targetEmbeddedPollId || embeddedPollsLoading || handledEmbeddedPollId === targetEmbeddedPollId) return;
+    const hasPoll = embeddedPolls.some((poll) => poll.id === targetEmbeddedPollId);
+    if (!hasPoll) return;
+    const targetNode = embeddedPollCardRefs.current[targetEmbeddedPollId];
+    if (!targetNode || typeof targetNode.scrollIntoView !== "function") return;
+
+    targetNode.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedEmbeddedPollId(targetEmbeddedPollId);
+    setHandledEmbeddedPollId(targetEmbeddedPollId);
+
+    const timer = setTimeout(() => {
+      setHighlightedEmbeddedPollId((current) =>
+        current === targetEmbeddedPollId ? null : current
+      );
+    }, 4000);
+
+    return () => clearTimeout(timer);
+  }, [
+    embeddedPolls,
+    embeddedPollsLoading,
+    handledEmbeddedPollId,
+    targetEmbeddedPollId,
+  ]);
+
+  useEffect(() => {
+    setEmbeddedPollVoteCounts({});
+    if (!id || embeddedPolls.length === 0) return () => {};
+    const unsubscribers = embeddedPolls.map((poll) =>
+      subscribeToBasicPollVotes(
+        "scheduler",
+        id,
+        poll.id,
+        (voteDocs) => {
+          const count = (voteDocs || []).filter((voteDoc) => hasSubmittedEmbeddedVote(poll, voteDoc)).length;
+          setEmbeddedPollVoteCounts((previous) => {
+            if (previous[poll.id] === count) return previous;
+            return { ...previous, [poll.id]: count };
+          });
+        },
+        () => {
+          setEmbeddedPollVoteCounts((previous) => ({ ...previous, [poll.id]: 0 }));
+        }
+      )
+    );
+    return () => {
+      unsubscribers.forEach((unsubscribe) => {
+        if (typeof unsubscribe === "function") unsubscribe();
+      });
+    };
+  }, [embeddedPolls, id]);
+
+  useEffect(() => {
+    setEmbeddedMyVotes({});
+    if (!id || !user?.uid || embeddedPolls.length === 0) return () => {};
+    const unsubscribers = embeddedPolls.map((poll) =>
+      subscribeToMyBasicPollVote(
+        "scheduler",
+        id,
+        poll.id,
+        user.uid,
+        (voteDoc) => {
+          setEmbeddedMyVotes((previous) => ({ ...previous, [poll.id]: voteDoc || null }));
+        },
+        () => {
+          setEmbeddedMyVotes((previous) => ({ ...previous, [poll.id]: null }));
+        }
+      )
+    );
+    return () => {
+      unsubscribers.forEach((unsubscribe) => {
+        if (typeof unsubscribe === "function") unsubscribe();
+      });
+    };
+  }, [embeddedPolls, id, user?.uid]);
+
+  useEffect(() => {
+    if (embeddedPolls.length === 0) {
+      setEmbeddedVoteDrafts({});
+      return;
+    }
+    setEmbeddedVoteDrafts((previous) => {
+      const next = { ...previous };
+      embeddedPolls.forEach((poll) => {
+        const myVote = embeddedMyVotes[poll.id] || null;
+        const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
+        if (voteType === "RANKED_CHOICE") {
+          const rankings = Array.isArray(myVote?.rankings) ? myVote.rankings.filter(Boolean) : [];
+          next[poll.id] = { rankings };
+          return;
+        }
+        const optionIds = Array.isArray(myVote?.optionIds) ? myVote.optionIds.filter(Boolean) : [];
+        next[poll.id] = {
+          optionIds,
+          otherText: String(myVote?.otherText || ""),
+        };
+      });
+      return next;
+    });
+  }, [embeddedMyVotes, embeddedPolls]);
 
   const explicitParticipantIds = useMemo(
     () => scheduler.data?.participantIds || [],
@@ -429,6 +586,74 @@ export default function SchedulerPage() {
   const { profiles: explicitParticipantProfilesById } = useUserProfilesByIds(
     explicitParticipantIds
   );
+
+  const profilesByUserId = useMemo(() => {
+    return {
+      ...(explicitParticipantProfilesById || {}),
+      ...(questingGroupMemberProfiles || {}),
+    };
+  }, [explicitParticipantProfilesById, questingGroupMemberProfiles]);
+
+  const pollPriorityAtMs = useMemo(() => {
+    if (scheduler.data?.status !== "FINALIZED" || !scheduler.data?.winningSlotId) return null;
+    const slotId = scheduler.data.winningSlotId;
+    const perSlot = scheduler.data?.finalizedSlotPriorityAtMs?.[slotId] ?? null;
+    return perSlot ?? scheduler.data?.finalizedAtMs ?? null;
+  }, [
+    scheduler.data?.finalizedAtMs,
+    scheduler.data?.finalizedSlotPriorityAtMs,
+    scheduler.data?.status,
+    scheduler.data?.winningSlotId,
+  ]);
+
+  const { tallies, slotVoters } = useMemo(() => {
+    return buildEffectiveTallies({
+      schedulerId: id,
+      schedulerStatus: scheduler.data?.status || "OPEN",
+      pollPriorityAtMs,
+      slots: slots.data,
+      voteDocs: allVotes.data,
+      profilesById: profilesByUserId,
+    });
+  }, [allVotes.data, id, pollPriorityAtMs, profilesByUserId, scheduler.data?.status, slots.data]);
+
+  const { infoBySlotId: userBlockersBySlotId } = useMemo(() => {
+    return buildUserBlockInfo({
+      schedulerId: id,
+      schedulerStatus: scheduler.data?.status || "OPEN",
+      pollPriorityAtMs,
+      slots: slots.data,
+      userProfile: user?.uid ? profilesByUserId?.[user.uid] || null : null,
+    });
+  }, [id, pollPriorityAtMs, profilesByUserId, scheduler.data?.status, slots.data, user?.uid]);
+
+  const blockerSchedulerIds = useMemo(() => {
+    const ids = new Set();
+    Object.values(userBlockersBySlotId || {}).forEach((blocker) => {
+      if (blocker?.sourceSchedulerId) ids.add(blocker.sourceSchedulerId);
+    });
+    return Array.from(ids);
+  }, [userBlockersBySlotId]);
+
+  useEffect(() => {
+    if (!blockerSchedulerIds.length) {
+      setBlockingSchedulersById((prev) => (Object.keys(prev).length ? {} : prev));
+      return;
+    }
+    let cancelled = false;
+    fetchSchedulersByIds(blockerSchedulerIds)
+      .then((docs) => {
+        if (cancelled) return;
+        setBlockingSchedulersById(docs || {});
+      })
+      .catch((err) => {
+        console.warn("Failed to fetch blocking schedulers:", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [blockerSchedulerIds.join("|")]);
+
   const explicitParticipantProfiles = useMemo(() => {
     if (!explicitParticipantIds.length) return [];
     return explicitParticipantIds
@@ -684,6 +909,14 @@ export default function SchedulerPage() {
         .map((slot) => slot.id)
     );
   }, [slots.data]);
+
+  const canCopyVotes = useMemo(() => {
+    return canUserCopyVotes({
+      slots: slots.data,
+      userVoteDoc: userVote.data,
+      nowMs: Date.now(),
+    });
+  }, [slots.data, userVote.data]);
 
   const calendarEvents = useMemo(() => {
     return slots.data.map((slot) => {
@@ -1015,6 +1248,203 @@ export default function SchedulerPage() {
     });
   };
 
+  const setEmbeddedMultipleChoiceSelection = (poll, optionId) => {
+    const pollId = poll?.id;
+    if (!pollId) return;
+    const allowMultiple = poll?.settings?.allowMultiple === true;
+    setEmbeddedVoteErrors((previous) => ({ ...previous, [pollId]: null }));
+    setEmbeddedVoteDrafts((previous) => {
+      const current = previous[pollId] || { optionIds: [], otherText: "" };
+      const existing = Array.isArray(current.optionIds) ? current.optionIds : [];
+      const hasOption = existing.includes(optionId);
+      let optionIds = existing;
+      if (!allowMultiple) {
+        optionIds = hasOption ? [] : [optionId];
+      } else if (hasOption) {
+        optionIds = existing.filter((idEntry) => idEntry !== optionId);
+      } else {
+        optionIds = [...existing, optionId];
+      }
+      return {
+        ...previous,
+        [pollId]: {
+          ...current,
+          optionIds,
+        },
+      };
+    });
+  };
+
+  const setEmbeddedOtherText = (pollId, value) => {
+    if (!pollId) return;
+    setEmbeddedVoteDrafts((previous) => {
+      const current = previous[pollId] || { optionIds: [], otherText: "" };
+      return {
+        ...previous,
+        [pollId]: {
+          ...current,
+          otherText: value,
+        },
+      };
+    });
+  };
+
+  const addEmbeddedRankedOption = (pollId, optionId) => {
+    if (!pollId || !optionId) return;
+    setEmbeddedVoteErrors((previous) => ({ ...previous, [pollId]: null }));
+    setEmbeddedVoteDrafts((previous) => {
+      const current = previous[pollId] || { rankings: [] };
+      const rankings = Array.isArray(current.rankings) ? current.rankings : [];
+      if (rankings.includes(optionId)) return previous;
+      return {
+        ...previous,
+        [pollId]: {
+          rankings: [...rankings, optionId],
+        },
+      };
+    });
+  };
+
+  const moveEmbeddedRankedOption = (pollId, optionId, direction) => {
+    if (!pollId || !optionId) return;
+    setEmbeddedVoteDrafts((previous) => {
+      const current = previous[pollId] || { rankings: [] };
+      const rankings = Array.isArray(current.rankings) ? current.rankings : [];
+      const index = rankings.indexOf(optionId);
+      if (index < 0) return previous;
+      const nextIndex = direction === "up" ? index - 1 : index + 1;
+      if (nextIndex < 0 || nextIndex >= rankings.length) return previous;
+      const nextRankings = [...rankings];
+      const [moved] = nextRankings.splice(index, 1);
+      nextRankings.splice(nextIndex, 0, moved);
+      return {
+        ...previous,
+        [pollId]: {
+          rankings: nextRankings,
+        },
+      };
+    });
+  };
+
+  const removeEmbeddedRankedOption = (pollId, optionId) => {
+    if (!pollId || !optionId) return;
+    setEmbeddedVoteDrafts((previous) => {
+      const current = previous[pollId] || { rankings: [] };
+      const rankings = Array.isArray(current.rankings) ? current.rankings : [];
+      return {
+        ...previous,
+        [pollId]: {
+          rankings: rankings.filter((entry) => entry !== optionId),
+        },
+      };
+    });
+  };
+
+  const submitEmbeddedPollVote = async (poll) => {
+    const pollId = poll?.id;
+    if (!pollId || !id || !user?.uid) return;
+    if (!canVoteEmbeddedPoll(poll)) {
+      setEmbeddedVoteErrors((previous) => ({
+        ...previous,
+        [pollId]: "Voting is closed for this embedded poll.",
+      }));
+      return;
+    }
+    const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
+    setEmbeddedSubmittingByPoll((previous) => ({ ...previous, [pollId]: true }));
+    setEmbeddedVoteErrors((previous) => ({ ...previous, [pollId]: null }));
+    try {
+      if (voteType === "RANKED_CHOICE") {
+        const draft = embeddedVoteDrafts[pollId] || {};
+        const rankings = Array.isArray(draft.rankings) ? draft.rankings.filter(Boolean) : [];
+        if (rankings.length === 0) {
+          throw new Error("Rank at least one option before submitting.");
+        }
+        await submitBasicPollVote("scheduler", id, pollId, user.uid, {
+          rankings,
+          source: "web",
+        });
+        return;
+      }
+
+      const draft = embeddedVoteDrafts[pollId] || { optionIds: [], otherText: "" };
+      const optionIds = Array.isArray(draft.optionIds) ? draft.optionIds.filter(Boolean) : [];
+      const allowWriteIn = poll?.settings?.allowWriteIn === true;
+      const normalizedOtherText = String(draft.otherText || "").trim();
+      if (optionIds.length === 0 && (!allowWriteIn || normalizedOtherText.length === 0)) {
+        throw new Error("Select at least one option before submitting.");
+      }
+      await submitBasicPollVote("scheduler", id, pollId, user.uid, {
+        optionIds,
+        otherText: allowWriteIn ? normalizedOtherText : "",
+        source: "web",
+      });
+    } catch (error) {
+      setEmbeddedVoteErrors((previous) => ({
+        ...previous,
+        [pollId]: error?.message || "Failed to submit vote.",
+      }));
+    } finally {
+      setEmbeddedSubmittingByPoll((previous) => ({ ...previous, [pollId]: false }));
+    }
+  };
+
+  const clearEmbeddedPollVote = async (poll) => {
+    const pollId = poll?.id;
+    if (!pollId || !id || !user?.uid) return;
+    if (!canVoteEmbeddedPoll(poll)) return;
+    setEmbeddedClearingByPoll((previous) => ({ ...previous, [pollId]: true }));
+    setEmbeddedVoteErrors((previous) => ({ ...previous, [pollId]: null }));
+    try {
+      await deleteBasicPollVote("scheduler", id, pollId, user.uid);
+      setEmbeddedVoteDrafts((previous) => ({
+        ...previous,
+        [pollId]: { optionIds: [], otherText: "", rankings: [] },
+      }));
+    } catch (error) {
+      setEmbeddedVoteErrors((previous) => ({
+        ...previous,
+        [pollId]: error?.message || "Failed to clear vote.",
+      }));
+    } finally {
+      setEmbeddedClearingByPoll((previous) => ({ ...previous, [pollId]: false }));
+    }
+  };
+
+  const finalizeEmbeddedPollIndividually = async (poll) => {
+    const pollId = poll?.id;
+    if (!pollId || !id || !isCreator) return false;
+    setEmbeddedLifecycleBusyByPoll((previous) => ({ ...previous, [pollId]: true }));
+    try {
+      await finalizeEmbeddedBasicPoll(id, pollId);
+      toast.success(`Finalized embedded poll: ${poll?.title || "Untitled poll"}`);
+      return true;
+    } catch (error) {
+      console.error("Failed to finalize embedded poll:", error);
+      toast.error(error?.message || "Failed to finalize embedded poll.");
+      return false;
+    } finally {
+      setEmbeddedLifecycleBusyByPoll((previous) => ({ ...previous, [pollId]: false }));
+    }
+  };
+
+  const reopenEmbeddedPollIndividually = async (poll) => {
+    const pollId = poll?.id;
+    if (!pollId || !id || !isCreator) return false;
+    setEmbeddedLifecycleBusyByPoll((previous) => ({ ...previous, [pollId]: true }));
+    try {
+      await reopenEmbeddedBasicPoll(id, pollId);
+      toast.success(`Re-opened embedded poll: ${poll?.title || "Untitled poll"}`);
+      return true;
+    } catch (error) {
+      console.error("Failed to re-open embedded poll:", error);
+      toast.error(error?.message || "Failed to re-open embedded poll.");
+      return false;
+    } finally {
+      setEmbeddedLifecycleBusyByPoll((previous) => ({ ...previous, [pollId]: false }));
+    }
+  };
+
   const addCloneInvite = async (input) => {
     const raw = String(input || "").trim();
     if (!raw) return;
@@ -1184,6 +1614,19 @@ export default function SchedulerPage() {
     setFinalizeOpen(true);
   };
 
+  const requestEmbeddedFinalizeChoice = (slotId) => {
+    const unfinalizedEmbeddedPollCount = (embeddedPolls || []).filter(
+      (poll) => (poll?.status || "OPEN") !== "FINALIZED"
+    ).length;
+    if (isCreator && unfinalizedEmbeddedPollCount > 0) {
+      setFinalizeSlotId(slotId);
+      setFinalizeEmbeddedChoiceOpen(true);
+      return;
+    }
+    setFinalizeOutstandingEmbeddedPolls(false);
+    openFinalize(slotId);
+  };
+
   const requestFinalize = (slotId) => {
     if (isLocked) return;
     if (pastSlotIds.has(slotId)) return;
@@ -1192,7 +1635,53 @@ export default function SchedulerPage() {
       setPendingVotesOpen(true);
       return;
     }
-    openFinalize(slotId);
+    if (!isCreator) {
+      openFinalize(slotId);
+      return;
+    }
+
+    setRequiredFinalizeChecking(true);
+    fetchRequiredEmbeddedPollFinalizeSummary(id)
+      .then((summary) => {
+        const missingPolls = (summary?.requiredPolls || []).filter(
+          (poll) => Number(poll?.missingCount || 0) > 0
+        );
+        if (missingPolls.length === 0) {
+          requestEmbeddedFinalizeChoice(slotId);
+          return;
+        }
+
+        setFinalizeSlotId(slotId);
+        setRequiredFinalizeSummary(missingPolls);
+        setRequiredFinalizeWarningOpen(true);
+      })
+      .catch((error) => {
+        console.error("Failed to check required embedded polls before finalizing:", error);
+        toast.error(error?.message || "Failed to check required embedded polls.");
+      })
+      .finally(() => {
+        setRequiredFinalizeChecking(false);
+      });
+  };
+
+  const continueFinalizeWithMissingRequired = () => {
+    if (!finalizeSlotId) return;
+    setRequiredFinalizeWarningOpen(false);
+    requestEmbeddedFinalizeChoice(finalizeSlotId);
+  };
+
+  const continueFinalizeAndFinalizeEmbeddedPolls = () => {
+    if (!finalizeSlotId) return;
+    setFinalizeOutstandingEmbeddedPolls(true);
+    setFinalizeEmbeddedChoiceOpen(false);
+    openFinalize(finalizeSlotId);
+  };
+
+  const continueFinalizeWithoutFinalizingEmbeddedPolls = () => {
+    if (!finalizeSlotId) return;
+    setFinalizeOutstandingEmbeddedPolls(false);
+    setFinalizeEmbeddedChoiceOpen(false);
+    openFinalize(finalizeSlotId);
   };
 
   const submitVotesThenFinalize = async () => {
@@ -1202,7 +1691,7 @@ export default function SchedulerPage() {
       const saved = await handleSave();
       if (saved) {
         setPendingVotesOpen(false);
-        openFinalize(pendingFinalizeSlotId);
+        requestFinalize(pendingFinalizeSlotId);
       }
     } catch (err) {
       console.error("Failed to submit votes before finalizing:", err);
@@ -1233,7 +1722,7 @@ export default function SchedulerPage() {
       });
       setDraftVotes({});
       setPendingVotesOpen(false);
-      openFinalize(pendingFinalizeSlotId);
+      requestFinalize(pendingFinalizeSlotId);
     } catch (err) {
       console.error("Failed to clear votes before finalizing:", err);
       toast.error("Failed to clear your votes. Please try again.");
@@ -1298,6 +1787,27 @@ export default function SchedulerPage() {
         createCalendarEvent: shouldCreateEvent,
       });
 
+      let finalizedEmbeddedPollCount = 0;
+      if (isCreator && finalizeOutstandingEmbeddedPolls) {
+        const pollsToFinalize = (embeddedPolls || []).filter(
+          (poll) => (poll?.status || "OPEN") !== "FINALIZED"
+        );
+        if (pollsToFinalize.length > 0) {
+          const results = await Promise.allSettled(
+            pollsToFinalize.map((poll) => finalizeEmbeddedBasicPoll(id, poll.id))
+          );
+          finalizedEmbeddedPollCount = results.filter(
+            (result) => result.status === "fulfilled"
+          ).length;
+          const failedCount = results.length - finalizedEmbeddedPollCount;
+          if (failedCount > 0) {
+            toast.error(
+              `Session finalized, but ${failedCount} embedded poll${failedCount === 1 ? "" : "s"} could not be finalized.`
+            );
+          }
+        }
+      }
+
       const participantIds = Array.from(
         new Set(
           [
@@ -1306,55 +1816,67 @@ export default function SchedulerPage() {
           ].filter(Boolean)
         )
       );
-      if (participantIds.length > 0) {
-        try {
-          const normalizedCreatorEmail = normalizeEmail(creatorEmail) || null;
-          const emails = new Set();
+      try {
+        const normalizedCreatorEmail = normalizeEmail(creatorEmail) || null;
+        const emails = new Set();
+        if (participantIds.length > 0) {
           const profilesById = await fetchPublicProfilesByIds(participantIds);
           Object.values(profilesById).forEach((profile) => {
             if (!profile?.email) return;
             const normalized = normalizeEmail(profile.email);
             emails.add(normalized);
           });
-          const notificationTimeZone = resolvePollTimeZone(scheduler.data?.timezone);
-          const winningLabel = formatZonedDateTimeRange({
-            start,
-            end: slotEnd,
-            timeZone: notificationTimeZone,
-            showTimeZone: true,
-          });
-          const recipientEmails = Array.from(emails).filter(
-            (email) => email !== normalizedCreatorEmail
-          );
-          const recipientUserIds = participantIds.filter(
-            (participantId) => participantId !== scheduler.data?.creatorId
-          );
-          if (recipientUserIds.length || recipientEmails.length) {
-            await emitPollEvent({
-              eventType: "POLL_FINALIZED",
-              schedulerId: id,
-              pollTitle: scheduler.data?.title || "Session Poll",
-              actor: buildNotificationActor(user),
-              payload: {
-                pollTitle: scheduler.data?.title || "Session Poll",
-                winningDate: winningLabel,
-              },
-              recipients: {
-                userIds: recipientUserIds,
-                emails: recipientEmails,
-              },
-              dedupeKey: `poll:${id}:finalized`,
-            });
-          }
-        } catch (notifyErr) {
-          console.error("Failed to send finalization notifications:", notifyErr);
         }
+
+        const notificationTimeZone = resolvePollTimeZone(scheduler.data?.timezone);
+        const winningLabel = formatZonedDateTimeRange({
+          start,
+          end: slotEnd,
+          timeZone: notificationTimeZone,
+          showTimeZone: true,
+        });
+
+        const recipientEmails = Array.from(emails).filter(
+          (email) => email !== normalizedCreatorEmail
+        );
+        const recipientUserIds = participantIds.filter(
+          (participantId) => participantId !== scheduler.data?.creatorId
+        );
+        const recipients = { userIds: recipientUserIds, emails: recipientEmails };
+
+        if (
+          shouldEmitPollLifecycleEvent({
+            eventType: "POLL_FINALIZED",
+            recipients,
+            questingGroupDiscord: questingGroup.data?.discord,
+          })
+        ) {
+          await emitPollEvent({
+            eventType: "POLL_FINALIZED",
+            schedulerId: id,
+            pollTitle: scheduler.data?.title || "Session Poll",
+            actor: buildNotificationActor(user),
+            payload: {
+              pollTitle: scheduler.data?.title || "Session Poll",
+              winningDate: winningLabel,
+            },
+            recipients,
+            dedupeKey: `poll:${id}:finalized`,
+          });
+        }
+      } catch (notifyErr) {
+        console.error("Failed to send finalization notifications:", notifyErr);
       }
       setFinalizeOpen(false);
+      setFinalizeOutstandingEmbeddedPolls(false);
       toast.success(
         shouldCreateEvent
-          ? "Session finalized and calendar event created"
-          : "Session finalized"
+          ? finalizedEmbeddedPollCount > 0
+            ? `Session finalized, calendar event created, and ${finalizedEmbeddedPollCount} embedded poll${finalizedEmbeddedPollCount === 1 ? "" : "s"} finalized`
+            : "Session finalized and calendar event created"
+          : finalizedEmbeddedPollCount > 0
+            ? `Session finalized and ${finalizedEmbeddedPollCount} embedded poll${finalizedEmbeddedPollCount === 1 ? "" : "s"} finalized`
+            : "Session finalized"
       );
     } catch (err) {
       console.error("Failed to finalize session poll:", err);
@@ -1384,40 +1906,46 @@ export default function SchedulerPage() {
           ].filter(Boolean)
         )
       );
-      if (participantIds.length > 0) {
-        try {
-          const normalizedCreatorEmail = normalizeEmail(scheduler.data?.creatorEmail) || null;
-          const emails = new Set();
+      try {
+        const normalizedCreatorEmail = normalizeEmail(scheduler.data?.creatorEmail) || null;
+        const emails = new Set();
+        if (participantIds.length > 0) {
           const profilesById = await fetchPublicProfilesByIds(participantIds);
           Object.values(profilesById).forEach((profile) => {
             if (!profile?.email) return;
             const normalized = normalizeEmail(profile.email);
             emails.add(normalized);
           });
-          const recipientEmails = Array.from(emails).filter(
-            (email) => email !== normalizedCreatorEmail
-          );
-          const recipientUserIds = participantIds.filter(
-            (participantId) => participantId !== scheduler.data?.creatorId
-          );
-          if (recipientUserIds.length || recipientEmails.length) {
-            await emitPollEvent({
-              eventType: "POLL_REOPENED",
-              schedulerId: id,
-              pollTitle: scheduler.data?.title || "Session Poll",
-              actor: buildNotificationActor(user),
-              payload: {
-                pollTitle: scheduler.data?.title || "Session Poll",
-              },
-              recipients: {
-                userIds: recipientUserIds,
-                emails: recipientEmails,
-              },
-            });
-          }
-        } catch (notifyErr) {
-          console.error("Failed to send poll reopen notification:", notifyErr);
         }
+
+        const recipientEmails = Array.from(emails).filter(
+          (email) => email !== normalizedCreatorEmail
+        );
+        const recipientUserIds = participantIds.filter(
+          (participantId) => participantId !== scheduler.data?.creatorId
+        );
+        const recipients = { userIds: recipientUserIds, emails: recipientEmails };
+
+        if (
+          shouldEmitPollLifecycleEvent({
+            eventType: "POLL_REOPENED",
+            recipients,
+            questingGroupDiscord: questingGroup.data?.discord,
+          })
+        ) {
+          await emitPollEvent({
+            eventType: "POLL_REOPENED",
+            schedulerId: id,
+            pollTitle: scheduler.data?.title || "Session Poll",
+            actor: buildNotificationActor(user),
+            payload: {
+              pollTitle: scheduler.data?.title || "Session Poll",
+            },
+            recipients,
+          });
+        }
+      } catch (notifyErr) {
+        console.error("Failed to send poll reopen notification:", notifyErr);
       }
       toast.success("Session poll re-opened");
       success = true;
@@ -1573,6 +2101,12 @@ export default function SchedulerPage() {
       );
       await Promise.all(slotWrites);
 
+      await cloneEmbeddedBasicPolls(id, newId, {
+        clearVotes: cloneClearVotes,
+        userId: cloneClearVotes ? null : user.uid,
+        votesByPollId: embeddedMyVotes,
+      });
+
       if (!cloneClearVotes) {
         const validSlotIds = new Set(futureSlots.map((slot) => slot.id));
         const participantIdSet = new Set(participantIds);
@@ -1723,16 +2257,7 @@ export default function SchedulerPage() {
       if (deleteUpdateCalendar && scheduler.data?.googleEventId) {
         await deleteCalendarEntry();
       }
-      // Delete all slots
-      const slots = await fetchSchedulerSlots(id);
-      await Promise.all(slots.map((slot) => deleteSchedulerSlot(id, slot.id)));
-
-      // Delete all votes
-      const votes = await fetchSchedulerVotes(id);
-      await Promise.all(votes.map((vote) => deleteSchedulerVote(id, vote.id)));
-
-      // Delete the scheduler document
-      await deleteScheduler(id);
+      await deleteSchedulerWithRelatedData(id);
 
       toast.success("Session poll deleted");
       navigate("/dashboard");
@@ -1784,6 +2309,21 @@ export default function SchedulerPage() {
   }
 
   const canVote = Boolean(isAcceptedParticipant && !isLocked);
+  const embeddedPollsSorted = [...embeddedPolls].sort((left, right) => {
+    const leftOrder = Number.isFinite(left?.order) ? left.order : Number.MAX_SAFE_INTEGER;
+    const rightOrder = Number.isFinite(right?.order) ? right.order : Number.MAX_SAFE_INTEGER;
+    return leftOrder - rightOrder;
+  });
+  const unfinalizedEmbeddedPollCount = embeddedPollsSorted.filter(
+    (poll) => (poll?.status || "OPEN") !== "FINALIZED"
+  ).length;
+  const embeddedCompletedCount = embeddedPollsSorted.filter((poll) =>
+    hasSubmittedEmbeddedVote(poll, embeddedMyVotes[poll.id])
+  ).length;
+  const requiredEmbeddedPolls = embeddedPollsSorted.filter((poll) => poll.required);
+  const requiredEmbeddedPendingCount = requiredEmbeddedPolls.filter(
+    (poll) => !hasSubmittedEmbeddedVote(poll, embeddedMyVotes[poll.id])
+  ).length;
   const pendingInviteMeta =
     (normalizedUserEmail && scheduler.data.pendingInviteMeta?.[normalizedUserEmail]) || {};
   const inviterLabel = pendingInviteMeta.invitedByEmail || scheduler.data.creatorEmail || "someone";
@@ -1916,6 +2456,12 @@ export default function SchedulerPage() {
                   <Copy className="mr-2 h-4 w-4" />
                   Clone poll
                 </DropdownMenuItem>
+                {canCopyVotes && (
+                  <DropdownMenuItem onClick={() => setCopyVotesOpen(true)}>
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy votes
+                  </DropdownMenuItem>
+                )}
                 {canRepostDiscordPoll && (
                   <>
                     <DropdownMenuSeparator />
@@ -2270,13 +2816,18 @@ export default function SchedulerPage() {
                 const counts = tallies[slot.id] || { feasible: 0, preferred: 0 };
                 const voters = slotVoters[slot.id] || { feasible: [], preferred: [] };
                 const startDate = slot.start ? new Date(slot.start) : null;
+                const blocker = userBlockersBySlotId?.[slot.id] || null;
+                const blockerScheduler =
+                  blocker?.sourceSchedulerId ? blockingSchedulersById?.[blocker.sourceSchedulerId] : null;
                 return (
                   <div
                     key={slot.id}
                     className={`grid gap-3 rounded-2xl border px-4 py-3 md:grid-cols-[1.4fr_1fr_1fr_auto] ${
                       pastSlotIds.has(slot.id)
                         ? "border-red-300 bg-red-50/60 dark:border-red-700 dark:bg-red-900/20"
-                        : "border-slate-200/70 dark:border-slate-700"
+                        : blocker
+                          ? "border-slate-200/70 bg-slate-100/70 dark:border-slate-700 dark:bg-slate-800/60"
+                          : "border-slate-200/70 dark:border-slate-700"
                     }`}
                   >
                     <div>
@@ -2292,6 +2843,26 @@ export default function SchedulerPage() {
                             })
                           : "Slot"}
                       </p>
+                      {blocker && (
+                        <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                          <span className="font-semibold">Busy</span>{" "}
+                          <span className="text-slate-500 dark:text-slate-400">
+                            (ignored in results)
+                          </span>
+                          {blocker?.sourceSchedulerId && (
+                            <button
+                              type="button"
+                              className="ml-2 font-semibold text-brand-primary hover:underline"
+                              onClick={() => navigate(`/scheduler/${blocker.sourceSchedulerId}`)}
+                            >
+                              View{" "}
+                              {blockerScheduler?.title
+                                ? `"${blockerScheduler.title}"`
+                                : "blocking session"}
+                            </button>
+                          )}
+                        </div>
+                      )}
                       <p className="text-xs text-slate-500 dark:text-slate-400">
                         Preferred {counts.preferred} · Feasible {counts.feasible}
                       </p>
@@ -2335,6 +2906,7 @@ export default function SchedulerPage() {
                       />
                     </div>
                     <div className="flex items-center justify-end text-xs text-slate-400 dark:text-slate-500">
+                      {blocker && "Busy"}
                       {noTimesWork && "Unavailable"}
                       {vote === "PREFERRED" && "Preferred"}
                       {vote === "FEASIBLE" && "Feasible"}
@@ -2592,7 +3164,7 @@ export default function SchedulerPage() {
                           >
                             <button
                               type="button"
-                              disabled={isLocked || isPast}
+                              disabled={isLocked || isPast || requiredFinalizeChecking}
                               onClick={() => requestFinalize(slot.id)}
                               className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
                             >
@@ -2691,6 +3263,498 @@ export default function SchedulerPage() {
             </div>
           </div>
 
+          {embeddedPollsLoading ? (
+            <div className="mt-10 rounded-3xl border border-slate-200/70 bg-slate-50 p-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400">
+              Loading embedded polls...
+            </div>
+          ) : null}
+          {!embeddedPollsLoading && embeddedPollsSorted.length > 0 ? (
+            <div className="mt-10 rounded-3xl border border-slate-200/70 bg-slate-50 p-6 dark:border-slate-700 dark:bg-slate-800/60">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                    Embedded polls
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {embeddedCompletedCount}/{embeddedPollsSorted.length} polls completed
+                  </p>
+                </div>
+                {requiredEmbeddedPendingCount > 0 ? (
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 dark:border-amber-700/70 dark:bg-amber-900/30 dark:text-amber-200">
+                    {requiredEmbeddedPendingCount} required poll
+                    {requiredEmbeddedPendingCount === 1 ? "" : "s"} pending
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-3 h-2 rounded-full bg-slate-200 dark:bg-slate-700">
+                <div
+                  className="h-2 rounded-full bg-brand-primary transition-all"
+                  style={{
+                    width: `${Math.round(
+                      embeddedPollsSorted.length > 0
+                        ? (embeddedCompletedCount / embeddedPollsSorted.length) * 100
+                        : 0
+                    )}%`,
+                  }}
+                />
+              </div>
+
+              <div className="mt-4 space-y-4">
+                {embeddedPollsSorted.map((poll) => {
+                  const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
+                  const isRanked = voteType === "RANKED_CHOICE";
+                  const allowMultiple = poll?.settings?.allowMultiple === true;
+                  const allowWriteIn = poll?.settings?.allowWriteIn === true;
+                  const draft = embeddedVoteDrafts[poll.id] || {};
+                  const selectedOptionIds = Array.isArray(draft.optionIds) ? draft.optionIds : [];
+                  const otherText = String(draft.otherText || "");
+                  const rankings = Array.isArray(draft.rankings) ? draft.rankings : [];
+                  const sortedOptions = [...(Array.isArray(poll.options) ? poll.options : [])].sort(
+                    (left, right) => {
+                      const leftOrder = Number.isFinite(left?.order) ? left.order : Number.MAX_SAFE_INTEGER;
+                      const rightOrder = Number.isFinite(right?.order) ? right.order : Number.MAX_SAFE_INTEGER;
+                      return leftOrder - rightOrder;
+                    }
+                  );
+                  const optionsById = new Map(
+                    sortedOptions
+                      .filter((option) => option?.id)
+                      .map((option) => [option.id, option])
+                  );
+                  const rankedOptions = rankings
+                    .map((optionId) => sortedOptions.find((option) => option.id === optionId))
+                    .filter(Boolean);
+                  const unrankedOptions = sortedOptions.filter(
+                    (option) => option?.id && !rankings.includes(option.id)
+                  );
+                  const hasSubmitted = hasSubmittedEmbeddedVote(poll, embeddedMyVotes[poll.id]);
+                  const myVote = embeddedMyVotes[poll.id] || null;
+                  const embeddedFinalResults = poll?.finalResults || null;
+                  const pollStatus = poll?.status || "OPEN";
+                  const isEmbeddedPollFinalized = pollStatus === "FINALIZED";
+                  const canVoteEmbedded = canVoteEmbeddedPoll(poll);
+                  const lifecycleBusy = embeddedLifecycleBusyByPoll[poll.id] === true;
+                  const cardBusy =
+                    embeddedSubmittingByPoll[poll.id] ||
+                    embeddedClearingByPoll[poll.id] ||
+                    lifecycleBusy;
+                  const requiredPending = poll.required && !hasSubmitted;
+                  const voteCount =
+                    !canVoteEmbedded && Number.isFinite(embeddedFinalResults?.voterCount)
+                      ? embeddedFinalResults.voterCount
+                      : embeddedPollVoteCounts[poll.id] || 0;
+
+                  return (
+                    <div
+                      key={poll.id}
+                      id={`embedded-poll-${poll.id}`}
+                      ref={(node) => {
+                        if (node) {
+                          embeddedPollCardRefs.current[poll.id] = node;
+                        } else {
+                          delete embeddedPollCardRefs.current[poll.id];
+                        }
+                      }}
+                      className={`rounded-2xl border bg-white p-4 transition-all dark:bg-slate-900 ${
+                        highlightedEmbeddedPollId === poll.id
+                          ? "border-brand-primary ring-2 ring-brand-primary/30 dark:border-brand-primary"
+                          : "border-slate-200 dark:border-slate-700"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                              {poll.title || "Untitled poll"}
+                            </h4>
+                            <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:border-slate-600 dark:text-slate-300">
+                              {isRanked ? "Ranked choice" : "Multiple choice"}
+                            </span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                requiredPending
+                                  ? "border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700/70 dark:bg-amber-900/30 dark:text-amber-200"
+                                  : poll.required
+                                    ? "border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700/70 dark:bg-amber-900/30 dark:text-amber-200"
+                                    : "border border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                              }`}
+                            >
+                              {poll.required ? "Required" : "Optional"}
+                            </span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                isEmbeddedPollFinalized
+                                  ? "border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700/70 dark:bg-emerald-900/30 dark:text-emerald-200"
+                                  : "border border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                              }`}
+                            >
+                              {isEmbeddedPollFinalized ? "Finalized" : "Open"}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {voteCount}/{participantCount} voted
+                          </p>
+                          {poll.description ? (
+                            <div className="prose prose-sm prose-slate max-w-none prose-headings:font-display prose-a:text-brand-primary prose-a:underline hover:prose-a:text-brand-primary/80 dark:prose-invert">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {poll.description}
+                              </ReactMarkdown>
+                            </div>
+                          ) : null}
+                        </div>
+                        {isCreator ? (
+                          <div className="flex items-center gap-2">
+                            {isEmbeddedPollFinalized ? (
+                              <button
+                                type="button"
+                                onClick={() => reopenEmbeddedPollIndividually(poll)}
+                                disabled={cardBusy}
+                                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                              >
+                                {lifecycleBusy ? "Re-opening..." : "Re-open poll"}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => finalizeEmbeddedPollIndividually(poll)}
+                                disabled={cardBusy}
+                                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                              >
+                                {lifecycleBusy ? "Finalizing..." : "Finalize poll"}
+                              </button>
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {canVoteEmbedded ? (
+                        isRanked ? (
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                              Ranked
+                            </p>
+                            <div className="mt-2 space-y-2">
+                              {rankedOptions.length === 0 ? (
+                                <p className="text-xs text-slate-400 dark:text-slate-500">
+                                  No rankings yet.
+                                </p>
+                              ) : (
+                                rankedOptions.map((option, index) => (
+                                  <div
+                                    key={option.id}
+                                    className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
+                                  >
+                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                      {index + 1}.
+                                    </span>
+                                    <span className="min-w-0 flex-1 space-y-1">
+                                      <span className="block truncate text-slate-800 dark:text-slate-200">
+                                        {option.label}
+                                      </span>
+                                      {String(option?.note || "").trim() ? (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            openEmbeddedOptionNoteViewer(poll.title, option)
+                                          }
+                                          aria-label={`View note for ${option.label}`}
+                                          className="text-xs font-semibold text-slate-500 underline-offset-2 hover:underline dark:text-slate-400"
+                                        >
+                                          View note
+                                        </button>
+                                      ) : null}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => moveEmbeddedRankedOption(poll.id, option.id, "up")}
+                                      disabled={!canVoteEmbedded || cardBusy || index === 0}
+                                      className="rounded-md border border-slate-200 px-2 py-1 text-xs disabled:opacity-40 dark:border-slate-700"
+                                    >
+                                      Up
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        moveEmbeddedRankedOption(poll.id, option.id, "down")
+                                      }
+                                      disabled={!canVoteEmbedded || cardBusy || index === rankedOptions.length - 1}
+                                      className="rounded-md border border-slate-200 px-2 py-1 text-xs disabled:opacity-40 dark:border-slate-700"
+                                    >
+                                      Down
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeEmbeddedRankedOption(poll.id, option.id)}
+                                      disabled={!canVoteEmbedded || cardBusy}
+                                      className="rounded-md border border-slate-200 px-2 py-1 text-xs disabled:opacity-40 dark:border-slate-700"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                              Unranked
+                            </p>
+                            <div className="mt-2 space-y-2">
+                              {unrankedOptions.map((option) => (
+                                <div
+                                  key={option.id}
+                                  className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
+                                >
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-slate-800 dark:text-slate-200">
+                                      {option.label}
+                                    </span>
+                                    {String(option?.note || "").trim() ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => openEmbeddedOptionNoteViewer(poll.title, option)}
+                                        aria-label={`View note for ${option.label}`}
+                                        className="mt-1 text-xs font-semibold text-slate-500 underline-offset-2 hover:underline dark:text-slate-400"
+                                      >
+                                        View note
+                                      </button>
+                                    ) : null}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => addEmbeddedRankedOption(poll.id, option.id)}
+                                    disabled={!canVoteEmbedded || cardBusy}
+                                    className="rounded-md border border-slate-200 px-2 py-1 text-xs disabled:opacity-40 dark:border-slate-700"
+                                  >
+                                    Rank
+                                  </button>
+                                </div>
+                              ))}
+                              {unrankedOptions.length === 0 ? (
+                                <p className="text-xs text-slate-400 dark:text-slate-500">
+                                  All options ranked.
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-3 space-y-2">
+                          {sortedOptions.map((option) => (
+                            <label
+                              key={option.id}
+                              className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
+                            >
+                              <input
+                                type={allowMultiple ? "checkbox" : "radio"}
+                                name={`embedded-${poll.id}`}
+                                checked={selectedOptionIds.includes(option.id)}
+                                onChange={() => setEmbeddedMultipleChoiceSelection(poll, option.id)}
+                                disabled={!canVoteEmbedded || cardBusy}
+                              />
+                              <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                                <span className="text-slate-800 dark:text-slate-200">{option.label}</span>
+                                {String(option?.note || "").trim() ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      openEmbeddedOptionNoteViewer(poll.title, option);
+                                    }}
+                                    aria-label={`View note for ${option.label}`}
+                                    className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                                  >
+                                    View note
+                                  </button>
+                                ) : null}
+                              </span>
+                            </label>
+                          ))}
+                          {allowWriteIn ? (
+                            <label className="block rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700">
+                              <span className="mb-1 block text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                Other
+                              </span>
+                              <textarea
+                                value={otherText}
+                                onChange={(event) => setEmbeddedOtherText(poll.id, event.target.value)}
+                                rows={2}
+                                disabled={!canVoteEmbedded || cardBusy}
+                                className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                              />
+                            </label>
+                          ) : null}
+                        </div>
+                      )
+                      ) : (
+                        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
+                          <p className="font-semibold">
+                            {isEmbeddedPollFinalized
+                              ? "Voting is closed for this poll."
+                              : scheduler.data?.status === "CANCELLED"
+                                ? "Voting is closed because this session is cancelled."
+                                : "Voting is closed for this poll."}
+                          </p>
+                          {isRanked ? (
+                            embeddedFinalResults?.voteType === "RANKED_CHOICE" ? (
+                              <div className="mt-2 space-y-2">
+                                {Array.isArray(embeddedFinalResults?.tiedIds) &&
+                                embeddedFinalResults.tiedIds.length > 1 ? (
+                                  <p className="font-semibold text-amber-700 dark:text-amber-300">
+                                    Final result: tie
+                                  </p>
+                                ) : Array.isArray(embeddedFinalResults?.winnerIds) &&
+                                  embeddedFinalResults.winnerIds.length > 0 ? (
+                                  <p>
+                                    Winner:{" "}
+                                    <span className="font-semibold text-slate-800 dark:text-slate-100">
+                                      {sortedOptions.find(
+                                        (option) => option.id === embeddedFinalResults.winnerIds[0]
+                                      )?.label || embeddedFinalResults.winnerIds[0]}
+                                    </span>
+                                  </p>
+                                ) : (
+                                  <p>Final result: no winner determined.</p>
+                                )}
+                                {Array.isArray(embeddedFinalResults?.rounds) &&
+                                embeddedFinalResults.rounds.length > 0 ? (
+                                  <div className="space-y-2">
+                                    {embeddedFinalResults.rounds.map((roundData, index) => (
+                                      <div
+                                        key={`${poll.id}-round-${roundData?.round || index + 1}`}
+                                        className="rounded-lg border border-slate-200 bg-white px-2 py-2 dark:border-slate-700 dark:bg-slate-900"
+                                      >
+                                        <p className="font-semibold text-slate-700 dark:text-slate-200">
+                                          Round {roundData?.round || index + 1}
+                                        </p>
+                                        <div className="mt-1 space-y-1">
+                                          {sortedOptions.map((option) => (
+                                            <div
+                                              key={`${poll.id}-round-${roundData?.round || index + 1}-${option.id}`}
+                                              className="flex items-center justify-between gap-3"
+                                            >
+                                              <span className="flex min-w-0 items-center gap-2">
+                                                <span>{option.label}</span>
+                                                {String(option?.note || "").trim() ? (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      openEmbeddedOptionNoteViewer(poll.title, option)
+                                                    }
+                                                    aria-label={`View note for ${option.label}`}
+                                                    className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                                                  >
+                                                    View note
+                                                  </button>
+                                                ) : null}
+                                              </span>
+                                              <span>{roundData?.counts?.[option.id] ?? 0}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                                          Exhausted ballots: {roundData?.exhausted ?? 0}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p>Final round data unavailable.</p>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="mt-1">Final results unavailable.</p>
+                            )
+                          ) : embeddedFinalResults?.voteType === "MULTIPLE_CHOICE" &&
+                            Array.isArray(embeddedFinalResults?.rows) ? (
+                            <div className="mt-2 space-y-2">
+                              {embeddedFinalResults.rows.map((row, index) => {
+                                const optionForRow = optionsById.get(row?.key) || null;
+                                const hasNote = String(optionForRow?.note || "").trim().length > 0;
+                                return (
+                                  <div key={`${poll.id}-result-${row?.key || index}`} className="space-y-1">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span className="flex min-w-0 items-center gap-2 font-medium text-slate-700 dark:text-slate-200">
+                                        <span>{row?.label || `Option ${index + 1}`}</span>
+                                        {hasNote ? (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              openEmbeddedOptionNoteViewer(poll.title, optionForRow)
+                                            }
+                                            aria-label={`View note for ${row?.label || `Option ${index + 1}`}`}
+                                            className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                                          >
+                                            View note
+                                          </button>
+                                        ) : null}
+                                      </span>
+                                      <span className="text-slate-500 dark:text-slate-400">
+                                        {(row?.count ?? 0)} vote{row?.count === 1 ? "" : "s"}
+                                        {Number.isFinite(row?.percentage) ? ` (${row.percentage}%)` : ""}
+                                      </span>
+                                    </div>
+                                    <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700">
+                                      <div
+                                        className="h-1.5 rounded-full bg-slate-600 dark:bg-slate-300"
+                                        style={{
+                                          width: `${Math.max(
+                                            Number.isFinite(row?.percentage) ? row.percentage : 0,
+                                            row?.count > 0 ? 4 : 0
+                                          )}%`,
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="mt-1">Final results unavailable.</p>
+                          )}
+                          {myVote ? (
+                            <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                              Your vote is on record.
+                            </p>
+                          ) : null}
+                        </div>
+                      )}
+
+                      {canVoteEmbedded ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => submitEmbeddedPollVote(poll)}
+                            disabled={cardBusy}
+                            className="rounded-full bg-brand-primary px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:opacity-50"
+                          >
+                            {embeddedSubmittingByPoll[poll.id] ? "Saving..." : isRanked ? "Submit ranking" : "Submit vote"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => clearEmbeddedPollVote(poll)}
+                            disabled={cardBusy}
+                            className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                          >
+                            {embeddedClearingByPoll[poll.id] ? "Clearing..." : "Clear vote"}
+                          </button>
+                        </div>
+                      ) : null}
+
+                      {embeddedVoteErrors[poll.id] ? (
+                        <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">
+                          {embeddedVoteErrors[poll.id]}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
           <div className="mt-6 flex items-center gap-3">
             <button
               type="button"
@@ -2706,6 +3770,40 @@ export default function SchedulerPage() {
           </div>
         </div>
 
+      {embeddedOptionNoteViewer ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Option note for ${embeddedOptionNoteViewer.optionLabel}`}
+            className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+          >
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                  {embeddedOptionNoteViewer.pollTitle}
+                </p>
+                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                  Option note: {embeddedOptionNoteViewer.optionLabel}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEmbeddedOptionNoteViewer(null)}
+                className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 dark:border-slate-600 dark:text-slate-300"
+              >
+                Close
+              </button>
+            </div>
+            <div className="prose prose-sm prose-slate max-h-[65vh] max-w-none overflow-auto rounded-lg border border-slate-200 bg-white px-3 py-2 prose-headings:font-display prose-a:text-brand-primary prose-a:underline hover:prose-a:text-brand-primary/80 dark:prose-invert dark:border-slate-700 dark:bg-slate-900">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {embeddedOptionNoteViewer.note}
+              </ReactMarkdown>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <VoteDialog
         open={Boolean(modalDate)}
         onOpenChange={(open) => {
@@ -2720,7 +3818,23 @@ export default function SchedulerPage() {
         onToggleNoTimesWork={toggleNoTimesWork}
         draftVotes={draftVotes}
         pastSlotIds={pastSlotIds}
+        blockersBySlotId={userBlockersBySlotId}
+        blockerTitleBySchedulerId={Object.fromEntries(
+          Object.entries(blockingSchedulersById || {}).map(([id, data]) => [id, data?.title || null])
+        )}
+        onNavigateToSchedulerId={(schedulerId) => navigate(`/scheduler/${schedulerId}`)}
         onSetVote={setVote}
+      />
+
+      <CopyVotesDialog
+        open={copyVotesOpen}
+        onOpenChange={setCopyVotesOpen}
+        sourceSchedulerId={id}
+        sourceTitle={scheduler.data?.title || "Session Poll"}
+        sourceSlots={slots.data}
+        sourceVoteDoc={userVote.data || null}
+        sourceTimeZone={scheduler.data?.timezone || null}
+        userSettings={settings || null}
       />
 
       <PendingVotesDialog
@@ -2731,9 +3845,30 @@ export default function SchedulerPage() {
         onSubmit={submitVotesThenFinalize}
       />
 
+      <RequiredEmbeddedFinalizeWarningDialog
+        open={requiredFinalizeWarningOpen}
+        onOpenChange={setRequiredFinalizeWarningOpen}
+        pollSummaries={requiredFinalizeSummary}
+        busy={requiredFinalizeChecking}
+        onContinue={continueFinalizeWithMissingRequired}
+      />
+
+      <FinalizeEmbeddedPollsChoiceDialog
+        open={finalizeEmbeddedChoiceOpen}
+        onOpenChange={setFinalizeEmbeddedChoiceOpen}
+        unfinalizedCount={unfinalizedEmbeddedPollCount}
+        onFinalizeAll={continueFinalizeAndFinalizeEmbeddedPolls}
+        onFinalizeSessionOnly={continueFinalizeWithoutFinalizingEmbeddedPolls}
+      />
+
       <FinalizeDialog
         open={finalizeOpen}
-        onOpenChange={setFinalizeOpen}
+        onOpenChange={(open) => {
+          setFinalizeOpen(open);
+          if (!open) {
+            setFinalizeOutstandingEmbeddedPolls(false);
+          }
+        }}
         saving={saving}
         createCalendarEvent={createCalendarEvent}
         onToggleCreateCalendarEvent={setCreateCalendarEvent}

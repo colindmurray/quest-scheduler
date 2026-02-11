@@ -11,42 +11,65 @@ service cloud.firestore {
         || request.auth.token.firebase.sign_in_provider == 'custom';
     }
 
+    function isRequester(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function requesterIn(ids) {
+      return request.auth != null
+        && ids != null
+        && request.auth.uid in ids;
+    }
+
     function userEmail() {
-      return request.auth.token.email != null
+      return request.auth != null && request.auth.token.email != null
         ? request.auth.token.email.lower()
         : null;
     }
 
     function isCreator(data) {
-      return isSignedIn() && data.creatorId == request.auth.uid;
+      return isSignedIn()
+        ? (data == null ? false : data.creatorId == request.auth.uid)
+        : false;
     }
 
     function hasPendingInvite(data) {
-      return data.pendingInvites != null && userEmail() in data.pendingInvites;
+      return isSignedIn()
+        ? (
+          data != null
+          && data.pendingInvites != null
+          && userEmail() != null
+          && userEmail() in data.pendingInvites
+        )
+        : false;
     }
 
     function isQuestingGroupMember(data) {
       return isSignedIn()
-        && data.questingGroupId != null
-        && data.questingGroupId != ""
-        && exists(/databases/$(database)/documents/questingGroups/$(data.questingGroupId))
-        && (get(/databases/$(database)/documents/questingGroups/$(data.questingGroupId)).data.memberIds != null
-          && request.auth.uid in get(/databases/$(database)/documents/questingGroups/$(data.questingGroupId)).data.memberIds);
+        ? (
+          data != null
+          && data.questingGroupId != null
+          && data.questingGroupId != ""
+          && exists(/databases/$(database)/documents/questingGroups/$(data.questingGroupId))
+          && (get(/databases/$(database)/documents/questingGroups/$(data.questingGroupId)).data.memberIds != null
+            && requesterIn(get(/databases/$(database)/documents/questingGroups/$(data.questingGroupId)).data.memberIds))
+        )
+        : false;
     }
 
     function isSchedulerParticipantData(data) {
-      return isSignedIn() && (
-        (data.participantIds != null && request.auth.uid in data.participantIds)
-      );
+      return isSignedIn()
+        ? (data == null ? false : requesterIn(data.participantIds))
+        : false;
     }
 
     function canReadScheduler(data) {
-      return isSignedIn() && (
+      return data != null && isSignedIn() && (
         isCreator(data) ||
         isSchedulerParticipantData(data) ||
         isQuestingGroupMember(data) ||
         hasPendingInvite(data) ||
-        data.allowLinkSharing == true
+        (data != null && data.allowLinkSharing == true)
       );
     }
 
@@ -125,8 +148,15 @@ service cloud.firestore {
     }
 
     match /usersPublic/{userId} {
+      function usersPublicProtectedFieldsUnchanged() {
+        return resource == null
+          ? !request.resource.data.keys().hasAny(["busyWindows"])
+          : !request.resource.data.diff(resource.data).affectedKeys().hasAny(["busyWindows"]);
+      }
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && request.auth.uid == userId;
+      allow write: if isSignedIn()
+        && request.auth.uid == userId
+        && usersPublicProtectedFieldsUnchanged();
     }
 
     match /qsUsernames/{usernameLower} {
@@ -167,16 +197,27 @@ service cloud.firestore {
 
     match /questingGroups/{groupId} {
       function isGroupMember(data) {
-        return (data.memberIds != null && request.auth.uid in data.memberIds);
+        return isSignedIn()
+          ? (data == null ? false : requesterIn(data.memberIds))
+          : false;
       }
 
       function isGroupInvitee(data) {
-        return userEmail() in data.pendingInvites;
+        return isSignedIn()
+          ? (
+            data != null
+            && data.pendingInvites != null
+            && userEmail() != null
+            && userEmail() in data.pendingInvites
+          )
+          : false;
       }
 
       function isGroupManager(data) {
-        return data.creatorId == request.auth.uid
-          || (data.memberManaged == true && isGroupMember(data));
+        return isSignedIn() && data != null && (
+          data.creatorId == request.auth.uid
+          || (data.memberManaged == true && isGroupMember(data))
+        );
       }
 
       function managerUpdateAllowed(data) {
@@ -219,7 +260,7 @@ service cloud.firestore {
       }
 
       // Read: members, pending invites, or creator can read
-      allow read: if isSignedIn() && (
+      allow read: if resource != null && isSignedIn() && (
         isGroupMember(resource.data) ||
         isGroupInvitee(resource.data) ||
         resource.data.creatorId == request.auth.uid
@@ -239,6 +280,61 @@ service cloud.firestore {
 
       // Delete: creator only
       allow delete: if isSignedIn() && resource.data.creatorId == request.auth.uid;
+
+      match /basicPolls/{pollId} {
+        function groupData() {
+          return get(/databases/$(database)/documents/questingGroups/$(groupId)).data;
+        }
+
+        function canReadGroupBasicPoll() {
+          return isSignedIn()
+            && groupData() != null
+            && isGroupMember(groupData());
+        }
+
+        function canManageGroupBasicPoll() {
+          return isSignedIn()
+            && groupData() != null
+            && isGroupManager(groupData());
+        }
+
+        function isGroupBasicPollWritable(data) {
+          return data == null
+            ? false
+            : (
+              data.status == "OPEN"
+              && (
+                !(data.keys().hasAny(["deadlineAt"]) && data.deadlineAt != null)
+                || request.time < data.deadlineAt
+              )
+            );
+        }
+
+        allow read: if canReadGroupBasicPoll();
+        allow create, update, delete: if canManageGroupBasicPoll();
+
+        match /votes/{userId} {
+          function pollData() {
+            return get(/databases/$(database)/documents/questingGroups/$(groupId)/basicPolls/$(pollId)).data;
+          }
+
+          allow read: if canReadGroupBasicPoll();
+
+          allow create, update: if isSignedIn()
+            && isRequester(userId)
+            && groupData() != null
+            && isGroupMember(groupData())
+            && isGroupBasicPollWritable(pollData());
+
+          allow delete: if isSignedIn()
+            && groupData() != null
+            && isGroupBasicPollWritable(pollData())
+            && (
+              (isRequester(userId) && isGroupMember(groupData()))
+              || isGroupManager(groupData())
+            );
+        }
+      }
     }
 
     match /schedulers/{schedulerId} {
@@ -248,7 +344,7 @@ service cloud.firestore {
 
       function canVoteScheduler(data) {
         return isSignedIn() && (
-          (data.participantIds != null && request.auth.uid in data.participantIds) ||
+          isSchedulerParticipantData(data) ||
           isQuestingGroupMember(data)
         );
       }
@@ -322,7 +418,7 @@ service cloud.firestore {
           ]);
       }
 
-      allow read: if canReadScheduler(resource.data);
+      allow read: if resource != null && canReadScheduler(resource.data);
       allow create: if isSignedIn()
         && isEmailVerified()
         && request.resource.data.creatorId == request.auth.uid
@@ -342,6 +438,48 @@ service cloud.firestore {
         allow write: if isCreator(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data);
       }
 
+      match /basicPolls/{pollId} {
+        function schedulerData() {
+          return get(/databases/$(database)/documents/schedulers/$(schedulerId)).data;
+        }
+
+        function pollData() {
+          return get(/databases/$(database)/documents/schedulers/$(schedulerId)/basicPolls/$(pollId)).data;
+        }
+
+        function isSchedulerEmbeddedPollWritable(scheduler, poll) {
+          return scheduler == null || poll == null
+            ? false
+            : (
+              (!(scheduler.keys().hasAny(["status"])) || scheduler.status != "CANCELLED")
+              && (!(poll.keys().hasAny(["status"])) || poll.status == "OPEN")
+              && (
+                !(poll.keys().hasAny(["deadlineAt"]) && poll.deadlineAt != null)
+                || request.time < poll.deadlineAt
+              )
+            );
+        }
+
+        allow read: if canReadScheduler(schedulerData());
+        allow create, update, delete: if isCreator(schedulerData());
+
+        match /votes/{userId} {
+          allow read: if canReadScheduler(schedulerData());
+
+          allow create, update: if isSignedIn()
+            && isRequester(userId)
+            && canVoteScheduler(schedulerData())
+            && isSchedulerEmbeddedPollWritable(schedulerData(), pollData());
+
+          allow delete: if isSignedIn()
+            && isSchedulerEmbeddedPollWritable(schedulerData(), pollData())
+            && (
+              (isRequester(userId) && canVoteScheduler(schedulerData()))
+              || isCreator(schedulerData())
+            );
+        }
+      }
+
       match /votes/{userId} {
         allow read: if canReadScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data);
         function creatorVoteUpdateAllowed(voteData) {
@@ -355,12 +493,12 @@ service cloud.firestore {
 
         allow create, update: if isSignedIn()
           && (
-            (request.auth.uid == userId
+            (isRequester(userId)
               && canVoteScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data))
             || creatorVoteUpdateAllowed(resource.data)
           );
         allow delete: if isSignedIn() && (
-          (request.auth.uid == userId
+          (isRequester(userId)
             && canVoteScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data))
           || isCreator(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data)
         );
