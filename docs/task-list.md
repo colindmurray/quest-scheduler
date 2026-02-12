@@ -86,6 +86,21 @@ changelog:
     - `npm --prefix web run test -- src/components/polls/poll-participant-summary.test.jsx src/components/polls/poll-discord-meta-row.test.jsx src/components/polls/poll-markdown-content.test.jsx src/components/polls/poll-option-note-dialog.test.jsx src/features/dashboard/DashboardPage.test.jsx src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx` (pass, `25 passed`, exit code `0`).
     - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
 
+- 2026-02-12: Poll unification milestone 3 (shared backend Discord sync internals):
+  - Added shared Discord sync helper module:
+    - `functions/src/discord/sync-core.js`
+  - Refactored both trigger pipelines to use shared queue/hash/url helpers:
+    - `functions/src/triggers/basic-poll-card.js`
+    - `functions/src/triggers/scheduler.js`
+  - Added helper unit tests:
+    - `functions/src/discord/sync-core.test.js`
+  - Updated trigger helper test mocks for queue helper dependency:
+    - `functions/src/triggers/scheduler.helpers.test.js`
+  - Validation:
+    - `npm --prefix functions run test -- src/discord/sync-core.test.js src/triggers/basic-poll-card.test.js src/triggers/scheduler.helpers.test.js src/triggers/scheduler.test.js` (pass, `31 passed`, exit code `0`).
+    - `npm --prefix web run test -- src/components/polls/poll-discord-meta-row.test.jsx src/components/polls/poll-participant-summary.test.jsx src/components/polls/poll-markdown-content.test.jsx src/components/polls/poll-option-note-dialog.test.jsx src/features/dashboard/DashboardPage.test.jsx` (pass, `20 passed`, exit code `0`).
+    - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
 - 2026-02-12: Removed legacy poll-create command fallback:
   - `functions/src/discord/worker.js`:
     - `handlePollCreate` now requires subcommand `multiple` or `ranked`.

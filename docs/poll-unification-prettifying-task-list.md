@@ -13,8 +13,8 @@ changelog:
 # Poll Unification + Prettifying — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Phase 1.2 participant summary primitive and Phase 2.2 Discord metadata row parity landed for scheduler/general poll views.
-- Next Step: Phase 4.1 shared backend Discord sync helpers and trigger wiring.
+- Last Completed: Phase 4.1 shared backend Discord sync helper extraction and trigger wiring completed.
+- Next Step: Full validation gate run + staging deploy for manual verification.
 - Open Issues: None.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
@@ -215,4 +215,19 @@ Acceptance:
     - `web/src/components/polls/poll-discord-meta-row.test.jsx`
   - Validation:
     - `npm --prefix web run test -- src/components/polls/poll-participant-summary.test.jsx src/components/polls/poll-discord-meta-row.test.jsx src/components/polls/poll-markdown-content.test.jsx src/components/polls/poll-option-note-dialog.test.jsx src/features/dashboard/DashboardPage.test.jsx src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx` (pass, `25 passed`, exit code `0`).
+    - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+- 2026-02-12: Completed shared backend Discord sync core extraction:
+  - Added shared helper module:
+    - `functions/src/discord/sync-core.js`
+    - helpers: stable sync hash, queue-name builder, queue enqueue wrapper, Discord message URL builder.
+  - Refactored trigger pipelines to use shared internals:
+    - `functions/src/triggers/basic-poll-card.js`
+    - `functions/src/triggers/scheduler.js`
+  - Added unit coverage:
+    - `functions/src/discord/sync-core.test.js`
+  - Updated trigger helper tests for injected queue mocks:
+    - `functions/src/triggers/scheduler.helpers.test.js`
+  - Validation:
+    - `npm --prefix functions run test -- src/discord/sync-core.test.js src/triggers/basic-poll-card.test.js src/triggers/scheduler.helpers.test.js src/triggers/scheduler.test.js` (pass, `31 passed`, exit code `0`).
+    - `npm --prefix web run test -- src/components/polls/poll-discord-meta-row.test.jsx src/components/polls/poll-participant-summary.test.jsx src/components/polls/poll-markdown-content.test.jsx src/components/polls/poll-option-note-dialog.test.jsx src/features/dashboard/DashboardPage.test.jsx` (pass, `20 passed`, exit code `0`).
     - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
