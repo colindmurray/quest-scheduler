@@ -8,10 +8,17 @@ export function useFirestoreDoc(docRef) {
   const hasDoc = Boolean(docRef);
 
   useEffect(() => {
-    if (!docRef) return undefined;
+    if (!docRef) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoading(false);
+      setError(null);
+      setData(null);
+      return undefined;
+    }
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
+    setError(null);
     const unsubscribe = onSnapshot(
       docRef,
       (snapshot) => {

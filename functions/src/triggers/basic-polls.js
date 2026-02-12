@@ -5,6 +5,10 @@ const {
 const { logger } = require("firebase-functions");
 const admin = require("firebase-admin");
 const { queueNotificationEvent } = require("../notifications/write-event");
+const {
+  hasSubmittedVoteForPoll,
+  hasVotePayloadChanged,
+} = require("../basic-polls/vote-submission");
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -40,38 +44,6 @@ function extractDeadlineMillis(pollData) {
   const settingsDeadline = pollData?.settings?.deadlineAt;
   const fallbackDeadline = pollData?.deadlineAt;
   return asMillis(settingsDeadline || fallbackDeadline);
-}
-
-function normalizeOptionIds(values) {
-  if (!Array.isArray(values)) return [];
-  return values.filter((entry) => typeof entry === "string" && entry.trim());
-}
-
-function hasSubmittedVote(pollData, voteData) {
-  const voteType = pollData?.settings?.voteType === "RANKED_CHOICE" ? "RANKED_CHOICE" : "MULTIPLE_CHOICE";
-  if (voteType === "RANKED_CHOICE") {
-    return normalizeOptionIds(voteData?.rankings).length > 0;
-  }
-
-  const hasOptionIds = normalizeOptionIds(voteData?.optionIds).length > 0;
-  const allowWriteIn = pollData?.settings?.allowWriteIn === true;
-  const hasWriteIn = allowWriteIn && String(voteData?.otherText || "").trim().length > 0;
-  return hasOptionIds || hasWriteIn;
-}
-
-function hasVotePayloadChanged(beforeData, afterData) {
-  const beforeOptionIds = normalizeOptionIds(beforeData?.optionIds);
-  const afterOptionIds = normalizeOptionIds(afterData?.optionIds);
-  const beforeRankings = normalizeOptionIds(beforeData?.rankings);
-  const afterRankings = normalizeOptionIds(afterData?.rankings);
-  const beforeOther = String(beforeData?.otherText || "").trim();
-  const afterOther = String(afterData?.otherText || "").trim();
-
-  return (
-    JSON.stringify(beforeOptionIds) !== JSON.stringify(afterOptionIds) ||
-    JSON.stringify(beforeRankings) !== JSON.stringify(afterRankings) ||
-    beforeOther !== afterOther
-  );
 }
 
 function toUserIdList(values = []) {
@@ -216,8 +188,12 @@ exports.onGroupBasicPollVoteWritten = onDocumentWritten(
     if (!pollSnap.exists) return;
     const pollData = pollSnap.data() || {};
 
-    if (!hasSubmittedVote(pollData, afterData)) return;
-    if (beforeData && hasSubmittedVote(pollData, beforeData) && !hasVotePayloadChanged(beforeData, afterData)) {
+    if (!hasSubmittedVoteForPoll(pollData, afterData)) return;
+    if (
+      beforeData &&
+      hasSubmittedVoteForPoll(pollData, beforeData) &&
+      !hasVotePayloadChanged(beforeData, afterData)
+    ) {
       return;
     }
 
@@ -259,8 +235,12 @@ exports.onSchedulerBasicPollVoteWritten = onDocumentWritten(
     if (!pollSnap.exists) return;
     const pollData = pollSnap.data() || {};
 
-    if (!hasSubmittedVote(pollData, afterData)) return;
-    if (beforeData && hasSubmittedVote(pollData, beforeData) && !hasVotePayloadChanged(beforeData, afterData)) {
+    if (!hasSubmittedVoteForPoll(pollData, afterData)) return;
+    if (
+      beforeData &&
+      hasSubmittedVoteForPoll(pollData, beforeData) &&
+      !hasVotePayloadChanged(beforeData, afterData)
+    ) {
       return;
     }
 
@@ -343,7 +323,7 @@ exports.onSchedulerBasicPollDeadlineUpdated = onDocumentUpdated(
 
 exports.__test__ = {
   extractDeadlineMillis,
-  hasSubmittedVote,
+  hasSubmittedVote: hasSubmittedVoteForPoll,
   hasVotePayloadChanged,
   buildDeadlineLabel,
 };

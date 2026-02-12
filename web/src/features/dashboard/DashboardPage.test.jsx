@@ -19,6 +19,10 @@ const submitBasicPollVoteMock = vi.fn();
 const deleteBasicPollVoteMock = vi.fn();
 const createBasicPollMock = vi.fn();
 const updateBasicPollMock = vi.fn();
+const deleteBasicPollMock = vi.fn();
+const deleteEmbeddedBasicPollMock = vi.fn();
+const finalizeBasicPollForParentMock = vi.fn();
+const reopenBasicPollForParentMock = vi.fn();
 
 let authState;
 let userSettingsState;
@@ -51,6 +55,23 @@ vi.mock("../../hooks/useNotifications", () => ({
   useNotifications: () => ({ removeLocal: removeLocalMock }),
 }));
 
+vi.mock("../../components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }) => <div>{children}</div>,
+  DropdownMenuTrigger: ({ children }) => <>{children}</>,
+  DropdownMenuContent: ({ children }) => <div role="menu">{children}</div>,
+  DropdownMenuItem: ({ children, onClick, disabled, className }) => (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      disabled={disabled}
+      className={className}
+    >
+      {children}
+    </button>
+  ),
+}));
+
 vi.mock("../../hooks/useSchedulers", () => ({
   useSchedulersByCreator: () => schedulersByCreatorState,
   useSchedulersByGroupIds: () => schedulersByGroupIdsState,
@@ -77,6 +98,10 @@ vi.mock("../../lib/data/basicPolls", () => ({
   submitBasicPollVote: (...args) => submitBasicPollVoteMock(...args),
   deleteBasicPollVote: (...args) => deleteBasicPollVoteMock(...args),
   updateBasicPoll: (...args) => updateBasicPollMock(...args),
+  deleteBasicPoll: (...args) => deleteBasicPollMock(...args),
+  deleteEmbeddedBasicPoll: (...args) => deleteEmbeddedBasicPollMock(...args),
+  finalizeBasicPollForParent: (...args) => finalizeBasicPollForParentMock(...args),
+  reopenBasicPollForParent: (...args) => reopenBasicPollForParentMock(...args),
 }));
 
 describe("DashboardPage pending invite actions", () => {
@@ -140,7 +165,15 @@ describe("DashboardPage pending invite actions", () => {
     deleteBasicPollVoteMock.mockResolvedValue(undefined);
     createBasicPollMock.mockResolvedValue("poll-created");
     updateBasicPollMock.mockResolvedValue(undefined);
+    deleteBasicPollMock.mockResolvedValue(undefined);
+    deleteEmbeddedBasicPollMock.mockResolvedValue(undefined);
+    finalizeBasicPollForParentMock.mockResolvedValue(undefined);
+    reopenBasicPollForParentMock.mockResolvedValue(undefined);
     updateBasicPollMock.mockClear();
+    deleteBasicPollMock.mockClear();
+    deleteEmbeddedBasicPollMock.mockClear();
+    finalizeBasicPollForParentMock.mockClear();
+    reopenBasicPollForParentMock.mockClear();
   });
 
   test("accept button accepts invite without redirect", async () => {
@@ -623,6 +656,52 @@ describe("DashboardPage pending invite actions", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Vote: Snack Vote" }));
     expect(await screen.findByText("Questing group: Fellowship")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Close general poll modal" })).toBeTruthy();
+  });
+
+  test("deletes group poll via confirm dialog", async () => {
+    pollInvitesState = {
+      pendingInvites: [],
+      loading: false,
+      acceptInvite: acceptInviteMock,
+      declineInvite: declineInviteMock,
+    };
+    questingGroupsState = {
+      groups: [{ id: "group-1", name: "Fellowship", memberIds: ["user-1"], creatorId: "user-1" }],
+      getGroupColor: () => null,
+    };
+    fetchDashboardGroupBasicPollsMock.mockResolvedValueOnce([
+      {
+        parentType: "group",
+        parentId: "group-1",
+        pollId: "poll-g1",
+        title: "Snack Vote",
+        status: "OPEN",
+        hasVoted: false,
+        voterIds: [],
+        settings: {
+          voteType: "MULTIPLE_CHOICE",
+          deadlineAt: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      },
+    ]);
+    fetchDashboardEmbeddedBasicPollsMock.mockResolvedValueOnce([]);
+
+    render(
+      <MemoryRouter>
+        <DashboardPage />
+      </MemoryRouter>
+    );
+
+    await screen.findByText("Snack Vote");
+    fireEvent.click(screen.getByRole("button", { name: "General poll actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    expect(await screen.findByText('Delete "Snack Vote"?')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete poll" }));
+
+    await waitFor(() => {
+      expect(deleteBasicPollMock).toHaveBeenCalledWith("group-1", "poll-g1", { useServer: true });
+    });
   });
 
 });

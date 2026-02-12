@@ -6,6 +6,14 @@ const { queueNotificationEvent } = require("../notifications/write-event");
 const { computeInstantRunoffResults } = require("./irv");
 const { computeMultipleChoiceTallies } = require("./multiple-choice");
 const { computeSchedulerRequiredEmbeddedPollSummary } = require("./required-summary");
+const {
+  BASIC_POLL_STATUSES,
+  BASIC_POLL_VOTE_TYPES,
+  resolveBasicPollVoteType,
+} = require("./constants");
+const {
+  hasSubmittedVote,
+} = require("./vote-submission");
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -26,30 +34,17 @@ function resolveParentCollection(parentType) {
   return PARENT_COLLECTIONS[parentType] || null;
 }
 
-function normalizeOptionIds(values) {
-  if (!Array.isArray(values)) return [];
-  return values.filter((entry) => typeof entry === "string" && entry.trim());
-}
-
-function hasSubmittedVote(voteType, allowWriteIn, voteDoc) {
-  if (voteType === "RANKED_CHOICE") {
-    return normalizeOptionIds(voteDoc?.rankings).length > 0;
-  }
-  const hasOptionIds = normalizeOptionIds(voteDoc?.optionIds).length > 0;
-  const hasWriteIn = allowWriteIn && String(voteDoc?.otherText || "").trim().length > 0;
-  return hasOptionIds || hasWriteIn;
-}
-
 function buildFinalResultsSnapshot(pollData, votes) {
   const settings = pollData?.settings || {};
-  const voteType = settings.voteType === "RANKED_CHOICE" ? "RANKED_CHOICE" : "MULTIPLE_CHOICE";
-  const allowWriteIn = voteType === "MULTIPLE_CHOICE" && settings.allowWriteIn === true;
+  const voteType = resolveBasicPollVoteType(settings.voteType);
+  const allowWriteIn =
+    voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && settings.allowWriteIn === true;
   const options = Array.isArray(pollData?.options) ? pollData.options : [];
   const submittedVotes = (votes || []).filter((voteDoc) =>
     hasSubmittedVote(voteType, allowWriteIn, voteDoc)
   );
 
-  if (voteType === "RANKED_CHOICE") {
+  if (voteType === BASIC_POLL_VOTE_TYPES.RANKED_CHOICE) {
     const results = computeInstantRunoffResults({
       optionIds: options.map((option) => option?.id).filter(Boolean),
       votes: submittedVotes,
@@ -207,7 +202,7 @@ function summarizeResults(pollData, finalResults) {
     (pollData?.options || []).map((option) => [option?.id, option?.label || option?.id || "Option"])
   );
 
-  if (finalResults.voteType === "RANKED_CHOICE") {
+  if (finalResults.voteType === BASIC_POLL_VOTE_TYPES.RANKED_CHOICE) {
     const winners = (finalResults.winnerIds || []).map((id) => optionById[id] || id);
     if (winners.length > 0) {
       return `Winner: ${winners.join(", ")}.`; 
@@ -231,8 +226,9 @@ function summarizeResults(pollData, finalResults) {
 
 function computeMissingVoterIds({ pollData, voteDocs, eligibleUserIds }) {
   const settings = pollData?.settings || {};
-  const voteType = settings.voteType === "RANKED_CHOICE" ? "RANKED_CHOICE" : "MULTIPLE_CHOICE";
-  const allowWriteIn = voteType === "MULTIPLE_CHOICE" && settings.allowWriteIn === true;
+  const voteType = resolveBasicPollVoteType(settings.voteType);
+  const allowWriteIn =
+    voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && settings.allowWriteIn === true;
 
   const submittedVoterIds = new Set(
     (voteDocs || [])
@@ -320,7 +316,7 @@ const createBasicPoll = functions.https.onCall(async (data, context) => {
   };
 
   if (parentType === "group") {
-    basePoll.status = pollData.status || "OPEN";
+    basePoll.status = pollData.status || BASIC_POLL_STATUSES.OPEN;
   }
 
   await createdRef.set(basePoll);
@@ -360,7 +356,7 @@ const finalizeBasicPoll = functions.https.onCall(async (data, context) => {
   const finalResults = buildFinalResultsSnapshot(pollData, voteDocs);
 
   await pollRef.update({
-    status: "FINALIZED",
+    status: BASIC_POLL_STATUSES.FINALIZED,
     finalizedAt: FieldValue.serverTimestamp(),
     finalResults,
     updatedAt: FieldValue.serverTimestamp(),
@@ -396,7 +392,7 @@ const finalizeBasicPoll = functions.https.onCall(async (data, context) => {
     source: "web",
   });
 
-  return { status: "FINALIZED" };
+  return { status: BASIC_POLL_STATUSES.FINALIZED };
 });
 
 const reopenBasicPoll = functions.https.onCall(async (data, context) => {
@@ -412,7 +408,7 @@ const reopenBasicPoll = functions.https.onCall(async (data, context) => {
   assertCanManagePoll(parentType, parentData, uid);
 
   await pollRef.update({
-    status: "OPEN",
+    status: BASIC_POLL_STATUSES.OPEN,
     updatedAt: FieldValue.serverTimestamp(),
   });
 
@@ -431,7 +427,7 @@ const reopenBasicPoll = functions.https.onCall(async (data, context) => {
     source: "web",
   });
 
-  return { status: "OPEN" };
+  return { status: BASIC_POLL_STATUSES.OPEN };
 });
 
 const removeBasicPoll = functions.https.onCall(async (data, context) => {

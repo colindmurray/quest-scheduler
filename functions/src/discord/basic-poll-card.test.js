@@ -18,6 +18,7 @@ describe('buildBasicPollCard', () => {
       pollId: 'p1',
       poll: {
         title: 'Food vote',
+        description: '  Bring your own snacks  ',
         status: 'OPEN',
         options: [
           { id: 'o1', label: 'Pizza' },
@@ -34,6 +35,7 @@ describe('buildBasicPollCard', () => {
 
     expect(card.embeds[0].color).toBe(CARD_COLORS.OPEN);
     expect(card.embeds[0].title).toBe('📊 Food vote');
+    expect(card.embeds[0].description).toBe('Bring your own snacks');
     expect(card.embeds[0].fields.find((field) => field.name === 'Type')?.value).toBe('Multiple Choice');
     expect(card.embeds[0].fields.find((field) => field.name === 'Votes')?.value).toBe('2/5 voted (3 pending)');
     expect(card.embeds[0].fields.find((field) => field.name === 'Options')?.value).toContain('2. Subs ℹ️');
@@ -116,5 +118,25 @@ describe('buildBasicPollCard', () => {
     const results = card.embeds[0].fields.find((field) => field.name === 'Results')?.value;
     expect(results).toContain('**Nachos**: 3');
     expect(results).toContain('Pretzels: 1');
+  });
+
+  test('truncates oversized poll descriptions with quest scheduler link', () => {
+    const card = buildBasicPollCard({
+      groupId: 'g1',
+      pollId: 'p3',
+      poll: {
+        title: 'Huge description poll',
+        status: 'OPEN',
+        description: Array.from({ length: 220 }, (_, index) => `line-${index + 1}`).join('\n'),
+        settings: { voteType: 'MULTIPLE_CHOICE' },
+        options: [{ id: 'a', label: 'A' }],
+      },
+      voteCount: 1,
+      totalParticipants: 2,
+    });
+
+    expect(card.embeds[0].description).toContain(
+      'View full content on [Quest Scheduler](https://app.example.com/groups/g1/polls/p3).'
+    );
   });
 });

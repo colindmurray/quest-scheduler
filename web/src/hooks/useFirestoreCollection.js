@@ -8,10 +8,17 @@ export function useFirestoreCollection(queryRef) {
   const hasQuery = Boolean(queryRef);
 
   useEffect(() => {
-    if (!queryRef) return undefined;
+    if (!queryRef) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoading(false);
+      setError(null);
+      setData([]);
+      return undefined;
+    }
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
+    setError(null);
     const unsubscribe = onSnapshot(
       queryRef,
       (snapshot) => {

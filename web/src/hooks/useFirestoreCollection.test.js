@@ -37,4 +37,29 @@ describe('useFirestoreCollection', () => {
       { id: 'doc-2', name: 'Beta' },
     ]);
   });
+
+  test('clears stale error when query ref changes', async () => {
+    const onSnapshotMock = vi.mocked(onSnapshot);
+    onSnapshotMock.mockImplementation((ref, onNext, onError) => {
+      if (ref === 'query-a') {
+        onError(new Error('query-failed'));
+      } else {
+        onNext({
+          docs: [{ id: 'doc-3', data: () => ({ name: 'Gamma' }) }],
+        });
+      }
+      return () => {};
+    });
+
+    const { result, rerender } = renderHook(({ refValue }) => useFirestoreCollection(refValue), {
+      initialProps: { refValue: 'query-a' },
+    });
+
+    await waitFor(() => expect(result.current.error?.message).toBe('query-failed'));
+    rerender({ refValue: 'query-b' });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBeNull();
+    expect(result.current.data).toEqual([{ id: 'doc-3', name: 'Gamma' }]);
+  });
 });

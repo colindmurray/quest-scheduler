@@ -16,6 +16,7 @@ const { computeInstantRunoffResults } = require("../basic-polls/irv");
 const { computeMultipleChoiceTallies } = require("../basic-polls/multiple-choice");
 const { hashLinkCode } = require("./link-utils");
 const { ERROR_MESSAGES, buildUserNotLinkedMessage } = require("./error-messages");
+const { dispatchInteraction } = require("./command-dispatch");
 const { buildBasicPollCard } = require("./basic-poll-card");
 const {
   editOriginalInteractionResponse,
@@ -2375,176 +2376,31 @@ exports.processDiscordInteraction = onTaskDispatched(
     }
 
     try {
-      let handled = false;
-      if (interaction.type === InteractionType.ApplicationCommand) {
-        if (interaction.data?.name === "link-group") {
-          await handleLinkGroup(interaction);
-          handled = true;
-        } else if (interaction.data?.name === "unlink-group") {
-          await handleUnlinkGroup(interaction);
-          handled = true;
-        } else if (interaction.data?.name === "poll-create") {
-          await handlePollCreate(interaction);
-          handled = true;
-        }
-      }
-
-      if (interaction.type === InteractionType.MessageComponent) {
-        const customId = interaction.data?.custom_id || "";
-        if (customId.startsWith("vote_btn:")) {
-          const schedulerId = customId.split(":")[1];
-          if (schedulerId) {
-            await handleVoteButton(interaction, schedulerId);
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("submit_vote:")) {
-          const schedulerId = customId.split(":")[1];
-          if (schedulerId) {
-            await handleSubmitVote(interaction, schedulerId);
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("page_prev:")) {
-          const schedulerId = customId.split(":")[1];
-          if (schedulerId) {
-            await handleVotePage(interaction, schedulerId, "prev");
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("page_next:")) {
-          const schedulerId = customId.split(":")[1];
-          if (schedulerId) {
-            await handleVotePage(interaction, schedulerId, "next");
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("clear_votes:")) {
-          const schedulerId = customId.split(":")[1];
-          if (schedulerId) {
-            await handleClearVotes(interaction, schedulerId, false);
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("none_work:")) {
-          const schedulerId = customId.split(":")[1];
-          if (schedulerId) {
-            await handleClearVotes(interaction, schedulerId, true);
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("vote_pref:")) {
-          const schedulerId = customId.split(":")[1];
-          if (schedulerId) {
-            await handleVoteSelect(interaction, schedulerId, "preferred");
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("vote_feasible:")) {
-          const schedulerId = customId.split(":")[1];
-          if (schedulerId) {
-            await handleVoteSelect(interaction, schedulerId, "feasible");
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("bp_vote:")) {
-          const pollId = customId.split(":")[1];
-          if (pollId) {
-            await handleBasicPollVoteButton(interaction, pollId);
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("bp_mc_select:")) {
-          const pollId = customId.split(":")[1];
-          if (pollId) {
-            await handleBasicPollMcSelect(interaction, pollId);
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("bp_submit:")) {
-          const pollId = customId.split(":")[1];
-          if (pollId) {
-            await handleBasicPollSubmit(interaction, pollId);
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("bp_clear:")) {
-          const pollId = customId.split(":")[1];
-          if (pollId) {
-            await handleBasicPollClear(interaction, pollId);
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("bp_finalize:")) {
-          const pollId = customId.split(":")[1];
-          if (pollId) {
-            await handleBasicPollFinalize(interaction, pollId);
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("bp_rank_select:")) {
-          const pollId = customId.split(":")[1];
-          if (pollId) {
-            await handleBasicPollRankSelect(interaction, pollId);
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("bp_rank_prev:")) {
-          const pollId = customId.split(":")[1];
-          if (pollId) {
-            await handleBasicPollRankPage(interaction, pollId, "prev");
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("bp_rank_next:")) {
-          const pollId = customId.split(":")[1];
-          if (pollId) {
-            await handleBasicPollRankPage(interaction, pollId, "next");
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("bp_rank_undo:")) {
-          const pollId = customId.split(":")[1];
-          if (pollId) {
-            await handleBasicPollRankUndo(interaction, pollId);
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("bp_rank_reset:")) {
-          const pollId = customId.split(":")[1];
-          if (pollId) {
-            await handleBasicPollRankReset(interaction, pollId);
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        } else if (customId.startsWith("bp_rank_submit:")) {
-          const pollId = customId.split(":")[1];
-          if (pollId) {
-            await handleBasicPollRankSubmit(interaction, pollId);
-          } else {
-            await respondWithError(interaction, ERROR_MESSAGES.missingPollId);
-          }
-          handled = true;
-        }
-      }
+      const handled = await dispatchInteraction({
+        interaction,
+        handlers: {
+          handleLinkGroup,
+          handleUnlinkGroup,
+          handlePollCreate,
+          handleVoteButton,
+          handleSubmitVote,
+          handleVotePage,
+          handleClearVotes,
+          handleVoteSelect,
+          handleBasicPollVoteButton,
+          handleBasicPollMcSelect,
+          handleBasicPollSubmit,
+          handleBasicPollClear,
+          handleBasicPollFinalize,
+          handleBasicPollRankSelect,
+          handleBasicPollRankPage,
+          handleBasicPollRankUndo,
+          handleBasicPollRankReset,
+          handleBasicPollRankSubmit,
+        },
+        respondWithError,
+        errorMessages: ERROR_MESSAGES,
+      });
 
       if (!handled) {
         const fallbackMessage =

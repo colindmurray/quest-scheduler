@@ -1,7 +1,6 @@
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { logger } = require("firebase-functions");
 const admin = require("firebase-admin");
-const crypto = require("crypto");
 const { FieldValue } = require("firebase-admin/firestore");
 const { normalizeEmail } = require("../utils/email");
 const { resolveNotificationEventType } = require("./constants");
@@ -9,6 +8,7 @@ const { getInAppTemplate, getEmailTemplate } = require("./templates");
 const { applyAutoClear } = require("./auto-clear");
 const { sendDiscordNotification } = require("./discord");
 const { DISCORD_BOT_TOKEN } = require("../discord/config");
+const { buildMetadata, getPendingNotificationsCollection } = require("./shared");
 const {
   getDefaultPreference,
   preferenceToChannels,
@@ -20,30 +20,6 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
-
-const buildMetadata = (event) => {
-  const metadata = { ...(event.payload?.metadata || {}) };
-
-  if (event.resource?.type === "poll") {
-    metadata.schedulerId = metadata.schedulerId || event.resource.id;
-    metadata.schedulerTitle = metadata.schedulerTitle || event.resource.title;
-  }
-
-  if (event.resource?.type === "group") {
-    metadata.groupId = metadata.groupId || event.resource.id;
-    metadata.groupName = metadata.groupName || event.resource.title;
-  }
-
-  if (event.actor?.uid) {
-    metadata.actorUserId = metadata.actorUserId || event.actor.uid;
-  }
-
-  if (event.actor?.email) {
-    metadata.actorEmail = metadata.actorEmail || event.actor.email;
-  }
-
-  return metadata;
-};
 
 const resolveRecipients = (event) => {
   const recipients = event.recipients || {};
@@ -75,20 +51,13 @@ const resolveRecipients = (event) => {
   };
 };
 
-const hashEmail = (email) =>
-  crypto.createHash("sha256").update(normalizeEmail(email)).digest("hex");
-
 const writePendingNotifications = async (eventType, event, pendingEmails) => {
   if (!pendingEmails.length) return;
 
   const writes = pendingEmails.map((email) => {
-    const emailHash = hashEmail(email);
-    return db
-      .collection("pendingNotifications")
-      .doc(emailHash)
-      .collection("events")
-      .doc()
-      .set({
+    const pendingRef = getPendingNotificationsCollection(db, email);
+    if (!pendingRef) return Promise.resolve();
+    return pendingRef.doc().set({
         eventType,
         resource: event.resource || null,
         actor: event.actor || null,

@@ -1,19 +1,5 @@
-function normalizeOptionIds(values) {
-  if (!Array.isArray(values)) return [];
-  return values
-    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-    .filter(Boolean);
-}
-
-function hasSubmittedVote(voteType, allowWriteIn, voteDoc) {
-  if (voteType === "RANKED_CHOICE") {
-    return normalizeOptionIds(voteDoc?.rankings).length > 0;
-  }
-
-  const hasOptionIds = normalizeOptionIds(voteDoc?.optionIds).length > 0;
-  const hasWriteIn = allowWriteIn && String(voteDoc?.otherText || "").trim().length > 0;
-  return hasOptionIds || hasWriteIn;
-}
+const { hasSubmittedVote } = require("./vote-submission");
+const { BASIC_POLL_STATUSES, BASIC_POLL_VOTE_TYPES, resolveBasicPollVoteType } = require("./constants");
 
 function toUniqueStringList(values) {
   const set = new Set();
@@ -129,7 +115,7 @@ async function computeSchedulerRequiredEmbeddedPollSummary({
   const requiredPolls = (requiredPollsSnapshot.docs || []).filter((pollDoc) => {
     const pollData = pollDoc.data() || {};
     const isRequired = pollData.required === true;
-    const isWritableState = !pollData.status || pollData.status === "OPEN";
+    const isWritableState = !pollData.status || pollData.status === BASIC_POLL_STATUSES.OPEN;
     return isRequired && isWritableState;
   });
 
@@ -137,10 +123,10 @@ async function computeSchedulerRequiredEmbeddedPollSummary({
     requiredPolls.map(async (pollDoc) => {
       const pollData = pollDoc.data() || {};
       const votesSnap = await pollDoc.ref.collection("votes").get();
-      const voteType =
-        pollData?.settings?.voteType === "RANKED_CHOICE" ? "RANKED_CHOICE" : "MULTIPLE_CHOICE";
+      const voteType = resolveBasicPollVoteType(pollData?.settings?.voteType);
       const allowWriteIn =
-        voteType === "MULTIPLE_CHOICE" && pollData?.settings?.allowWriteIn === true;
+        voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE &&
+        pollData?.settings?.allowWriteIn === true;
 
       const submittedVoterIds = new Set(
         (votesSnap.docs || [])

@@ -1,9 +1,9 @@
 import { useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { AlertCircle, AlertTriangle, ExternalLink } from "lucide-react";
 import { AvatarStack, VotingAvatarStack } from "../../../components/ui/voter-avatars";
 import { buildColorMap } from "../../../components/ui/voter-avatar-utils";
 import { useUserProfiles } from "../../../hooks/useUserProfiles";
+import { useSafeNavigate } from "../../../hooks/useSafeNavigate";
 import { normalizeEmail } from "../../../lib/utils";
 import { PollStatusMeta } from "../../../components/poll-status-meta";
 
@@ -22,7 +22,7 @@ export function SessionCard({
   displayTimeZone = null,
   showTimeZone = true,
 }) {
-  const navigate = useNavigate();
+  const safeNavigate = useSafeNavigate();
   const participantEmails = participants.map((p) => (typeof p === "string" ? p : p.email));
   const voterEmails = voters.map((v) => normalizeEmail(v.email)).filter(Boolean);
   const colorMap = buildColorMap(participantEmails);
@@ -68,12 +68,7 @@ export function SessionCard({
     );
   const handleOpen = () => {
     const target = `/scheduler/${scheduler.id}`;
-    navigate(target);
-    setTimeout(() => {
-      if (window.location.pathname !== target) {
-        window.location.assign(target);
-      }
-    }, 50);
+    safeNavigate(target);
   };
 
   return (

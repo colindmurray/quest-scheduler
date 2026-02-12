@@ -24,6 +24,7 @@ import { useFriends } from "../../hooks/useFriends";
 import { useQuestingGroups } from "../../hooks/useQuestingGroups";
 import { useCalendarNavigation } from "../../hooks/useCalendarNavigation";
 import { useSchedulerData } from "./hooks/useSchedulerData";
+import { useSchedulerEmbeddedPollVotes } from "./hooks/useSchedulerEmbeddedPollVotes";
 import { useNotifications } from "../../hooks/useNotifications";
 import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfiles";
 import {
@@ -65,13 +66,18 @@ import {
   fetchRequiredEmbeddedPollFinalizeSummary,
   reopenEmbeddedBasicPoll,
   submitBasicPollVote,
-  subscribeToBasicPollVotes,
-  subscribeToEmbeddedBasicPolls,
-  subscribeToMyBasicPollVote,
 } from "../../lib/data/basicPolls";
+import {
+  addRankedOptionToVoteDraft,
+  moveRankedOptionInVoteDraft,
+  removeRankedOptionFromVoteDraft,
+  setMultipleChoiceOptionOnVoteDraft,
+  setOtherTextOnVoteDraft,
+} from "../../lib/basic-polls/vote-draft";
+import { hasSubmittedVoteForPoll } from "../../lib/basic-polls/vote-submission";
 import { buildNotificationActor, emitPollEvent } from "../../lib/data/notification-events";
 import { validateInviteCandidate } from "./utils/invite-utils";
-import { repostDiscordPollCard } from "../../lib/data/discord";
+import { nudgeDiscordSessionPoll, repostDiscordPollCard } from "../../lib/data/discord";
 import { filterSlotsByRequiredAttendance } from "./utils/required-attendance";
 import {
   formatZonedDateTimeRange,
@@ -101,6 +107,7 @@ import { CalendarToolbar } from "./components/CalendarToolbar";
 import { BasicPollVotingCard } from "../../components/polls/basic-poll-voting-card";
 import { PollDiscordMetaRow } from "../../components/polls/poll-discord-meta-row";
 import { PollMarkdownContent } from "../../components/polls/poll-markdown-content";
+import { PollNudgeButton, getNudgeCooldownRemaining } from "../../components/polls/poll-nudge-button";
 import { PollOptionNoteDialog } from "../../components/polls/poll-option-note-dialog";
 import { buildEffectiveTallies, buildUserBlockInfo } from "./utils/effective-votes";
 import { canUserCopyVotes } from "./utils/copy-votes-eligibility";
@@ -188,12 +195,18 @@ export default function SchedulerPage() {
   const [inviteToRevoke, setInviteToRevoke] = useState(null);
   const [copyVotesOpen, setCopyVotesOpen] = useState(false);
   const [blockingSchedulersById, setBlockingSchedulersById] = useState({});
-  const [embeddedPolls, setEmbeddedPolls] = useState([]);
-  const [embeddedPollsLoading, setEmbeddedPollsLoading] = useState(true);
-  const [embeddedPollVoteCounts, setEmbeddedPollVoteCounts] = useState({});
-  const [embeddedVotesByPoll, setEmbeddedVotesByPoll] = useState({});
-  const [embeddedMyVotes, setEmbeddedMyVotes] = useState({});
-  const [embeddedVoteDrafts, setEmbeddedVoteDrafts] = useState({});
+  const {
+    embeddedPolls,
+    embeddedPollsLoading,
+    embeddedPollVoteCounts,
+    embeddedVotesByPoll,
+    embeddedMyVotes,
+    embeddedVoteDrafts,
+    setEmbeddedVoteDrafts,
+  } = useSchedulerEmbeddedPollVotes({
+    schedulerId: id,
+    userId: user?.uid || null,
+  });
   const [embeddedSubmittingByPoll, setEmbeddedSubmittingByPoll] = useState({});
   const [embeddedClearingByPoll, setEmbeddedClearingByPoll] = useState({});
   const [embeddedVoteErrors, setEmbeddedVoteErrors] = useState({});
@@ -277,12 +290,7 @@ export default function SchedulerPage() {
         ? "Discord not linked"
         : null;
   const nudgeCooldownRemaining = useMemo(() => {
-    const lastNudge = scheduler.data?.discord?.nudgeLastSentAt;
-    if (!lastNudge) return 0;
-    const lastNudgeTime = lastNudge.toDate?.() || new Date(lastNudge);
-    const elapsed = Date.now() - lastNudgeTime.getTime();
-    const cooldownMs = 8 * 60 * 60 * 1000; // 8 hours
-    return Math.max(0, cooldownMs - elapsed);
+    return getNudgeCooldownRemaining(scheduler.data?.discord?.nudgeLastSentAt);
   }, [scheduler.data?.discord?.nudgeLastSentAt]);
   const questingGroupColor = useMemo(() => {
     const groupId = scheduler.data?.questingGroupId;
@@ -422,14 +430,7 @@ export default function SchedulerPage() {
   }, [userVote.data]);
 
   function hasSubmittedEmbeddedVote(poll, voteDoc) {
-    if (!poll || !voteDoc) return false;
-    const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
-    if (voteType === "RANKED_CHOICE") {
-      return Array.isArray(voteDoc.rankings) && voteDoc.rankings.some(Boolean);
-    }
-    const hasOptionIds = Array.isArray(voteDoc.optionIds) && voteDoc.optionIds.some(Boolean);
-    const hasWriteIn = String(voteDoc.otherText || "").trim().length > 0;
-    return hasOptionIds || hasWriteIn;
+    return hasSubmittedVoteForPoll(poll, voteDoc);
   }
 
   function openEmbeddedOptionNoteViewer(pollTitle, option) {
@@ -450,27 +451,6 @@ export default function SchedulerPage() {
         pollStatus !== "FINALIZED"
     );
   }
-
-  useEffect(() => {
-    if (!id) {
-      setEmbeddedPolls([]);
-      setEmbeddedPollsLoading(false);
-      return;
-    }
-    setEmbeddedPollsLoading(true);
-    const unsubscribe = subscribeToEmbeddedBasicPolls(
-      id,
-      (polls) => {
-        setEmbeddedPolls(polls || []);
-        setEmbeddedPollsLoading(false);
-      },
-      () => {
-        setEmbeddedPolls([]);
-        setEmbeddedPollsLoading(false);
-      }
-    );
-    return () => unsubscribe();
-  }, [id]);
 
   useEffect(() => {
     const pollId = parseEmbeddedPollIdFromSearch(location.search);
@@ -505,86 +485,6 @@ export default function SchedulerPage() {
     handledEmbeddedPollId,
     targetEmbeddedPollId,
   ]);
-
-  useEffect(() => {
-    setEmbeddedPollVoteCounts({});
-    setEmbeddedVotesByPoll({});
-    if (!id || embeddedPolls.length === 0) return () => {};
-    const unsubscribers = embeddedPolls.map((poll) =>
-      subscribeToBasicPollVotes(
-        "scheduler",
-        id,
-        poll.id,
-        (voteDocs) => {
-          const normalizedVotes = voteDocs || [];
-          const count = (voteDocs || []).filter((voteDoc) => hasSubmittedEmbeddedVote(poll, voteDoc)).length;
-          setEmbeddedVotesByPoll((previous) => ({ ...previous, [poll.id]: normalizedVotes }));
-          setEmbeddedPollVoteCounts((previous) => {
-            if (previous[poll.id] === count) return previous;
-            return { ...previous, [poll.id]: count };
-          });
-        },
-        () => {
-          setEmbeddedVotesByPoll((previous) => ({ ...previous, [poll.id]: [] }));
-          setEmbeddedPollVoteCounts((previous) => ({ ...previous, [poll.id]: 0 }));
-        }
-      )
-    );
-    return () => {
-      unsubscribers.forEach((unsubscribe) => {
-        if (typeof unsubscribe === "function") unsubscribe();
-      });
-    };
-  }, [embeddedPolls, id]);
-
-  useEffect(() => {
-    setEmbeddedMyVotes({});
-    if (!id || !user?.uid || embeddedPolls.length === 0) return () => {};
-    const unsubscribers = embeddedPolls.map((poll) =>
-      subscribeToMyBasicPollVote(
-        "scheduler",
-        id,
-        poll.id,
-        user.uid,
-        (voteDoc) => {
-          setEmbeddedMyVotes((previous) => ({ ...previous, [poll.id]: voteDoc || null }));
-        },
-        () => {
-          setEmbeddedMyVotes((previous) => ({ ...previous, [poll.id]: null }));
-        }
-      )
-    );
-    return () => {
-      unsubscribers.forEach((unsubscribe) => {
-        if (typeof unsubscribe === "function") unsubscribe();
-      });
-    };
-  }, [embeddedPolls, id, user?.uid]);
-
-  useEffect(() => {
-    if (embeddedPolls.length === 0) {
-      setEmbeddedVoteDrafts({});
-      return;
-    }
-    setEmbeddedVoteDrafts((previous) => {
-      const next = { ...previous };
-      embeddedPolls.forEach((poll) => {
-        const myVote = embeddedMyVotes[poll.id] || null;
-        const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
-        if (voteType === "RANKED_CHOICE") {
-          const rankings = Array.isArray(myVote?.rankings) ? myVote.rankings.filter(Boolean) : [];
-          next[poll.id] = { rankings };
-          return;
-        }
-        const optionIds = Array.isArray(myVote?.optionIds) ? myVote.optionIds.filter(Boolean) : [];
-        next[poll.id] = {
-          optionIds,
-          otherText: String(myVote?.otherText || ""),
-        };
-      });
-      return next;
-    });
-  }, [embeddedMyVotes, embeddedPolls]);
 
   const explicitParticipantIds = useMemo(
     () => scheduler.data?.participantIds || [],
@@ -850,6 +750,49 @@ export default function SchedulerPage() {
       ),
     [explicitParticipantIds, questingGroupMemberIds]
   );
+  const nudgeEligibleParticipantIds = useMemo(() => {
+    const participantIds = new Set(
+      [...explicitParticipantIds, ...questingGroupMemberIds]
+        .map((idValue) => String(idValue || "").trim())
+        .filter(Boolean)
+    );
+    if (scheduler.data?.creatorId) {
+      participantIds.delete(String(scheduler.data.creatorId));
+    }
+    return Array.from(participantIds);
+  }, [explicitParticipantIds, questingGroupMemberIds, scheduler.data?.creatorId]);
+  const sessionPollMissingNudgeUserIds = useMemo(
+    () =>
+      nudgeEligibleParticipantIds.filter(
+        (participantId) => !voteMapById.has(String(participantId))
+      ),
+    [nudgeEligibleParticipantIds, voteMapById]
+  );
+  const hasRequiredEmbeddedNudgeTargets = useMemo(() => {
+    if (nudgeEligibleParticipantIds.length === 0) return false;
+
+    const requiredOpenPolls = (embeddedPolls || []).filter((poll) => {
+      if (!poll?.required) return false;
+      const pollStatus = String(poll?.status || "OPEN").toUpperCase();
+      return pollStatus === "OPEN";
+    });
+
+    if (requiredOpenPolls.length === 0) return false;
+
+    return requiredOpenPolls.some((poll) => {
+      const pollVotes = embeddedVotesByPoll[poll.id] || [];
+      const submittedVoterIds = new Set(
+        (pollVotes || [])
+          .filter((voteDoc) => hasSubmittedEmbeddedVote(poll, voteDoc))
+          .map((voteDoc) => String(voteDoc?.id || "").trim())
+          .filter(Boolean)
+      );
+
+      return nudgeEligibleParticipantIds.some(
+        (participantId) => !submittedVoterIds.has(participantId)
+      );
+    });
+  }, [embeddedPolls, embeddedVotesByPoll, nudgeEligibleParticipantIds]);
   const participantCount = participantIdSet.size;
   const voteCount = allVotes.data.length;
   const allVotesIn = useMemo(() => {
@@ -1262,22 +1205,13 @@ export default function SchedulerPage() {
     setEmbeddedVoteErrors((previous) => ({ ...previous, [pollId]: null }));
     setEmbeddedVoteDrafts((previous) => {
       const current = previous[pollId] || { optionIds: [], otherText: "" };
-      const existing = Array.isArray(current.optionIds) ? current.optionIds : [];
-      const hasOption = existing.includes(optionId);
-      let optionIds = existing;
-      if (!allowMultiple) {
-        optionIds = hasOption ? [] : [optionId];
-      } else if (hasOption) {
-        optionIds = existing.filter((idEntry) => idEntry !== optionId);
-      } else {
-        optionIds = [...existing, optionId];
-      }
+      const { draft: nextDraft } = setMultipleChoiceOptionOnVoteDraft(current, optionId, {
+        allowMultiple,
+      });
+      if (nextDraft === current) return previous;
       return {
         ...previous,
-        [pollId]: {
-          ...current,
-          optionIds,
-        },
+        [pollId]: nextDraft,
       };
     });
   };
@@ -1286,12 +1220,11 @@ export default function SchedulerPage() {
     if (!pollId) return;
     setEmbeddedVoteDrafts((previous) => {
       const current = previous[pollId] || { optionIds: [], otherText: "" };
+      const nextDraft = setOtherTextOnVoteDraft(current, value);
+      if (nextDraft === current) return previous;
       return {
         ...previous,
-        [pollId]: {
-          ...current,
-          otherText: value,
-        },
+        [pollId]: nextDraft,
       };
     });
   };
@@ -1301,13 +1234,11 @@ export default function SchedulerPage() {
     setEmbeddedVoteErrors((previous) => ({ ...previous, [pollId]: null }));
     setEmbeddedVoteDrafts((previous) => {
       const current = previous[pollId] || { rankings: [] };
-      const rankings = Array.isArray(current.rankings) ? current.rankings : [];
-      if (rankings.includes(optionId)) return previous;
+      const nextDraft = addRankedOptionToVoteDraft(current, optionId);
+      if (nextDraft === current) return previous;
       return {
         ...previous,
-        [pollId]: {
-          rankings: [...rankings, optionId],
-        },
+        [pollId]: nextDraft,
       };
     });
   };
@@ -1316,19 +1247,11 @@ export default function SchedulerPage() {
     if (!pollId || !optionId) return;
     setEmbeddedVoteDrafts((previous) => {
       const current = previous[pollId] || { rankings: [] };
-      const rankings = Array.isArray(current.rankings) ? current.rankings : [];
-      const index = rankings.indexOf(optionId);
-      if (index < 0) return previous;
-      const nextIndex = direction === "up" ? index - 1 : index + 1;
-      if (nextIndex < 0 || nextIndex >= rankings.length) return previous;
-      const nextRankings = [...rankings];
-      const [moved] = nextRankings.splice(index, 1);
-      nextRankings.splice(nextIndex, 0, moved);
+      const nextDraft = moveRankedOptionInVoteDraft(current, optionId, direction);
+      if (nextDraft === current) return previous;
       return {
         ...previous,
-        [pollId]: {
-          rankings: nextRankings,
-        },
+        [pollId]: nextDraft,
       };
     });
   };
@@ -1337,12 +1260,11 @@ export default function SchedulerPage() {
     if (!pollId || !optionId) return;
     setEmbeddedVoteDrafts((previous) => {
       const current = previous[pollId] || { rankings: [] };
-      const rankings = Array.isArray(current.rankings) ? current.rankings : [];
+      const nextDraft = removeRankedOptionFromVoteDraft(current, optionId);
+      if (nextDraft === current) return previous;
       return {
         ...previous,
-        [pollId]: {
-          rankings: rankings.filter((entry) => entry !== optionId),
-        },
+        [pollId]: nextDraft,
       };
     });
   };
@@ -2322,10 +2244,8 @@ export default function SchedulerPage() {
     if (!id) return;
     setNudgeSending(true);
     try {
-      const functions = getFunctions();
-      const nudge = httpsCallable(functions, "nudgeDiscordParticipants");
-      const result = await nudge({ schedulerId: id });
-      const { nudgedCount, totalNonVoters } = result.data || {};
+      const result = await nudgeDiscordSessionPoll(id);
+      const { nudgedCount = 0, totalNonVoters = 0 } = result || {};
       if (nudgedCount < totalNonVoters) {
         toast.success(
           `Nudged ${nudgedCount} participant${nudgedCount === 1 ? "" : "s"} on Discord. ${totalNonVoters - nudgedCount} non-voter${totalNonVoters - nudgedCount === 1 ? " has" : "s have"} not linked Discord.`
@@ -2431,6 +2351,12 @@ export default function SchedulerPage() {
   const requiredEmbeddedPendingCount = requiredEmbeddedPolls.filter(
     (poll) => !hasSubmittedEmbeddedVote(poll, embeddedMyVotes[poll.id])
   ).length;
+  const showSessionNudgeButton = Boolean(
+    isCreator &&
+      scheduler.data?.discord?.messageId &&
+      scheduler.data?.status === "OPEN" &&
+      (sessionPollMissingNudgeUserIds.length > 0 || hasRequiredEmbeddedNudgeTargets)
+  );
   const pendingInviteMeta =
     (normalizedUserEmail && scheduler.data.pendingInviteMeta?.[normalizedUserEmail]) || {};
   const inviterLabel = pendingInviteMeta.invitedByEmail || scheduler.data.creatorEmail || "someone";
@@ -2500,32 +2426,12 @@ export default function SchedulerPage() {
                 pendingSync={scheduler.data?.discord?.pendingSync === true}
                 className="mt-2"
               >
-                {isCreator && scheduler.data?.discord?.messageId && scheduler.data?.status === "OPEN" ? (
-                  <button
-                    type="button"
+                {showSessionNudgeButton ? (
+                  <PollNudgeButton
                     onClick={handleNudge}
-                    disabled={nudgeSending || nudgeCooldownRemaining > 0}
-                    className={`rounded-full px-2 py-0.5 text-xs font-semibold transition-colors ${
-                      nudgeCooldownRemaining > 0
-                        ? "border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-500"
-                        : "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
-                    } ${nudgeSending ? "opacity-50" : ""}`}
-                    title={
-                      nudgeCooldownRemaining > 0
-                        ? "Nudge is on cooldown"
-                        : "Send a reminder to participants who haven't voted"
-                    }
-                  >
-                    {nudgeSending
-                      ? "Sending..."
-                      : nudgeCooldownRemaining > 0
-                        ? (() => {
-                            const hours = Math.floor(nudgeCooldownRemaining / (60 * 60 * 1000));
-                            const mins = Math.ceil((nudgeCooldownRemaining % (60 * 60 * 1000)) / (60 * 1000));
-                            return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-                          })()
-                        : "Nudge participants"}
-                  </button>
+                    sending={nudgeSending}
+                    cooldownRemainingMs={nudgeCooldownRemaining}
+                  />
                 ) : null}
               </PollDiscordMetaRow>
             </div>

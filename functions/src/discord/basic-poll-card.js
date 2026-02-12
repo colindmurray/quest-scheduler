@@ -1,4 +1,5 @@
 const { APP_URL } = require("./config");
+const { formatEmbedDescription } = require("./card-description");
 
 const CARD_COLORS = Object.freeze({
   OPEN: 0x3b82f6,
@@ -200,7 +201,10 @@ function buildBasicPollCard({ groupId, pollId, poll, voteCount, totalParticipant
       {
         color: CARD_COLORS[status] || CARD_COLORS.DEFAULT,
         title: `📊 ${poll?.title || "Untitled Poll"}`,
-        description: poll?.description || undefined,
+        description: formatEmbedDescription({
+          description: poll?.description,
+          pollUrl,
+        }),
         fields,
         footer: {
           text: "Quest Scheduler",

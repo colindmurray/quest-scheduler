@@ -18,7 +18,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../../components/ui/select";
+import { BASIC_POLL_STATUSES, BASIC_POLL_VOTE_TYPES, resolveBasicPollVoteType } from "../../../lib/basic-polls/constants";
 import { createBasicPoll, updateBasicPoll } from "../../../lib/data/basicPolls";
+import { coerceDate } from "../../../lib/time";
 import { PollMarkdownContent } from "../../../components/polls/poll-markdown-content";
 import { QuestingGroupSelect } from "../../scheduler/components/questing-group-select";
 
@@ -29,16 +31,8 @@ function createDefaultOptions() {
   ];
 }
 
-function toDate(value) {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (typeof value?.toDate === "function") return value.toDate();
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
 function toDateTimeLocalValue(dateValue) {
-  const date = toDate(dateValue);
+  const date = coerceDate(dateValue);
   if (!date) return "";
   const offset = date.getTimezoneOffset();
   const local = new Date(date.getTime() - offset * 60 * 1000);
@@ -73,9 +67,9 @@ function normalizeInitialOptions(initialPoll) {
 
 function buildInitialState(selectedGroupId = null, initialPoll = null) {
   const settings = initialPoll?.settings || {};
-  const voteType = settings.voteType === "RANKED_CHOICE" ? "RANKED_CHOICE" : "MULTIPLE_CHOICE";
-  const allowMultiple = voteType === "MULTIPLE_CHOICE" && settings.allowMultiple === true;
-  const allowWriteIn = voteType === "MULTIPLE_CHOICE" && settings.allowWriteIn === true;
+  const voteType = resolveBasicPollVoteType(settings.voteType);
+  const allowMultiple = voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && settings.allowMultiple === true;
+  const allowWriteIn = voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && settings.allowWriteIn === true;
   const maxSelections =
     allowMultiple && Number.isFinite(settings.maxSelections)
       ? String(Math.max(1, Number(settings.maxSelections)))
@@ -195,10 +189,10 @@ export function CreateGroupPollModal({
 
   function updateVotingSetup(value) {
     setState((previous) => {
-      if (value === "RANKED_CHOICE") {
+      if (value === BASIC_POLL_VOTE_TYPES.RANKED_CHOICE) {
         return {
           ...previous,
-          voteType: "RANKED_CHOICE",
+          voteType: BASIC_POLL_VOTE_TYPES.RANKED_CHOICE,
           allowMultiple: false,
           allowWriteIn: false,
           maxSelections: "",
@@ -206,7 +200,7 @@ export function CreateGroupPollModal({
       }
       return {
         ...previous,
-        voteType: "MULTIPLE_CHOICE",
+        voteType: BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE,
       };
     });
   }
@@ -244,10 +238,14 @@ export function CreateGroupPollModal({
       state.options.filter((option) => String(option?.label || "").trim().length > 0).length,
     [state.options]
   );
-  const voteTypeLabel = state.voteType === "RANKED_CHOICE" ? "Ranked choice" : "Multiple choice";
-  const votingSetupValue = state.voteType === "RANKED_CHOICE" ? "RANKED_CHOICE" : "MULTIPLE_CHOICE";
+  const voteTypeLabel =
+    state.voteType === BASIC_POLL_VOTE_TYPES.RANKED_CHOICE ? "Ranked choice" : "Multiple choice";
+  const votingSetupValue =
+    state.voteType === BASIC_POLL_VOTE_TYPES.RANKED_CHOICE
+      ? BASIC_POLL_VOTE_TYPES.RANKED_CHOICE
+      : BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE;
   const hasMaxSelectionCustomization =
-    state.voteType === "MULTIPLE_CHOICE" &&
+    state.voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE &&
     state.allowMultiple &&
     String(state.maxSelections || "").trim().length > 0;
   const deadlineDate = useMemo(() => parseLocalDateTime(state.deadlineAtLocal), [state.deadlineAtLocal]);
@@ -291,7 +289,7 @@ export function CreateGroupPollModal({
     }
 
     const parsedMaxSelections =
-      state.voteType === "MULTIPLE_CHOICE" && state.allowMultiple && state.maxSelections
+      state.voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && state.allowMultiple && state.maxSelections
         ? Number(state.maxSelections)
         : null;
     if (
@@ -313,12 +311,14 @@ export function CreateGroupPollModal({
         options: normalizedOptions,
         settings: {
           voteType: state.voteType,
-          allowMultiple: state.voteType === "MULTIPLE_CHOICE" && state.allowMultiple,
+          allowMultiple: state.voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && state.allowMultiple,
           maxSelections:
-            state.voteType === "MULTIPLE_CHOICE" && state.allowMultiple && parsedMaxSelections
+            state.voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE &&
+            state.allowMultiple &&
+            parsedMaxSelections
               ? parsedMaxSelections
               : null,
-          allowWriteIn: state.voteType === "MULTIPLE_CHOICE" && state.allowWriteIn,
+          allowWriteIn: state.voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && state.allowWriteIn,
           deadlineAt: state.deadlineAtLocal ? new Date(state.deadlineAtLocal) : null,
         },
       };
@@ -330,7 +330,7 @@ export function CreateGroupPollModal({
           {
             ...payload,
             creatorId: creatorId || null,
-            status: "OPEN",
+            status: BASIC_POLL_STATUSES.OPEN,
           },
           { useServer: true }
         );
@@ -520,8 +520,8 @@ export function CreateGroupPollModal({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="MULTIPLE_CHOICE">Multiple choice</SelectItem>
-                      <SelectItem value="RANKED_CHOICE">Ranked choice</SelectItem>
+                      <SelectItem value={BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE}>Multiple choice</SelectItem>
+                      <SelectItem value={BASIC_POLL_VOTE_TYPES.RANKED_CHOICE}>Ranked choice</SelectItem>
                     </SelectContent>
                   </Select>
                   <Popover open={customizationOpen} onOpenChange={setCustomizationOpen}>
@@ -534,7 +534,7 @@ export function CreateGroupPollModal({
                       </button>
                     </PopoverTrigger>
                     <PopoverContent align="end" className="w-72 p-3">
-                      {state.voteType === "MULTIPLE_CHOICE" ? (
+                      {state.voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE ? (
                         <div className="space-y-3">
                           <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
                             <input
@@ -580,7 +580,7 @@ export function CreateGroupPollModal({
                       )}
                     </PopoverContent>
                   </Popover>
-                  {state.voteType === "RANKED_CHOICE" ? (
+                  {state.voteType === BASIC_POLL_VOTE_TYPES.RANKED_CHOICE ? (
                     <span
                       className="inline-flex h-8 items-center justify-center text-slate-500 dark:text-slate-300"
                       title="Ranked choice does not support multi-select or write-in options."
@@ -592,7 +592,7 @@ export function CreateGroupPollModal({
                 </div>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                {state.voteType === "MULTIPLE_CHOICE" && state.allowMultiple ? (
+                {state.voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && state.allowMultiple ? (
                   <div className="group relative">
                     <span className="inline-flex items-center rounded-full border border-slate-300 bg-white px-3 py-1 pr-7 text-xs font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200">
                       Allow multiple
@@ -705,7 +705,7 @@ export function CreateGroupPollModal({
                   <Plus className="h-3.5 w-3.5" />
                   Option
                 </button>
-                {state.voteType === "MULTIPLE_CHOICE" && !state.allowWriteIn ? (
+                {state.voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && !state.allowWriteIn ? (
                   <>
                     <span aria-hidden="true">|</span>
                     <button
@@ -724,7 +724,7 @@ export function CreateGroupPollModal({
                   </>
                 ) : null}
               </div>
-              {state.voteType === "MULTIPLE_CHOICE" && state.allowWriteIn ? (
+              {state.voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && state.allowWriteIn ? (
                 <div className="mt-2 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
                   <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
                     Other (write-in)

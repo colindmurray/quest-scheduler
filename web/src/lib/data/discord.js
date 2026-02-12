@@ -41,3 +41,17 @@ export async function repostDiscordPollCard(schedulerId) {
   const response = await repost({ schedulerId });
   return response.data;
 }
+
+export async function nudgeDiscordSessionPoll(schedulerId) {
+  const functions = getFunctions();
+  const nudge = httpsCallable(functions, "nudgeDiscordParticipants");
+  const response = await nudge({ schedulerId });
+  return response.data;
+}
+
+export async function nudgeDiscordBasicPoll(groupId, pollId) {
+  const functions = getFunctions();
+  const nudge = httpsCallable(functions, "nudgeDiscordBasicPollParticipants");
+  const response = await nudge({ groupId, pollId });
+  return response.data;
+}

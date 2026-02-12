@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  coerceDate,
   formatZonedTimeRange,
   getTimeZoneAbbr,
   resolveDisplayTimeZone,
@@ -61,5 +62,17 @@ describe("time utils", () => {
       hideTimeZone: true,
     };
     expect(shouldShowTimeZone(settings)).toBe(false);
+  });
+
+  it("coerces Firestore-like timestamps, dates, and rejects invalid values", () => {
+    const date = new Date("2026-02-12T12:00:00.000Z");
+    expect(coerceDate(date)).toBe(date);
+    expect(
+      coerceDate({
+        toDate: () => new Date("2026-02-12T12:00:00.000Z"),
+      })?.toISOString()
+    ).toBe("2026-02-12T12:00:00.000Z");
+    expect(coerceDate("2026-02-12T12:00:00.000Z")?.toISOString()).toBe("2026-02-12T12:00:00.000Z");
+    expect(coerceDate("invalid")).toBeNull();
   });
 });

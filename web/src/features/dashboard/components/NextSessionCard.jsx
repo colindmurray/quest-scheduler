@@ -1,8 +1,8 @@
-import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { Calendar, ExternalLink, Users } from "lucide-react";
 import { AvatarStack } from "../../../components/ui/voter-avatars";
 import { buildColorMap } from "../../../components/ui/voter-avatar-utils";
+import { useSafeNavigate } from "../../../hooks/useSafeNavigate";
 import { useUserProfiles } from "../../../hooks/useUserProfiles";
 import { formatZonedDate, formatZonedTimeRange } from "../../../lib/time";
 
@@ -14,7 +14,7 @@ export function NextSessionCard({
   displayTimeZone = null,
   showTimeZone = true,
 }) {
-  const navigate = useNavigate();
+  const safeNavigate = useSafeNavigate();
   const participantEmails = participants.map((p) => (typeof p === "string" ? p : p.email));
   const colorMap = buildColorMap(participantEmails);
   const { enrichUsers } = useUserProfiles(participantEmails);
@@ -34,12 +34,7 @@ export function NextSessionCard({
 
   const handleOpen = () => {
     const target = `/scheduler/${scheduler.id}`;
-    navigate(target);
-    setTimeout(() => {
-      if (window.location.pathname !== target) {
-        window.location.assign(target);
-      }
-    }, 50);
+    safeNavigate(target);
   };
 
   return (

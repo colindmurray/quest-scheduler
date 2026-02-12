@@ -1,15 +1,15 @@
 import { useState, useMemo, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
-import { format, parse, startOfWeek, getDay, isBefore, startOfDay, startOfHour } from "date-fns";
+import { format, parse, startOfWeek, getDay, isBefore, startOfDay, startOfHour, isSameDay } from "date-fns";
 import { enUS } from "date-fns/locale";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Users } from "lucide-react";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "../../scheduler/calendar-styles.css";
 import { useCalendarNavigation } from "../../../hooks/useCalendarNavigation";
+import { useSafeNavigate } from "../../../hooks/useSafeNavigate";
 import { CalendarJumpControls } from "../../../components/ui/calendar-jump-controls";
 import { CalendarToolbar } from "../../scheduler/components/CalendarToolbar";
-import { formatZonedTimeRange, toDisplayDate } from "../../../lib/time";
+import { formatZonedDateTimeRange, formatZonedTime, getTimeZoneAbbr, toDisplayDate } from "../../../lib/time";
 
 function doEventsOverlap(event1, event2) {
   if (event1.id === event2.id) return false;
@@ -49,27 +49,136 @@ const localizer = dateFnsLocalizer({
   locales: { "en-US": enUS },
 });
 
-function EventCell({ event }) {
+function formatCompactMonthTimeLabel({ start, timeZone }) {
+  if (!(start instanceof Date) || Number.isNaN(start.getTime())) return "";
+  const label = formatZonedTime(start, timeZone, "h:mm a", { showTimeZone: false });
+  return label.replace(":00 ", " ");
+}
+
+function formatCompactRangeTimeLabel({
+  start,
+  end,
+  timeZone,
+  showTimeZone = false,
+}) {
+  if (!(start instanceof Date) || Number.isNaN(start.getTime())) return "";
+  const endDate = end instanceof Date && !Number.isNaN(end.getTime()) ? end : null;
+  const displayStart = toDisplayDate(start, timeZone) || start;
+  const displayEnd = endDate ? toDisplayDate(endDate, timeZone) || endDate : null;
+
+  if (!endDate) {
+    const startOnly = formatCompactMonthTimeLabel({ start, timeZone });
+    if (!showTimeZone) return startOnly;
+    const abbr = getTimeZoneAbbr(start, timeZone);
+    return abbr ? `${startOnly} ${abbr}` : startOnly;
+  }
+
+  if (displayEnd && !isSameDay(displayStart, displayEnd)) {
+    return formatZonedDateTimeRange({
+      start,
+      end: endDate,
+      timeZone,
+      startPattern: "MMM d, h:mm a",
+      endPattern: "MMM d, h:mm a",
+      showTimeZone,
+    }).replace(/:00(\s)/g, "$1");
+  }
+
+  const startLabel = formatCompactMonthTimeLabel({ start, timeZone });
+  const endLabel = formatCompactMonthTimeLabel({ start: endDate, timeZone });
+  const startMeridiemMatch = startLabel.match(/\b(AM|PM)$/);
+  const endMeridiemMatch = endLabel.match(/\b(AM|PM)$/);
+  const startMeridiem = startMeridiemMatch?.[1] || null;
+  const endMeridiem = endMeridiemMatch?.[1] || null;
+
+  let rangeLabel = `${startLabel} - ${endLabel}`;
+  if (startMeridiem && endMeridiem && startMeridiem === endMeridiem) {
+    const startWithoutMeridiem = startLabel.replace(/\s(AM|PM)$/, "");
+    rangeLabel = `${startWithoutMeridiem} - ${endLabel}`;
+  }
+
+  if (!showTimeZone) return rangeLabel;
+  const abbr = getTimeZoneAbbr(start, timeZone);
+  return abbr ? `${rangeLabel} ${abbr}` : rangeLabel;
+}
+
+function resolveMonthAttendanceLabel(session) {
+  if (!session || session.status !== "FINALIZED") return null;
+  const confirmedCount = Array.isArray(session.attendanceSummary?.confirmed)
+    ? session.attendanceSummary.confirmed.length
+    : 0;
+  const totalInvitees = Array.isArray(session.effectiveParticipantIds)
+    ? session.effectiveParticipantIds.length
+    : 0;
+  if (totalInvitees <= 0) return null;
+  return `${confirmedCount}/${totalInvitees}`;
+}
+
+function EventCell({ event, compact = false }) {
   const isPast = event.isPast;
   const hasConflict = event.conflictsWith?.length > 0;
+  const displayTitle = event.title;
+  const timeLabel = compact ? event.compactTimeLabel || event.timeLabel : event.timeLabel;
+  const attendanceLabel = event.attendanceLabel || null;
+  const baseTitle = hasConflict ? `Conflicts with: ${event.conflictsWith.join(", ")}` : displayTitle;
+  const tooltip = timeLabel ? `${baseTitle} • ${timeLabel}` : baseTitle;
+
+  if (compact) {
+    return (
+      <div
+        className={`dashboard-calendar-event-compact flex items-center gap-1 text-xs ${isPast ? "opacity-60" : ""}`}
+        style={{
+          backgroundColor: event.groupColor || undefined,
+        }}
+        title={tooltip}
+      >
+        {hasConflict && (
+          <AlertTriangle className="h-3 w-3 flex-shrink-0 text-amber-200" />
+        )}
+        {attendanceLabel && (
+          <span className="dashboard-calendar-attendance flex items-center gap-0.5">
+            <Users className="h-[10px] w-[10px]" />
+            {attendanceLabel}
+          </span>
+        )}
+        {timeLabel && (
+          <span className="dashboard-calendar-event-time text-[10px] opacity-90">
+            {timeLabel}
+          </span>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
-      className={`flex items-center gap-1 text-xs ${isPast ? "opacity-60" : ""}`}
+      className={`dashboard-calendar-event-standard flex flex-col gap-0.5 text-xs leading-tight ${isPast ? "opacity-60" : ""}`}
       style={{
         backgroundColor: event.groupColor || undefined,
       }}
-      title={hasConflict ? `Conflicts with: ${event.conflictsWith.join(", ")}` : event.title}
+      title={tooltip}
     >
-      {hasConflict && (
-        <AlertTriangle className="h-3 w-3 flex-shrink-0 text-amber-200" />
+      {(hasConflict || attendanceLabel || event.status === "OPEN") && (
+        <div className="flex items-center gap-1">
+          {hasConflict && (
+            <AlertTriangle className="h-3 w-3 flex-shrink-0 text-amber-200" />
+          )}
+          {attendanceLabel && (
+            <span className="dashboard-calendar-attendance flex items-center gap-0.5">
+              <Users className="h-[10px] w-[10px]" />
+              {attendanceLabel}
+            </span>
+          )}
+          {event.status === "OPEN" && (
+            <span className="ml-auto text-[10px] opacity-75">Open</span>
+          )}
+        </div>
       )}
-      <span className="truncate font-medium">{event.title}</span>
-      {event.timeLabel && (
-        <span className="ml-1 truncate text-[10px] opacity-90">{event.timeLabel}</span>
-      )}
-      {event.status === "OPEN" && (
-        <span className="ml-auto text-[10px] opacity-75">Open</span>
+      <div className="dashboard-calendar-event-title font-medium">{displayTitle}</div>
+      {timeLabel && (
+        <span className="dashboard-calendar-event-time text-[10px] opacity-90">
+          {timeLabel}
+        </span>
       )}
     </div>
   );
@@ -83,7 +192,7 @@ export function DashboardCalendar({
 }) {
   const [view, setView] = useState("month");
   const [date, setDate] = useState(new Date());
-  const navigate = useNavigate();
+  const safeNavigate = useSafeNavigate();
 
   useEffect(() => {
     const next = focusedDate ? new Date(focusedDate) : null;
@@ -112,10 +221,13 @@ export function DashboardCalendar({
         const displayStart = toDisplayDate(startDate, displayTimeZone) || startDate;
         const displayEnd = toDisplayDate(endDate, displayTimeZone) || endDate;
         const isPast = isBefore(startDate, startOfDay(now));
+        const baseTitle = session.title || "Untitled";
+        const attendanceLabel = resolveMonthAttendanceLabel(session);
 
         return {
           id: session.id,
-          title: session.title || "Untitled",
+          title: baseTitle,
+          attendanceLabel,
           start: displayStart,
           end: displayEnd,
           status: session.status,
@@ -124,7 +236,11 @@ export function DashboardCalendar({
             : null,
           isPast,
           resource: session,
-          timeLabel: formatZonedTimeRange({
+          compactTimeLabel: formatCompactMonthTimeLabel({
+            start: startDate,
+            timeZone: displayTimeZone,
+          }),
+          timeLabel: formatCompactRangeTimeLabel({
             start: startDate,
             end: endDate,
             timeZone: displayTimeZone,
@@ -145,12 +261,7 @@ export function DashboardCalendar({
 
   const handleSelectEvent = (event) => {
     const target = `/scheduler/${event.id}`;
-    navigate(target);
-    setTimeout(() => {
-      if (window.location.pathname !== target) {
-        window.location.assign(target);
-      }
-    }, 50);
+    safeNavigate(target);
   };
 
   const {
@@ -257,7 +368,15 @@ export function DashboardCalendar({
         dayPropGetter={dayPropGetter}
         slotPropGetter={slotPropGetter}
         components={{
-          event: EventCell,
+          month: {
+            event: (props) => <EventCell {...props} compact />,
+          },
+          week: {
+            event: EventCell,
+          },
+          day: {
+            event: EventCell,
+          },
           toolbar: CalendarToolbar,
         }}
         style={{ height }}

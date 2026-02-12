@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Archive, ArchiveRestore, CheckCircle2, MoreVertical, Pencil, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "../../../app/useAuth";
 import { LoadingState } from "../../../components/ui/spinner";
 import {
@@ -13,7 +14,23 @@ import { useUserSettings } from "../../../hooks/useUserSettings";
 import { useUserProfilesByIds } from "../../../hooks/useUserProfiles";
 import { BasicPollVotingCard } from "../../../components/polls/basic-poll-voting-card";
 import { PollDiscordMetaRow } from "../../../components/polls/poll-discord-meta-row";
+import { PollNudgeButton, getNudgeCooldownRemaining } from "../../../components/polls/poll-nudge-button";
 import { PollOptionNoteDialog } from "../../../components/polls/poll-option-note-dialog";
+import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
+import {
+  hasSubmittedVoteForPoll,
+  normalizeVoteOptionIds,
+  normalizeVoteRankings,
+} from "../../../lib/basic-polls/vote-submission";
+import {
+  addRankedOptionToVoteDraft,
+  moveRankedOptionInVoteDraft,
+  removeRankedOptionFromVoteDraft,
+  setMultipleChoiceOptionOnVoteDraft,
+  setOtherTextOnVoteDraft,
+} from "../../../lib/basic-polls/vote-draft";
+import { BASIC_POLL_STATUSES, BASIC_POLL_VOTE_TYPES } from "../../../lib/basic-polls/constants";
+import { coerceDate } from "../../../lib/time";
 import {
   deleteBasicPoll,
   deleteBasicPollVote,
@@ -24,39 +41,9 @@ import {
   subscribeToBasicPollVotes,
   subscribeToMyBasicPollVote,
 } from "../../../lib/data/basicPolls";
+import { nudgeDiscordBasicPoll } from "../../../lib/data/discord";
 
 const MAX_WRITE_IN_LENGTH = 120;
-
-function toDate(value) {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (typeof value?.toDate === "function") return value.toDate();
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function normalizeVoteOptionIds(vote) {
-  return Array.isArray(vote?.optionIds)
-    ? vote.optionIds.filter((id) => typeof id === "string" && id.trim())
-    : [];
-}
-
-function normalizeVoteRankings(vote) {
-  return Array.isArray(vote?.rankings)
-    ? vote.rankings.filter((id) => typeof id === "string" && id.trim())
-    : [];
-}
-
-function hasSubmittedVote(poll, voteDoc) {
-  if (!poll || !voteDoc) return false;
-  const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
-  if (voteType === "RANKED_CHOICE") {
-    return normalizeVoteRankings(voteDoc).length > 0;
-  }
-  const optionIds = normalizeVoteOptionIds(voteDoc);
-  const otherText = String(voteDoc?.otherText || "").trim();
-  return optionIds.length > 0 || otherText.length > 0;
-}
 
 export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
   const { user } = useAuth();
@@ -74,6 +61,8 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
   const [voteError, setVoteError] = useState(null);
   const [optionNoteViewer, setOptionNoteViewer] = useState(null);
   const [headerActionBusy, setHeaderActionBusy] = useState(false);
+  const [nudgeSending, setNudgeSending] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const group = useMemo(
     () => (groups || []).find((entry) => entry.id === groupId) || null,
@@ -95,21 +84,21 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
     return Array.from(ids).filter(Boolean);
   }, [group?.creatorId, group?.memberIds]);
   const { profiles: participantProfilesById = {} } = useUserProfilesByIds(participantIds);
-  const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
-  const isMultipleChoice = voteType === "MULTIPLE_CHOICE";
-  const isRankedChoice = voteType === "RANKED_CHOICE";
+  const voteType = poll?.settings?.voteType || BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE;
+  const isMultipleChoice = voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE;
+  const isRankedChoice = voteType === BASIC_POLL_VOTE_TYPES.RANKED_CHOICE;
   const allowMultiple = poll?.settings?.allowMultiple === true;
   const allowWriteIn = poll?.settings?.allowWriteIn === true;
   const maxSelections = Number.isFinite(poll?.settings?.maxSelections)
     ? Math.max(1, Number(poll.settings.maxSelections))
     : null;
-  const isPollOpen = (poll?.status || "OPEN") === "OPEN";
-  const deadlineAt = toDate(poll?.settings?.deadlineAt || poll?.deadlineAt || null);
+  const isPollOpen = (poll?.status || BASIC_POLL_STATUSES.OPEN) === BASIC_POLL_STATUSES.OPEN;
+  const deadlineAt = coerceDate(poll?.settings?.deadlineAt || poll?.deadlineAt || null);
   const isDeadlinePassed = Boolean(deadlineAt && Date.now() >= deadlineAt.getTime());
   const canVote = isPollOpen && !isDeadlinePassed;
-  const hasSubmitted = hasSubmittedVote(poll, myVote);
+  const hasSubmitted = hasSubmittedVoteForPoll(poll, myVote);
   const voteCount = useMemo(
-    () => (votes || []).filter((voteDoc) => hasSubmittedVote(poll, voteDoc)).length,
+    () => (votes || []).filter((voteDoc) => hasSubmittedVoteForPoll(poll, voteDoc)).length,
     [poll, votes]
   );
   const participantUsers = useMemo(
@@ -129,7 +118,7 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
   );
   const votedUsers = useMemo(() => {
     const entries = (votes || [])
-      .filter((voteDoc) => hasSubmittedVote(poll, voteDoc))
+      .filter((voteDoc) => hasSubmittedVoteForPoll(poll, voteDoc))
       .map((voteDoc) => {
         const profile = participantProfilesById?.[voteDoc.id] || {};
         return {
@@ -158,6 +147,35 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
     : group?.discord?.channelId
       ? "Discord linked"
       : "";
+  const isPollCreator = Boolean(
+    user?.uid && poll?.creatorId && String(poll.creatorId) === String(user.uid)
+  );
+  const nudgeCooldownRemaining = useMemo(
+    () => getNudgeCooldownRemaining(pollDiscord?.nudgeLastSentAt),
+    [pollDiscord?.nudgeLastSentAt]
+  );
+  const basicPollMissingNudgeUserIds = useMemo(() => {
+    if (!poll || !user?.uid) return [];
+
+    const submittedVoterIds = new Set(
+      (votes || [])
+        .filter((voteDoc) => hasSubmittedVoteForPoll(poll, voteDoc))
+        .map((voteDoc) => String(voteDoc?.id || "").trim())
+        .filter(Boolean)
+    );
+
+    return (participantIds || [])
+      .map((participantId) => String(participantId || "").trim())
+      .filter(Boolean)
+      .filter((participantId) => participantId !== String(user.uid))
+      .filter((participantId) => !submittedVoterIds.has(participantId));
+  }, [participantIds, poll, user?.uid, votes]);
+  const showBasicPollNudgeButton = Boolean(
+    isPollCreator &&
+      pollDiscord?.messageId &&
+      isPollOpen &&
+      basicPollMissingNudgeUserIds.length > 0
+  );
   const cardBusy = submittingVote || clearingVote;
 
   useEffect(() => {
@@ -253,64 +271,36 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
 
   function setMultipleChoiceSelection(optionId) {
     setVoteError(null);
+    let selectionLimitReached = false;
     setVoteDraft((previous) => {
-      const selected = Array.isArray(previous.optionIds) ? previous.optionIds : [];
-      const alreadySelected = selected.includes(optionId);
-      if (!allowMultiple) {
-        return {
-          ...previous,
-          optionIds: alreadySelected ? [] : [optionId],
-        };
-      }
-      if (alreadySelected) {
-        return {
-          ...previous,
-          optionIds: selected.filter((entry) => entry !== optionId),
-        };
-      }
-      if (maxSelections && selected.length >= maxSelections) {
-        setVoteError(`You can select up to ${maxSelections} options.`);
-        return previous;
-      }
-      return {
-        ...previous,
-        optionIds: [...selected, optionId],
-      };
+      const { draft, limitReached } = setMultipleChoiceOptionOnVoteDraft(previous, optionId, {
+        allowMultiple,
+        maxSelections,
+      });
+      selectionLimitReached = limitReached;
+      return draft;
     });
+    if (selectionLimitReached && maxSelections) {
+      setVoteError(`You can select up to ${maxSelections} options.`);
+    }
   }
 
   function setOtherText(value) {
-    setVoteDraft((previous) => ({ ...previous, otherText: value }));
+    setVoteDraft((previous) => setOtherTextOnVoteDraft(previous, value));
   }
 
   function addRankedOption(optionId) {
     setVoteError(null);
-    setVoteDraft((previous) => {
-      const rankings = Array.isArray(previous.rankings) ? previous.rankings : [];
-      if (rankings.includes(optionId)) return previous;
-      return { ...previous, rankings: [...rankings, optionId] };
-    });
+    setVoteDraft((previous) => addRankedOptionToVoteDraft(previous, optionId));
   }
 
   function moveRankedOption(optionId, direction) {
-    setVoteDraft((previous) => {
-      const rankings = Array.isArray(previous.rankings) ? [...previous.rankings] : [];
-      const index = rankings.indexOf(optionId);
-      if (index < 0) return previous;
-      const nextIndex = direction === "up" ? index - 1 : index + 1;
-      if (nextIndex < 0 || nextIndex >= rankings.length) return previous;
-      const [item] = rankings.splice(index, 1);
-      rankings.splice(nextIndex, 0, item);
-      return { ...previous, rankings };
-    });
+    setVoteDraft((previous) => moveRankedOptionInVoteDraft(previous, optionId, direction));
   }
 
   function removeRankedOption(optionId) {
     setVoteError(null);
-    setVoteDraft((previous) => {
-      const rankings = Array.isArray(previous.rankings) ? previous.rankings : [];
-      return { ...previous, rankings: rankings.filter((entry) => entry !== optionId) };
-    });
+    setVoteDraft((previous) => removeRankedOptionFromVoteDraft(previous, optionId));
   }
 
   async function submitVote() {
@@ -369,6 +359,30 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
     }
   }
 
+  async function nudgeParticipants() {
+    if (!groupId || !pollId) return;
+    setNudgeSending(true);
+    setVoteError(null);
+    try {
+      const result = await nudgeDiscordBasicPoll(groupId, pollId);
+      const nudgedCount = Number(result?.nudgedCount || 0);
+      const totalNonVoters = Number(result?.totalNonVoters || 0);
+      if (nudgedCount < totalNonVoters) {
+        toast.success(
+          `Nudged ${nudgedCount} participant${nudgedCount === 1 ? "" : "s"} on Discord. ${totalNonVoters - nudgedCount} non-voter${totalNonVoters - nudgedCount === 1 ? " has" : "s have"} not linked Discord.`
+        );
+      } else {
+        toast.success(
+          `Nudged ${nudgedCount} participant${nudgedCount === 1 ? "" : "s"} on Discord!`
+        );
+      }
+    } catch (error) {
+      setVoteError(error?.message || "Failed to nudge participants.");
+    } finally {
+      setNudgeSending(false);
+    }
+  }
+
   async function toggleArchive() {
     if (!archiveKey) return;
     setHeaderActionBusy(true);
@@ -407,15 +421,17 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
     }
   }
 
-  async function deletePollAction() {
+  function deletePollAction() {
     if (!canManagePoll || !groupId || !pollId) return;
-    const confirmed = window.confirm(
-      `Delete "${poll?.title || "this poll"}"? This will remove all votes.`
-    );
-    if (!confirmed) return;
+    setDeleteConfirmOpen(true);
+  }
+
+  async function confirmDeletePollAction() {
+    if (!canManagePoll || !groupId || !pollId) return;
     setHeaderActionBusy(true);
     try {
       await deleteBasicPoll(groupId, pollId, { useServer: true });
+      setDeleteConfirmOpen(false);
       onClose?.();
     } catch (error) {
       setVoteError(error?.message || "Failed to delete poll.");
@@ -449,10 +465,19 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
               messageUrl={pollDiscord?.messageUrl || ""}
               pendingSync={pollDiscord?.pendingSync === true}
               className="mt-2"
-            />
+            >
+              {showBasicPollNudgeButton ? (
+                <PollNudgeButton
+                  onClick={nudgeParticipants}
+                  sending={nudgeSending}
+                  cooldownRemainingMs={nudgeCooldownRemaining}
+                />
+              ) : null}
+            </PollDiscordMetaRow>
           </div>
           <div className="flex items-center gap-2">
-            {canManagePoll && (poll?.status || "OPEN") === "FINALIZED" ? (
+            {canManagePoll &&
+            (poll?.status || BASIC_POLL_STATUSES.OPEN) === BASIC_POLL_STATUSES.FINALIZED ? (
               <button
                 type="button"
                 onClick={reopenPollAction}
@@ -485,7 +510,8 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
-                  {canManagePoll && (poll?.status || "OPEN") === "OPEN" ? (
+                  {canManagePoll &&
+                  (poll?.status || BASIC_POLL_STATUSES.OPEN) === BASIC_POLL_STATUSES.OPEN ? (
                     <DropdownMenuItem onClick={finalizePollAction} disabled={headerActionBusy}>
                       <CheckCircle2 className="mr-2 h-4 w-4" />
                       Finalize
@@ -576,6 +602,16 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
         noteViewer={optionNoteViewer}
         onClose={() => setOptionNoteViewer(null)}
         overlayClassName="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 px-4"
+      />
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title={`Delete "${poll?.title || "this poll"}"?`}
+        description="This will remove all votes and cannot be undone."
+        confirmLabel="Delete poll"
+        confirming={headerActionBusy}
+        onConfirm={confirmDeletePollAction}
+        variant="destructive"
       />
     </div>
   );

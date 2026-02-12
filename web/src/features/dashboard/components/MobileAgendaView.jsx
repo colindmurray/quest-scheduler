@@ -1,6 +1,6 @@
 import { format, formatDistanceToNow, isToday, isTomorrow, isThisWeek } from "date-fns";
-import { useNavigate } from "react-router-dom";
 import { Calendar, ChevronRight } from "lucide-react";
+import { useSafeNavigate } from "../../../hooks/useSafeNavigate";
 import { formatZonedTime, getTimeZoneAbbr, toDisplayDate } from "../../../lib/time";
 
 function groupSessionsByDate(sessions) {
@@ -52,7 +52,7 @@ function getDateLabel(displayDate, rawDate, timeZone, showTimeZone) {
 }
 
 function AgendaItem({ session, groupColor, showVoteNeeded }) {
-  const navigate = useNavigate();
+  const safeNavigate = useSafeNavigate();
   const date = session.winningSlot?.start
     ? new Date(session.winningSlot.start)
     : session.firstSlot?.start
@@ -62,12 +62,7 @@ function AgendaItem({ session, groupColor, showVoteNeeded }) {
 
   const handleOpen = () => {
     const target = `/scheduler/${session.id}`;
-    navigate(target);
-    setTimeout(() => {
-      if (window.location.pathname !== target) {
-        window.location.assign(target);
-      }
-    }, 50);
+    safeNavigate(target);
   };
 
   return (

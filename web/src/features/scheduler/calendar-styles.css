@@ -62,7 +62,27 @@
 }
 
 .rbc-event-content {
-  @apply text-xs truncate;
+  @apply text-xs;
+}
+
+.dashboard-calendar-event-time {
+  @apply whitespace-nowrap flex-shrink-0;
+}
+
+.dashboard-calendar-attendance {
+  @apply flex-shrink-0 text-[10px] font-semibold opacity-95;
+}
+
+.dashboard-calendar-event-title {
+  @apply min-w-0 whitespace-normal break-normal;
+}
+
+.dashboard-calendar-event-standard {
+  @apply min-w-0;
+}
+
+.dashboard-calendar-event-standard .dashboard-calendar-event-time {
+  @apply whitespace-normal break-words;
 }
 
 /* Time View / Week View */

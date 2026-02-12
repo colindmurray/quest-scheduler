@@ -10,6 +10,7 @@ const { normalizeEmail, encodeEmailId } = require("./utils/email");
 const { computeInstantRunoffResults } = require("./basic-polls/irv");
 const { computeMultipleChoiceTallies } = require("./basic-polls/multiple-choice");
 const { computeSchedulerRequiredEmbeddedPollSummary } = require("./basic-polls/required-summary");
+const { hasSubmittedVote: hasSubmittedBasicPollVote } = require("./basic-polls/vote-submission");
 const {
   DISCORD_USERNAME_REGEX,
   LEGACY_DISCORD_TAG_REGEX,
@@ -49,20 +50,6 @@ let fileConfigLoaded = false;
 
 function friendRequestIdForEmails(fromEmail, toEmail) {
   return `friendRequest:${encodeURIComponent(`${fromEmail}__${toEmail}`)}`;
-}
-
-function normalizeVoteOptionIds(values) {
-  if (!Array.isArray(values)) return [];
-  return values.filter((entry) => typeof entry === "string" && entry.trim());
-}
-
-function hasSubmittedBasicPollVote(voteType, allowWriteIn, voteDoc) {
-  if (voteType === "RANKED_CHOICE") {
-    return normalizeVoteOptionIds(voteDoc && voteDoc.rankings).length > 0;
-  }
-  const hasOptionIds = normalizeVoteOptionIds(voteDoc && voteDoc.optionIds).length > 0;
-  const hasWriteIn = allowWriteIn && String((voteDoc && voteDoc.otherText) || "").trim().length > 0;
-  return hasOptionIds || hasWriteIn;
 }
 
 function buildBasicPollFinalResultsSnapshot(pollData, voteDocs) {

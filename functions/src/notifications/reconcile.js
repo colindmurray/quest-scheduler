@@ -1,52 +1,25 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
-const crypto = require("crypto");
 const { FieldValue } = require("firebase-admin/firestore");
 const { normalizeEmail } = require("../utils/email");
 const { resolveNotificationEventType } = require("./constants");
 const { getInAppTemplate } = require("./templates");
+const {
+  buildMetadata,
+  hashEmail,
+  getPendingNotificationsCollection,
+} = require("./shared");
 
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-const hashEmail = (email) =>
-  crypto.createHash("sha256").update(normalizeEmail(email)).digest("hex");
-
-const buildMetadata = (event) => {
-  const metadata = { ...(event.payload?.metadata || {}) };
-
-  if (event.resource?.type === "poll") {
-    metadata.schedulerId = metadata.schedulerId || event.resource.id;
-    metadata.schedulerTitle = metadata.schedulerTitle || event.resource.title;
-  }
-
-  if (event.resource?.type === "group") {
-    metadata.groupId = metadata.groupId || event.resource.id;
-    metadata.groupName = metadata.groupName || event.resource.title;
-  }
-
-  if (event.actor?.uid) {
-    metadata.actorUserId = metadata.actorUserId || event.actor.uid;
-  }
-
-  if (event.actor?.email) {
-    metadata.actorEmail = metadata.actorEmail || event.actor.email;
-  }
-
-  return metadata;
-};
-
 const reconcilePendingNotificationsForUser = async (email, userId) => {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) return { processed: 0 };
 
-  const emailHash = hashEmail(normalizedEmail);
-  const pendingRef = admin
-    .firestore()
-    .collection("pendingNotifications")
-    .doc(emailHash)
-    .collection("events");
+  const pendingRef = getPendingNotificationsCollection(admin.firestore(), normalizedEmail);
+  if (!pendingRef) return { processed: 0 };
 
   const snapshot = await pendingRef.get();
   if (snapshot.empty) return { processed: 0 };
