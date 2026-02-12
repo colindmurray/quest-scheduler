@@ -13,8 +13,8 @@ changelog:
 # Poll Unification + Prettifying — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Phase 1.3 markdown primitive extraction completed and Phase 3.1 session markdown parity applied.
-- Next Step: Phase 1.1/1.2 shared poll metadata and participant summary primitives.
+- Last Completed: Phase 1.2 participant summary primitive and Phase 2.2 Discord metadata row parity landed for scheduler/general poll views.
+- Next Step: Phase 4.1 shared backend Discord sync helpers and trigger wiring.
 - Open Issues: None.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
@@ -201,3 +201,18 @@ Acceptance:
     - `web/src/components/polls/poll-option-note-dialog.test.jsx`
   - Validation:
     - `npm --prefix web run test -- src/components/polls/poll-markdown-content.test.jsx src/components/polls/poll-option-note-dialog.test.jsx src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx src/features/dashboard/DashboardPage.test.jsx` (pass, `19 passed`, exit code `0`).
+- 2026-02-12: Completed participant/discord metadata primitive pass:
+  - Added shared participant summary primitive: `web/src/components/polls/poll-participant-summary.jsx`.
+  - Added shared Discord metadata row primitive: `web/src/components/polls/poll-discord-meta-row.jsx`.
+  - Replaced duplicated participant avatar/count row markup in:
+    - `web/src/components/polls/basic-poll-card.jsx`
+    - `web/src/components/polls/basic-poll-voting-card.jsx`
+  - Added participant summary + Discord metadata parity in:
+    - `web/src/features/dashboard/components/group-basic-poll-modal.jsx`
+    - `web/src/features/scheduler/SchedulerPage.jsx`
+  - Added unit coverage:
+    - `web/src/components/polls/poll-participant-summary.test.jsx`
+    - `web/src/components/polls/poll-discord-meta-row.test.jsx`
+  - Validation:
+    - `npm --prefix web run test -- src/components/polls/poll-participant-summary.test.jsx src/components/polls/poll-discord-meta-row.test.jsx src/components/polls/poll-markdown-content.test.jsx src/components/polls/poll-option-note-dialog.test.jsx src/features/dashboard/DashboardPage.test.jsx src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx` (pass, `25 passed`, exit code `0`).
+    - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).

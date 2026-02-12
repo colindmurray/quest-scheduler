@@ -71,6 +71,21 @@ changelog:
   - Validation:
     - `npm --prefix web run test -- src/components/polls/poll-markdown-content.test.jsx src/components/polls/poll-option-note-dialog.test.jsx src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx src/features/dashboard/DashboardPage.test.jsx` (pass, `19 passed`, exit code `0`).
 
+- 2026-02-12: Poll unification milestone 2 (participant + Discord parity primitives):
+  - Added shared participant summary + Discord metadata row components:
+    - `web/src/components/polls/poll-participant-summary.jsx`
+    - `web/src/components/polls/poll-discord-meta-row.jsx`
+  - Replaced duplicated avatar/count row rendering in basic poll card surfaces.
+  - Added participant avatar summary and Discord metadata visibility in both:
+    - scheduler session poll header context
+    - dashboard general poll modal context
+  - Added tests:
+    - `web/src/components/polls/poll-participant-summary.test.jsx`
+    - `web/src/components/polls/poll-discord-meta-row.test.jsx`
+  - Validation:
+    - `npm --prefix web run test -- src/components/polls/poll-participant-summary.test.jsx src/components/polls/poll-discord-meta-row.test.jsx src/components/polls/poll-markdown-content.test.jsx src/components/polls/poll-option-note-dialog.test.jsx src/features/dashboard/DashboardPage.test.jsx src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx` (pass, `25 passed`, exit code `0`).
+    - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
 - 2026-02-12: Removed legacy poll-create command fallback:
   - `functions/src/discord/worker.js`:
     - `handlePollCreate` now requires subcommand `multiple` or `ranked`.

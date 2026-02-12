@@ -1,4 +1,5 @@
 import { PollMarkdownContent } from "./poll-markdown-content";
+import { PollParticipantSummary } from "./poll-participant-summary";
 
 function toDate(value) {
   if (!value) return null;
@@ -33,6 +34,9 @@ export function BasicPollVotingCard({
   onFinalizePoll,
   onReopenPoll,
   onViewOptionNote,
+  eligibleUsers = [],
+  votedUsers = [],
+  pendingUsers = [],
 }) {
   const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
   const isRanked = voteType === "RANKED_CHOICE";
@@ -104,6 +108,15 @@ export function BasicPollVotingCard({
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {voteCount}/{participantCount} voted
           </p>
+          <PollParticipantSummary
+            eligibleUsers={eligibleUsers}
+            votedUsers={votedUsers}
+            pendingUsers={pendingUsers}
+            eligibleCount={participantCount}
+            votedCount={voteCount}
+            showPending={!isFinalized}
+            className="mt-1"
+          />
           <PollMarkdownContent content={poll?.description} />
         </div>
         {isCreator && (onReopenPoll || onFinalizePoll) ? (
