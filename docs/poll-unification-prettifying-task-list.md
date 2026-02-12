@@ -13,8 +13,8 @@ changelog:
 # Poll Unification + Prettifying — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Full validation gate passed for current poll-unification milestones (web/functions/rules/integration/e2e emulators).
-- Next Step: Deploy branch to staging for manual QA.
+- Last Completed: Deployed `feature/poll-unification-prettifying` to staging after full validation gate pass.
+- Next Step: Manual QA on staging + PR review/merge planning.
 - Open Issues: None.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
@@ -241,3 +241,6 @@ Acceptance:
     - `npm --prefix web run test:rules` (pass, `21 passed`, exit code `0`).
     - `npm --prefix web run test:integration` (pass, `11 passed`, exit code `0`; expected emulator warnings present).
     - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`, exit code `0`).
+- 2026-02-12: Staging deploy completed from `feature/poll-unification-prettifying`:
+  - `./scripts/deploy-staging.sh` (pass).
+  - Hosting URL: `https://quest-scheduler-stg.web.app`.

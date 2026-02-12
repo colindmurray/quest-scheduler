@@ -46,8 +46,8 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Merged `feature/basic-poll-dashboard-ux` into `master`, removed deploy-rejected redundant Firestore indexes, and deployed successfully to staging + production
-- Next Step: Monitor production/staging behavior and begin planning/prioritizing Phase 12+ follow-on work
+- Last Completed: Implemented poll-unification shared UI/backend primitives on `feature/poll-unification-prettifying`, passed full validation gate, and deployed branch to staging
+- Next Step: Manual QA on staging and prepare PR merge for poll-unification milestones
 - Open Issues: None in automated test gates.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
@@ -110,6 +110,10 @@ changelog:
     - `npm --prefix web run test:rules` (pass, `21 passed`, exit code `0`).
     - `npm --prefix web run test:integration` (pass, `11 passed`, exit code `0`; expected emulator warnings only).
     - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`, exit code `0`).
+
+- 2026-02-12: Poll unification staging deploy:
+  - `./scripts/deploy-staging.sh` (pass).
+  - Staging URL: `https://quest-scheduler-stg.web.app`.
 
 - 2026-02-12: Removed legacy poll-create command fallback:
   - `functions/src/discord/worker.js`:
