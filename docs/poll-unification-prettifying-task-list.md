@@ -13,8 +13,8 @@ changelog:
 # Poll Unification + Prettifying — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Phase 4.1 shared backend Discord sync helper extraction and trigger wiring completed.
-- Next Step: Full validation gate run + staging deploy for manual verification.
+- Last Completed: Full validation gate passed for current poll-unification milestones (web/functions/rules/integration/e2e emulators).
+- Next Step: Deploy branch to staging for manual QA.
 - Open Issues: None.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
@@ -231,3 +231,13 @@ Acceptance:
     - `npm --prefix functions run test -- src/discord/sync-core.test.js src/triggers/basic-poll-card.test.js src/triggers/scheduler.helpers.test.js src/triggers/scheduler.test.js` (pass, `31 passed`, exit code `0`).
     - `npm --prefix web run test -- src/components/polls/poll-discord-meta-row.test.jsx src/components/polls/poll-participant-summary.test.jsx src/components/polls/poll-markdown-content.test.jsx src/components/polls/poll-option-note-dialog.test.jsx src/features/dashboard/DashboardPage.test.jsx` (pass, `20 passed`, exit code `0`).
     - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+- 2026-02-12: Completed full validation gate and stabilized e2e parallelism for shared-state emulator data:
+  - `web/e2e/playwright.config.js`:
+    - set `fullyParallel: false`
+    - set default local workers to `1` via `E2E_WORKERS` env override (`workers: Number(process.env.E2E_WORKERS || 1)`)
+  - Full gate results:
+    - `npm --prefix web run test` (pass, `68 files`, `327 passed`, exit code `0`).
+    - `npm --prefix functions run test` (pass, `46 files`, `350 passed`, exit code `0`).
+    - `npm --prefix web run test:rules` (pass, `21 passed`, exit code `0`).
+    - `npm --prefix web run test:integration` (pass, `11 passed`, exit code `0`; expected emulator warnings present).
+    - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`, exit code `0`).

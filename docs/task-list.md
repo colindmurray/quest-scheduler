@@ -101,6 +101,16 @@ changelog:
     - `npm --prefix web run test -- src/components/polls/poll-discord-meta-row.test.jsx src/components/polls/poll-participant-summary.test.jsx src/components/polls/poll-markdown-content.test.jsx src/components/polls/poll-option-note-dialog.test.jsx src/features/dashboard/DashboardPage.test.jsx` (pass, `20 passed`, exit code `0`).
     - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
 
+- 2026-02-12: Poll unification validation hardening + full gate pass:
+  - `web/e2e/playwright.config.js`:
+    - Disabled `fullyParallel` and defaulted local `workers` to `1` (with `E2E_WORKERS` override) to eliminate shared-state e2e flakes in emulator runs.
+  - Full validation gate:
+    - `npm --prefix web run test` (pass, `68 files`, `327 passed`, exit code `0`).
+    - `npm --prefix functions run test` (pass, `46 files`, `350 passed`, exit code `0`).
+    - `npm --prefix web run test:rules` (pass, `21 passed`, exit code `0`).
+    - `npm --prefix web run test:integration` (pass, `11 passed`, exit code `0`; expected emulator warnings only).
+    - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`, exit code `0`).
+
 - 2026-02-12: Removed legacy poll-create command fallback:
   - `functions/src/discord/worker.js`:
     - `handlePollCreate` now requires subcommand `multiple` or `ranked`.
