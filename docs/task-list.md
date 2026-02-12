@@ -53,6 +53,10 @@ changelog:
 
 ## Progress Notes
 
+- 2026-02-12: Expanded Code Health Pt2 planning docs with a dedicated dependency re-evaluation phase:
+  - Updated `docs/code-health-audit-pt2.md` to include explicit adopt/reject criteria for selectively reintroducing removed/optional libraries (`react-hook-form`, `zod`, `@hookform/resolvers`, `@testing-library/jest-dom`, `msw`, `framer-motion`) and to capture additional library opportunities discovered during refactors.
+  - Updated `docs/code-health-audit-pt2-tasks.md` with new Phase 7 (dependency re-evaluation + selective re-introduction) and shifted closeout to Phase 8.
+
 - 2026-02-12: Started executing `docs/code-health-audit-pt2-tasks.md` on branch `feature/code-health-audit-pt2`.
   - Completed Phase 1 (dead/orphaned code + dependency hygiene):
     - Removed orphaned files:

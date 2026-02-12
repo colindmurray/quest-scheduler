@@ -8,6 +8,7 @@ implementationStatus: PLANNED
 note: "Companion audit: docs/code-health-audit-pt2.md"
 changelog:
   - "2026-02-12: Initial task list created from Code Health Audit (Pt 2) findings."
+  - "2026-02-12: Added dependency re-evaluation phase for selective re-introduction of removed/optional libraries."
 ---
 
 # Code Health Audit (Pt 2) — Task List
@@ -187,16 +188,66 @@ Acceptance:
 
 ---
 
-## Phase 7 — Closeout
+## Phase 7 — Dependency Re-Evaluation and Selective Re-Introduction
 
-### 7.1 Re-run full validation and publish outcomes (P1)
+### 7.1 Evaluate removed and optional dependencies with explicit scorecard (P1)
+- Evaluate fit and implementation candidates for:
+  - `react-hook-form`, `zod`, `@hookform/resolvers`
+  - `@testing-library/jest-dom`, `msw`
+  - `framer-motion`
+- Document adopt/reject decision per package in `docs/decisions.md`.
+
+Acceptance:
+- Every package above has a recorded decision with rationale.
+- Reintroduced packages are used in the same PR/chunk; no idle dependencies.
+
+### 7.2 Form/schema spike for poll editors (P1)
+- If approved in 7.1, reintroduce `react-hook-form` + `zod` + resolver.
+- Apply to shared general/embedded poll editor path.
+
+Acceptance:
+- Form logic is schema-driven and simpler than prior home-rolled state handling.
+- Unit/component tests cover key validation paths.
+
+### 7.3 Testing ergonomics spike (P2)
+- If approved in 7.1, reintroduce:
+  - `@testing-library/jest-dom` for clearer assertions
+  - `msw` for targeted network-bound component tests where emulator dependency is overkill
+
+Acceptance:
+- At least one representative test suite demonstrates clearer assertions and deterministic mocks.
+- No regression in integration/e2e confidence.
+
+### 7.4 Motion system evaluation (P3)
+- If approved in 7.1, use `framer-motion` only for high-value shared interactions (not blanket animation rewrites).
+- Establish shared animation primitives/tokens.
+
+Acceptance:
+- Motion usage is intentional and reusable.
+- Accessibility and reduced-motion behavior remain intact.
+
+### 7.5 Evaluate additional library opportunities found during refactor (P2)
+- Keep watch for home-rolled areas that may justify robust libraries, especially:
+  - Discord deadline parsing/runtime validation in functions flows.
+  - Other repeated bespoke parsing/state-machine logic.
+- Add approved candidates to this task list before implementation.
+
+Acceptance:
+- New candidates are scoped with clear adopt/reject criteria.
+- Rejected candidates are documented with reasons.
+
+---
+
+## Phase 8 — Closeout
+
+### 8.1 Re-run full validation and publish outcomes (P1)
 - Run full test/build gate and summarize pass/fail + residual risk.
 
 Acceptance:
 - All required suites pass.
 - Any remaining deferred items are explicitly documented.
 
-### 7.2 Update docs and trackers (P1)
+### 8.2 Update docs and trackers (P1)
 - Update:
   - `docs/code-health-audit-pt2.md` (status refresh + completed items)
   - `docs/task-list.md` (checkpoint/progress notes)
@@ -225,3 +276,4 @@ Acceptance:
     - `npm --prefix web run test:integration` (pass, `11 passed`)
     - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`)
     - `npm --prefix web run build` (pass)
+- 2026-02-12: Added Phase 7 dependency re-evaluation scope to ensure removed/optional libraries are reconsidered intentionally (adopt or reject), not implicitly discarded.

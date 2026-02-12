@@ -174,6 +174,38 @@ Date: 2026-02-12
 - Candidate: shared `AlertDialog` built on Radix primitives.
 - Benefit: consistent UX, better accessibility, deterministic e2e interaction.
 
+4. Test ergonomics and API mocking (optional but high leverage when targeted).
+- Current state: tests mostly rely on emulator-backed integration/e2e and basic RTL assertions.
+- Candidate: `@testing-library/jest-dom` for clearer assertions; `msw` for targeted API/network mocking in unit/component tests.
+- Benefit: more readable tests and faster isolated test coverage where emulator-heavy tests are overkill.
+
+5. Motion system consistency (optional).
+- Current state: transitions are mostly ad hoc Tailwind/CSS classes.
+- Candidate: `framer-motion` for reusable, accessible animation primitives where motion improves UX meaningfully.
+- Benefit: consistent micro-interactions and fewer one-off animation implementations.
+
+## Dependency Re-Evaluation Phase (Required)
+
+Even dependencies previously removed for hygiene should be re-evaluated for strategic re-introduction when they clearly reduce home-rolled complexity.
+
+Scope for explicit re-evaluation:
+- `react-hook-form`
+- `zod`
+- `@hookform/resolvers`
+- `@testing-library/jest-dom`
+- `msw`
+- `framer-motion`
+- and additional candidate libraries discovered during implementation (for example: deadline parsing and runtime schema validation in functions paths).
+
+Adoption rule:
+- A dependency may be reintroduced only when:
+  - it replaces existing bespoke logic with measurable simplification,
+  - it has direct usage in the same change set,
+  - and tests are updated to verify the new behavior.
+
+Rejection rule:
+- If deeper analysis shows poor fit, keep it out and document the rationale in `docs/decisions.md`.
+
 ## Suggested Execution Order
 
 1. Remove confirmed dead files and clean unused dependencies.
@@ -183,8 +215,9 @@ Date: 2026-02-12
    - date coercion
    - notification shared metadata/hash logic
 3. Break up highest-risk monoliths (`SchedulerPage`, `DashboardPage`, Discord worker).
-4. Adopt `react-hook-form` + `zod` in poll editor flows.
-5. Backfill focused tests around extracted hooks/components.
+4. Run dependency re-evaluation phase with adopt/reject decisions (including optional packages).
+5. Adopt approved libraries in targeted areas (starting with form/schema and testing ergonomics).
+6. Backfill focused tests around extracted hooks/components.
 
 ## Notes
 - This is a static audit pass; findings should be re-validated after major refactors.
