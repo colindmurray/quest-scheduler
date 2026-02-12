@@ -46,40 +46,62 @@ const commands = [
     description: "Create a poll for the group linked to this channel",
     options: [
       {
-        type: 3,
-        name: "title",
-        description: "Poll title",
-        required: true,
-      },
-      {
-        type: 3,
-        name: "options",
-        description: "Options separated by | (e.g. Cats | Dogs | Turtles)",
-        required: true,
-      },
-      {
-        type: 3,
-        name: "mode",
-        description: "Voting mode",
-        choices: [
-          { name: "Multiple Choice", value: "multiple-choice" },
-          { name: "Ranked Choice", value: "ranked-choice" },
+        type: 1,
+        name: "multiple",
+        description: "Create a multiple-choice poll",
+        options: [
+          {
+            type: 3,
+            name: "title",
+            description: "Poll title",
+            required: true,
+          },
+          {
+            type: 3,
+            name: "options",
+            description: "Options separated by | (e.g. Cats | Dogs | Turtles)",
+            required: true,
+          },
+          {
+            type: 5,
+            name: "multi",
+            description: "Allow selecting multiple options",
+          },
+          {
+            type: 5,
+            name: "allow_other",
+            description: "Allow write-in Other option",
+          },
+          {
+            type: 3,
+            name: "deadline",
+            description: "Deadline: ISO date (2026-03-15) or relative (3d, 1w)",
+          },
         ],
       },
       {
-        type: 5,
-        name: "multi",
-        description: "Allow selecting multiple options (multiple-choice only)",
-      },
-      {
-        type: 5,
-        name: "allow_other",
-        description: "Allow write-in Other option (multiple-choice only)",
-      },
-      {
-        type: 3,
-        name: "deadline",
-        description: "Deadline: ISO date (2026-03-15) or relative (3d, 1w)",
+        type: 1,
+        name: "ranked",
+        description: "Create a ranked-choice poll",
+        options: [
+          {
+            type: 3,
+            name: "title",
+            description: "Poll title",
+            required: true,
+          },
+          {
+            type: 3,
+            name: "options",
+            description: "Options separated by | (e.g. Cats | Dogs | Turtles)",
+            required: true,
+          },
+          {
+            type: 3,
+            name: "deadline",
+            description: "Deadline: ISO date (2026-03-15) or relative (3d, 1w)",
+          },
+        ],
       },
     ],
   },

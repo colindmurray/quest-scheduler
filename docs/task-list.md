@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-12: Migrated Discord `/poll-create` to subcommands (`multiple`, `ranked`), updated worker parsing for subcommand payloads, re-registered commands (global + two guilds), and deployed Discord worker to prod/staging."
   - "2026-02-12: Fixed Discord ranked basic-poll voting failure by removing invalid collection-group documentId lookup in `processDiscordInteraction`, added regression coverage, and deployed worker to production/staging."
   - "2026-02-12: Removed redundant Firestore indexes rejected by deploy API (`basicPolls.order`, `votes.updatedAt`) and completed staging + production deploys from merged `master`."
   - "2026-02-12: Stabilized flaky dashboard embedded-poll e2e card click/login timing and re-ran full validation gate (web/functions/rules/integration/e2e emulators) with all suites passing."
@@ -49,6 +50,25 @@ changelog:
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
 ## Progress Notes
+
+- 2026-02-12: Discord `/poll-create` subcommand migration:
+  - `functions/scripts/register-discord-commands.js`:
+    - Replaced flat `/poll-create` options with subcommands:
+      - `/poll-create multiple` (`title`, `options`, `multi`, `allow_other`, `deadline`)
+      - `/poll-create ranked` (`title`, `options`, `deadline`)
+  - `functions/src/discord/worker.js`:
+    - Added subcommand-aware option parsing (`getCommandInvocation`, `getCommandSubcommand`) while preserving legacy fallback.
+    - Updated poll-create mode resolution to honor subcommands and prevent invalid ranked option combinations.
+  - `functions/src/discord/worker.poll-create.test.js`:
+    - Updated tests to submit subcommand-shaped payloads.
+    - Added ranked-subcommand assertion verifying ranked defaults (`allowMultiple: false`, `allowWriteIn: false`).
+  - Validation/deploy/register:
+    - `npm --prefix functions run test -- src/discord/worker.poll-create.test.js src/discord/worker.basic-poll.test.js src/discord/worker.test.js` (pass, `24 passed`, exit code `0`).
+    - `firebase deploy --project default --only functions:processDiscordInteraction` (pass).
+    - `firebase deploy --project staging --only functions:processDiscordInteraction` (pass).
+    - `node functions/scripts/register-discord-commands.js --global` (pass).
+    - `node functions/scripts/register-discord-commands.js --guild 701183788851396738` (pass).
+    - `node functions/scripts/register-discord-commands.js --guild 693865335425859675` (pass).
 
 - 2026-02-12: Discord ranked basic-poll voting hotfix:
   - Root cause from production logs (`processDiscordInteraction`):

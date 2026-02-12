@@ -550,11 +550,36 @@ function validateBasicPollDiscordChannel(interaction, pollData, groupData) {
 }
 
 function getCommandOptionValue(interaction, optionName) {
-  const options = Array.isArray(interaction?.data?.options)
-    ? interaction.data.options
-    : [];
+  const { options } = getCommandInvocation(interaction);
   const option = options.find((entry) => entry?.name === optionName);
   return option?.value;
+}
+
+function getCommandInvocation(interaction) {
+  const rootOptions = Array.isArray(interaction?.data?.options)
+    ? interaction.data.options
+    : [];
+  const subcommand = rootOptions.find(
+    (option) =>
+      option &&
+      (option.type === 1 || option.type === 2) &&
+      typeof option.name === "string" &&
+      Array.isArray(option.options)
+  );
+  if (subcommand) {
+    return {
+      subcommand: String(subcommand.name || "").toLowerCase(),
+      options: subcommand.options || [],
+    };
+  }
+  return {
+    subcommand: null,
+    options: rootOptions,
+  };
+}
+
+function getCommandSubcommand(interaction) {
+  return getCommandInvocation(interaction).subcommand;
 }
 
 function isGroupManagerForDiscord(groupData, qsUserId) {
@@ -928,14 +953,17 @@ async function handlePollCreate(interaction) {
     return respondWithError(interaction, ERROR_MESSAGES.notGroupManager);
   }
 
+  const subcommand = getCommandSubcommand(interaction);
   const title = String(getCommandOptionValue(interaction, "title") || "").trim();
   const optionLabels = parsePollCreateOptionLabels(
     getCommandOptionValue(interaction, "options")
   );
-  const mode = String(getCommandOptionValue(interaction, "mode") || "multiple-choice")
+  const legacyMode = String(getCommandOptionValue(interaction, "mode") || "")
     .trim()
     .toLowerCase();
-  const rankedChoice = mode === "ranked-choice";
+  const rankedChoice =
+    subcommand === "ranked" ||
+    (subcommand !== "multiple" && legacyMode === "ranked-choice");
   const allowOther = Boolean(getCommandOptionValue(interaction, "allow_other"));
   const allowMultiple = rankedChoice ? false : Boolean(getCommandOptionValue(interaction, "multi"));
 
@@ -2576,6 +2604,7 @@ exports.__test__ = {
   ensureGroupMemberForBasicPoll,
   validateBasicPollDiscordChannel,
   getCommandOptionValue,
+  getCommandSubcommand,
   isGroupManagerForDiscord,
   parsePollCreateOptionLabels,
   parsePollCreateDeadline,

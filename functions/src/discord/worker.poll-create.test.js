@@ -25,6 +25,16 @@ function buildInteraction(options = []) {
   };
 }
 
+function buildSubcommandInteraction(subcommand, options = []) {
+  return buildInteraction([
+    {
+      type: 1,
+      name: subcommand,
+      options,
+    },
+  ]);
+}
+
 describe("discord worker poll-create", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -224,10 +234,9 @@ describe("discord worker poll-create", () => {
     ];
 
     await worker.__test__.handlePollCreate(
-      buildInteraction([
+      buildSubcommandInteraction("multiple", [
         option("title", "Snack vote"),
         option("options", "Pizza | Tacos | Curry"),
-        option("mode", "multiple-choice"),
         option("multi", true),
         option("allow_other", true),
         option("deadline", "3d"),
@@ -303,7 +312,7 @@ describe("discord worker poll-create", () => {
 
   test("returns no linked group error when channel is not linked", async () => {
     await worker.__test__.handlePollCreate(
-      buildInteraction([
+      buildSubcommandInteraction("multiple", [
         option("title", "Snack vote"),
         option("options", "Pizza | Tacos"),
       ])
@@ -329,7 +338,7 @@ describe("discord worker poll-create", () => {
     ];
 
     await worker.__test__.handlePollCreate(
-      buildInteraction([
+      buildSubcommandInteraction("multiple", [
         option("title", "Snack vote"),
         option("options", "Pizza | Tacos"),
       ])
@@ -355,7 +364,10 @@ describe("discord worker poll-create", () => {
     ];
 
     await worker.__test__.handlePollCreate(
-      buildInteraction([option("title", "Snack vote"), option("options", "Only one")])
+      buildSubcommandInteraction("multiple", [
+        option("title", "Snack vote"),
+        option("options", "Only one"),
+      ])
     );
     expect(editOriginalInteractionResponseMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -365,11 +377,31 @@ describe("discord worker poll-create", () => {
 
     const tooMany = new Array(26).fill(0).map((_, index) => `Option ${index + 1}`).join(" | ");
     await worker.__test__.handlePollCreate(
-      buildInteraction([option("title", "Snack vote"), option("options", tooMany)])
+      buildSubcommandInteraction("multiple", [
+        option("title", "Snack vote"),
+        option("options", tooMany),
+      ])
     );
     expect(editOriginalInteractionResponseMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
         body: expect.objectContaining({ content: "too many options" }),
+      })
+    );
+
+    await worker.__test__.handlePollCreate(
+      buildSubcommandInteraction("ranked", [
+        option("title", "Campaign vote"),
+        option("options", "A | B"),
+      ])
+    );
+    expect(state.pollWrites).toHaveLength(1);
+    expect(state.pollWrites[0]).toEqual(
+      expect.objectContaining({
+        settings: expect.objectContaining({
+          voteType: "RANKED_CHOICE",
+          allowMultiple: false,
+          allowWriteIn: false,
+        }),
       })
     );
 
@@ -400,7 +432,7 @@ describe("discord worker poll-create", () => {
     ];
 
     await worker.__test__.handlePollCreate(
-      buildInteraction([
+      buildSubcommandInteraction("multiple", [
         option("title", "Snack vote"),
         option("options", "Pizza | Tacos"),
         option("deadline", "2000-01-01"),

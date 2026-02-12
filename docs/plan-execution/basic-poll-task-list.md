@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Active plan execution tracker synchronized with docs/task-list.md."
 changelog:
+  - "2026-02-12: Migrated Discord `/poll-create` to `multiple`/`ranked` subcommands, updated worker parsing, re-registered commands (global + target guilds), and deployed worker to prod/staging."
   - "2026-02-12: Hotfixed Discord ranked basic-poll voting resolution path in `processDiscordInteraction` (invalid collection-group documentId query), added regression test, and deployed to production/staging."
   - "2026-02-12: Merged basic-poll dashboard UX branch to `master`, removed deploy-rejected redundant Firestore indexes, and deployed staging + production successfully."
   - "2026-02-12: Stabilized flaky dashboard embedded-poll e2e navigation and completed full validation gate (web/functions/rules/integration/e2e emulators) with all suites passing."
@@ -122,6 +123,20 @@ changelog:
 - [ ] `P3` `13.8` Inline banner: unvoted required embedded polls (Section: Phase 13: Nice-to-Have Enhancements)
 
 ## Progress Notes
+
+- 2026-02-12: `/poll-create` subcommand UX fix:
+  - `functions/scripts/register-discord-commands.js`:
+    - Introduced `multiple` and `ranked` subcommands to prevent invalid option combinations in Discord UI.
+  - `functions/src/discord/worker.js`:
+    - Added subcommand-aware command option extraction and mode resolution.
+    - Maintained legacy payload fallback for compatibility with stale command metadata.
+  - `functions/src/discord/worker.poll-create.test.js`:
+    - Updated to subcommand payload shapes and added ranked-subcommand settings assertions.
+  - Validation/deploy/registration:
+    - `npm --prefix functions run test -- src/discord/worker.poll-create.test.js src/discord/worker.basic-poll.test.js src/discord/worker.test.js` → pass (`24 passed`, exit code `0`).
+    - `firebase deploy --project default --only functions:processDiscordInteraction` → pass.
+    - `firebase deploy --project staging --only functions:processDiscordInteraction` → pass.
+    - `register-discord-commands.js` re-run for global and guilds `701183788851396738`, `693865335425859675` → pass.
 
 - 2026-02-12: Discord basic-poll vote-path hotfix:
   - `functions/src/discord/worker.js`:
