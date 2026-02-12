@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: PLANNED
 note: "Companion audit: docs/code-health-audit-pt2.md"
 changelog:
+  - "2026-02-12: Phase 4.2 additional slice complete: extracted scheduler embedded-poll subscriptions/draft hydration into `useSchedulerEmbeddedPollVotes` with direct hook coverage."
   - "2026-02-12: Phase 2.1 additional slice complete: replaced duplicated embedded vote-submission checks in scheduler create/view flows with shared `hasSubmittedVoteForPoll`."
   - "2026-02-12: Phase 4.2 kickoff slice complete: extracted shared vote-draft helpers and adopted them in scheduler embedded poll and dashboard group poll vote handlers with direct tests."
   - "2026-02-12: Initial task list created from Code Health Audit (Pt 2) findings."
@@ -16,7 +17,7 @@ changelog:
 # Code Health Audit (Pt 2) — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Phase 4.2 kickoff slice complete (shared vote-draft helper extraction adopted by scheduler embedded polls + dashboard group poll modal) with direct helper and impacted-surface coverage.
+- Last Completed: Phase 4.2 second slice complete (`useSchedulerEmbeddedPollVotes` extracted from `SchedulerPage` for embedded-poll subscriptions/draft hydration) with direct hook and full web coverage.
 - Next Step: Continue Phase 4.2 scheduler page decomposition (`SchedulerPage`/`CreateSchedulerPage` extraction slices + targeted tests).
 - Open Issues: None.
 - Last Updated (YYYY-MM-DD): 2026-02-12
@@ -137,6 +138,7 @@ Acceptance:
 - Move business logic into hooks/services.
 - Split major UI sections into composable, testable components.
 - Progress (2026-02-12): kickoff slice complete via shared vote-draft mutation helper extraction (`web/src/lib/basic-polls/vote-draft.js`) and adoption in scheduler/dashboard poll-vote handlers.
+- Progress (2026-02-12): second slice complete via `web/src/features/scheduler/hooks/useSchedulerEmbeddedPollVotes.js`, removing embedded poll subscription/draft hydration effects from `SchedulerPage`.
 
 Acceptance:
 - Large files reduced substantially.

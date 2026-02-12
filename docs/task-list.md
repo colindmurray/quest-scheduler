@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-12: Code Health Pt2 progress: extracted `useSchedulerEmbeddedPollVotes` from `SchedulerPage` (embedded-poll subscriptions + draft hydration), added direct hook tests, and revalidated full web test/build."
   - "2026-02-12: Code Health Pt2 progress: extracted shared basic-poll vote-draft mutation helpers, adopted them in scheduler embedded poll voting + dashboard group poll modal, and kicked off Phase 4.2 scheduler decomposition."
   - "2026-02-12: Code Health Pt2 progress: extracted dashboard basic-poll action orchestration into `use-dashboard-basic-poll-actions`, further reduced dashboard complexity, and re-ran full web + e2e emulator validation."
   - "2026-02-12: Code Health Pt2 progress: extracted dashboard basic-poll source/derivation into dedicated hook+lib modules, split pending-invite/general-poll sidebar sections, reduced `DashboardPage.jsx` to 1352 lines, and added direct tests for `DashboardCalendar` + `useCalendarNavigation`."
@@ -51,12 +52,25 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Code Health Pt2 Phase 4.2 kickoff slice (shared vote-draft helper extraction used by scheduler embedded polls and dashboard group poll modal) with direct coverage.
-- Next Step: Continue Code Health Pt2 Phase 4.2 with scheduler-page hook/component extraction slices in `SchedulerPage` and `CreateSchedulerPage`.
+- Last Completed: Code Health Pt2 Phase 4.2 second slice (`useSchedulerEmbeddedPollVotes` extraction from `SchedulerPage`) with direct hook coverage.
+- Next Step: Continue Code Health Pt2 Phase 4.2 with additional scheduler/create-scheduler hook/component extraction slices.
 - Open Issues: None in automated test gates.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
 ## Progress Notes
+
+- 2026-02-12: Continued Code Health Pt2 Phase 4.2 with scheduler embedded-poll subscription extraction.
+  - Decomposition:
+    - Added `web/src/features/scheduler/hooks/useSchedulerEmbeddedPollVotes.js` to own embedded poll subscriptions (poll docs, vote docs, my vote docs) and vote-draft hydration.
+    - Refactored `web/src/features/scheduler/SchedulerPage.jsx` to consume the hook and removed inline embedded-poll subscription effects.
+    - Reused shared `hasSubmittedVoteForPoll` in `CreateSchedulerPage` for embedded vote-counting logic.
+  - Coverage:
+    - Added `web/src/features/scheduler/hooks/useSchedulerEmbeddedPollVotes.test.js`.
+  - Validation:
+    - `npm --prefix web run test -- src/features/scheduler/hooks/useSchedulerEmbeddedPollVotes.test.js src/features/scheduler/hooks/useSchedulerData.test.js` (pass, `4 passed`, exit code `0`)
+    - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx src/features/dashboard/components/group-basic-poll-modal.test.jsx` (pass, `11 passed`, exit code `0`)
+    - `npm --prefix web run test` (pass, `386 passed`, exit code `0`)
+    - `npm --prefix web run build` (pass, exit code `0`)
 
 - 2026-02-12: Kicked off Code Health Pt2 Phase 4.2 by extracting shared vote-draft mutations.
   - Decomposition:

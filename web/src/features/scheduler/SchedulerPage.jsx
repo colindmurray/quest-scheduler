@@ -24,6 +24,7 @@ import { useFriends } from "../../hooks/useFriends";
 import { useQuestingGroups } from "../../hooks/useQuestingGroups";
 import { useCalendarNavigation } from "../../hooks/useCalendarNavigation";
 import { useSchedulerData } from "./hooks/useSchedulerData";
+import { useSchedulerEmbeddedPollVotes } from "./hooks/useSchedulerEmbeddedPollVotes";
 import { useNotifications } from "../../hooks/useNotifications";
 import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfiles";
 import {
@@ -65,9 +66,6 @@ import {
   fetchRequiredEmbeddedPollFinalizeSummary,
   reopenEmbeddedBasicPoll,
   submitBasicPollVote,
-  subscribeToBasicPollVotes,
-  subscribeToEmbeddedBasicPolls,
-  subscribeToMyBasicPollVote,
 } from "../../lib/data/basicPolls";
 import {
   addRankedOptionToVoteDraft,
@@ -197,12 +195,18 @@ export default function SchedulerPage() {
   const [inviteToRevoke, setInviteToRevoke] = useState(null);
   const [copyVotesOpen, setCopyVotesOpen] = useState(false);
   const [blockingSchedulersById, setBlockingSchedulersById] = useState({});
-  const [embeddedPolls, setEmbeddedPolls] = useState([]);
-  const [embeddedPollsLoading, setEmbeddedPollsLoading] = useState(true);
-  const [embeddedPollVoteCounts, setEmbeddedPollVoteCounts] = useState({});
-  const [embeddedVotesByPoll, setEmbeddedVotesByPoll] = useState({});
-  const [embeddedMyVotes, setEmbeddedMyVotes] = useState({});
-  const [embeddedVoteDrafts, setEmbeddedVoteDrafts] = useState({});
+  const {
+    embeddedPolls,
+    embeddedPollsLoading,
+    embeddedPollVoteCounts,
+    embeddedVotesByPoll,
+    embeddedMyVotes,
+    embeddedVoteDrafts,
+    setEmbeddedVoteDrafts,
+  } = useSchedulerEmbeddedPollVotes({
+    schedulerId: id,
+    userId: user?.uid || null,
+  });
   const [embeddedSubmittingByPoll, setEmbeddedSubmittingByPoll] = useState({});
   const [embeddedClearingByPoll, setEmbeddedClearingByPoll] = useState({});
   const [embeddedVoteErrors, setEmbeddedVoteErrors] = useState({});
@@ -449,27 +453,6 @@ export default function SchedulerPage() {
   }
 
   useEffect(() => {
-    if (!id) {
-      setEmbeddedPolls([]);
-      setEmbeddedPollsLoading(false);
-      return;
-    }
-    setEmbeddedPollsLoading(true);
-    const unsubscribe = subscribeToEmbeddedBasicPolls(
-      id,
-      (polls) => {
-        setEmbeddedPolls(polls || []);
-        setEmbeddedPollsLoading(false);
-      },
-      () => {
-        setEmbeddedPolls([]);
-        setEmbeddedPollsLoading(false);
-      }
-    );
-    return () => unsubscribe();
-  }, [id]);
-
-  useEffect(() => {
     const pollId = parseEmbeddedPollIdFromSearch(location.search);
     setTargetEmbeddedPollId(pollId);
     setHandledEmbeddedPollId(null);
@@ -502,86 +485,6 @@ export default function SchedulerPage() {
     handledEmbeddedPollId,
     targetEmbeddedPollId,
   ]);
-
-  useEffect(() => {
-    setEmbeddedPollVoteCounts({});
-    setEmbeddedVotesByPoll({});
-    if (!id || embeddedPolls.length === 0) return () => {};
-    const unsubscribers = embeddedPolls.map((poll) =>
-      subscribeToBasicPollVotes(
-        "scheduler",
-        id,
-        poll.id,
-        (voteDocs) => {
-          const normalizedVotes = voteDocs || [];
-          const count = (voteDocs || []).filter((voteDoc) => hasSubmittedEmbeddedVote(poll, voteDoc)).length;
-          setEmbeddedVotesByPoll((previous) => ({ ...previous, [poll.id]: normalizedVotes }));
-          setEmbeddedPollVoteCounts((previous) => {
-            if (previous[poll.id] === count) return previous;
-            return { ...previous, [poll.id]: count };
-          });
-        },
-        () => {
-          setEmbeddedVotesByPoll((previous) => ({ ...previous, [poll.id]: [] }));
-          setEmbeddedPollVoteCounts((previous) => ({ ...previous, [poll.id]: 0 }));
-        }
-      )
-    );
-    return () => {
-      unsubscribers.forEach((unsubscribe) => {
-        if (typeof unsubscribe === "function") unsubscribe();
-      });
-    };
-  }, [embeddedPolls, id]);
-
-  useEffect(() => {
-    setEmbeddedMyVotes({});
-    if (!id || !user?.uid || embeddedPolls.length === 0) return () => {};
-    const unsubscribers = embeddedPolls.map((poll) =>
-      subscribeToMyBasicPollVote(
-        "scheduler",
-        id,
-        poll.id,
-        user.uid,
-        (voteDoc) => {
-          setEmbeddedMyVotes((previous) => ({ ...previous, [poll.id]: voteDoc || null }));
-        },
-        () => {
-          setEmbeddedMyVotes((previous) => ({ ...previous, [poll.id]: null }));
-        }
-      )
-    );
-    return () => {
-      unsubscribers.forEach((unsubscribe) => {
-        if (typeof unsubscribe === "function") unsubscribe();
-      });
-    };
-  }, [embeddedPolls, id, user?.uid]);
-
-  useEffect(() => {
-    if (embeddedPolls.length === 0) {
-      setEmbeddedVoteDrafts({});
-      return;
-    }
-    setEmbeddedVoteDrafts((previous) => {
-      const next = { ...previous };
-      embeddedPolls.forEach((poll) => {
-        const myVote = embeddedMyVotes[poll.id] || null;
-        const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
-        if (voteType === "RANKED_CHOICE") {
-          const rankings = Array.isArray(myVote?.rankings) ? myVote.rankings.filter(Boolean) : [];
-          next[poll.id] = { rankings };
-          return;
-        }
-        const optionIds = Array.isArray(myVote?.optionIds) ? myVote.optionIds.filter(Boolean) : [];
-        next[poll.id] = {
-          optionIds,
-          otherText: String(myVote?.otherText || ""),
-        };
-      });
-      return next;
-    });
-  }, [embeddedMyVotes, embeddedPolls]);
 
   const explicitParticipantIds = useMemo(
     () => scheduler.data?.participantIds || [],

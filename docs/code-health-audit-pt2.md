@@ -28,6 +28,7 @@ Date: 2026-02-12
   - Phase 4.1 additional slice: extracted general-poll modal/edit orchestration into `use-dashboard-general-poll-modals`.
   - Phase 2.1 additional slice: replaced duplicated embedded poll vote-submission checks in `SchedulerPage` and `CreateSchedulerPage` with shared `hasSubmittedVoteForPoll`.
   - Phase 4.2 kickoff slice: extracted shared vote-draft mutation helpers into `web/src/lib/basic-polls/vote-draft.js` and adopted them in `SchedulerPage` embedded poll vote handlers and `group-basic-poll-modal` vote handlers.
+  - Phase 4.2 additional slice: extracted scheduler embedded-poll subscriptions and draft hydration into `web/src/features/scheduler/hooks/useSchedulerEmbeddedPollVotes.js` with direct hook tests.
   - Phase 5.1 additional coverage: added direct tests for `DashboardCalendar` and `useCalendarNavigation`.
   - Phase 7.1: documented dependency adopt/reject/defer decisions in `docs/decisions.md` for form/testing/motion packages and additional parsing-library candidates.
 - Remaining high-priority work:
