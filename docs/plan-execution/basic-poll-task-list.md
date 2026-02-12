@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Active plan execution tracker synchronized with docs/task-list.md."
 changelog:
+  - "2026-02-12: Removed legacy `/poll-create` flat payload fallback; worker now enforces `multiple`/`ranked` subcommands only."
   - "2026-02-12: Fixed Discord basic poll card web-link usability by adding a clickable embed link field (`View on web`) and deployed updated Discord card handlers to prod/staging."
   - "2026-02-12: Migrated Discord `/poll-create` to `multiple`/`ranked` subcommands, updated worker parsing, re-registered commands (global + target guilds), and deployed worker to prod/staging."
   - "2026-02-12: Hotfixed Discord ranked basic-poll voting resolution path in `processDiscordInteraction` (invalid collection-group documentId query), added regression test, and deployed to production/staging."
@@ -124,6 +125,19 @@ changelog:
 - [ ] `P3` `13.8` Inline banner: unvoted required embedded polls (Section: Phase 13: Nice-to-Have Enhancements)
 
 ## Progress Notes
+
+- 2026-02-12: Legacy poll-create fallback removal:
+  - `functions/src/discord/worker.js`:
+    - Enforced explicit subcommand requirement for `/poll-create`.
+    - Removed legacy flat payload mode fallback logic.
+  - `functions/src/discord/error-messages.js`:
+    - Added user-facing guidance for required subcommand usage.
+  - `functions/src/discord/worker.poll-create.test.js`:
+    - Added coverage for rejecting legacy payloads and updated ranked test payload.
+  - Validation/deploy:
+    - `npm --prefix functions run test -- src/discord/worker.poll-create.test.js src/discord/error-messages.test.js src/discord/worker.basic-poll.test.js` → pass (`17 passed`, exit code `0`).
+    - `firebase deploy --project default --only functions:processDiscordInteraction` → pass.
+    - `firebase deploy --project staging --only functions:processDiscordInteraction` → pass.
 
 - 2026-02-12: Discord card linkification fix:
   - `functions/src/discord/basic-poll-card.js`:

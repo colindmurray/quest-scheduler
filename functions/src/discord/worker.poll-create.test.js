@@ -200,6 +200,7 @@ describe("discord worker poll-create", () => {
       exports: {
         ERROR_MESSAGES: {
           noLinkedGroupForPoll: "no linked group",
+          pollCreateSubcommandRequired: "poll-create subcommand required",
           notGroupManager: "not manager",
           tooFewOptions: "too few options",
           tooManyOptionsDiscord: "too many options",
@@ -326,6 +327,22 @@ describe("discord worker poll-create", () => {
     expect(createChannelMessageMock).not.toHaveBeenCalled();
   });
 
+  test("rejects legacy poll-create payload without subcommand", async () => {
+    await worker.__test__.handlePollCreate(
+      buildInteraction([
+        option("title", "Legacy shape"),
+        option("options", "Pizza | Tacos"),
+      ])
+    );
+
+    expect(editOriginalInteractionResponseMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({ content: "poll-create subcommand required" }),
+      })
+    );
+    expect(createChannelMessageMock).not.toHaveBeenCalled();
+  });
+
   test("returns manager error when caller cannot manage linked group", async () => {
     const state = worker.__testState;
     state.groupDocs = [
@@ -406,10 +423,9 @@ describe("discord worker poll-create", () => {
     );
 
     await worker.__test__.handlePollCreate(
-      buildInteraction([
+      buildSubcommandInteraction("ranked", [
         option("title", "Campaign vote"),
         option("options", "A | B"),
-        option("mode", "ranked-choice"),
         option("allow_other", true),
       ])
     );

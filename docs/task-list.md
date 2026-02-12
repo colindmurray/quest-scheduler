@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-12: Removed legacy `/poll-create` fallback payload support; Discord worker now requires explicit subcommands (`multiple`/`ranked`) and returns a clear error for legacy shape."
   - "2026-02-12: Updated Discord basic/general poll card formatting to include a clickable `View on web` embed field link (instead of non-clickable footer URL text), with tests and prod/staging function deploys."
   - "2026-02-12: Migrated Discord `/poll-create` to subcommands (`multiple`, `ranked`), updated worker parsing for subcommand payloads, re-registered commands (global + two guilds), and deployed Discord worker to prod/staging."
   - "2026-02-12: Fixed Discord ranked basic-poll voting failure by removing invalid collection-group documentId lookup in `processDiscordInteraction`, added regression coverage, and deployed worker to production/staging."
@@ -51,6 +52,20 @@ changelog:
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
 ## Progress Notes
+
+- 2026-02-12: Removed legacy poll-create command fallback:
+  - `functions/src/discord/worker.js`:
+    - `handlePollCreate` now requires subcommand `multiple` or `ranked`.
+    - Removed legacy mode fallback parsing from flat payloads.
+  - `functions/src/discord/error-messages.js`:
+    - Added `pollCreateSubcommandRequired` guidance message.
+  - `functions/src/discord/worker.poll-create.test.js`:
+    - Added regression test ensuring legacy payload (no subcommand) is rejected.
+    - Updated ranked constraint test to use subcommand-shaped payload.
+  - Validation/deploy:
+    - `npm --prefix functions run test -- src/discord/worker.poll-create.test.js src/discord/error-messages.test.js src/discord/worker.basic-poll.test.js` (pass, `17 passed`, exit code `0`).
+    - `firebase deploy --project default --only functions:processDiscordInteraction` (pass).
+    - `firebase deploy --project staging --only functions:processDiscordInteraction` (pass).
 
 - 2026-02-12: Discord basic poll card link UX fix:
   - `functions/src/discord/basic-poll-card.js`:

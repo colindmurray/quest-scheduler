@@ -33,6 +33,8 @@ const ERROR_MESSAGES = {
     "This poll's questing group no longer exists. Ask the host to re-share the poll.",
   noLinkedGroupForPoll:
     "No Quest Scheduler group is linked to this channel. Use `/link-group` first.",
+  pollCreateSubcommandRequired:
+    "Use `/poll-create multiple` or `/poll-create ranked`.",
   notGroupManager: "Only group managers can create or finalize polls.",
   tooFewOptions: "A poll needs at least 2 options.",
   tooManyOptionsDiscord:

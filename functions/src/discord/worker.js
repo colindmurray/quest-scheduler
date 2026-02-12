@@ -944,6 +944,11 @@ async function handlePollCreate(interaction) {
   const linked = await getBasicPollLinkedUser(interaction);
   if (!linked) return;
 
+  const subcommand = getCommandSubcommand(interaction);
+  if (subcommand !== "multiple" && subcommand !== "ranked") {
+    return respondWithError(interaction, ERROR_MESSAGES.pollCreateSubcommandRequired);
+  }
+
   const linkedGroup = await getLinkedGroupForChannel(interaction);
   if (!linkedGroup) {
     return respondWithError(interaction, ERROR_MESSAGES.noLinkedGroupForPoll);
@@ -953,17 +958,11 @@ async function handlePollCreate(interaction) {
     return respondWithError(interaction, ERROR_MESSAGES.notGroupManager);
   }
 
-  const subcommand = getCommandSubcommand(interaction);
   const title = String(getCommandOptionValue(interaction, "title") || "").trim();
   const optionLabels = parsePollCreateOptionLabels(
     getCommandOptionValue(interaction, "options")
   );
-  const legacyMode = String(getCommandOptionValue(interaction, "mode") || "")
-    .trim()
-    .toLowerCase();
-  const rankedChoice =
-    subcommand === "ranked" ||
-    (subcommand !== "multiple" && legacyMode === "ranked-choice");
+  const rankedChoice = subcommand === "ranked";
   const allowOther = Boolean(getCommandOptionValue(interaction, "allow_other"));
   const allowMultiple = rankedChoice ? false : Boolean(getCommandOptionValue(interaction, "multi"));
 
