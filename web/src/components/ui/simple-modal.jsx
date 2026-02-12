@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "../../lib/utils";
 
-export function SimpleModal({ open, onOpenChange, children }) {
+export function SimpleModal({ open, onOpenChange, children, contentClassName }) {
   useEffect(() => {
     if (!open) return undefined;
     const handleKeyDown = (event) => {
@@ -27,7 +27,8 @@ export function SimpleModal({ open, onOpenChange, children }) {
       <div
         className={cn(
           "relative z-50 w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl dark:bg-slate-900",
-          "data-[state=open]:animate-in data-[state=closed]:animate-out"
+          "data-[state=open]:animate-in data-[state=closed]:animate-out",
+          contentClassName
         )}
         onMouseDown={(event) => event.stopPropagation()}
       >

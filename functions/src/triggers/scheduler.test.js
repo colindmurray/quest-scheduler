@@ -250,6 +250,41 @@ describe('scheduler triggers', () => {
     );
   });
 
+  test('handleDiscordPollDelete posts deletion status and lifecycle ping when enabled', async () => {
+    groupExists = true;
+    groupData = {
+      discord: {
+        notifyRoleId: 'role1',
+        notifications: { finalizationEvents: true },
+      },
+      memberIds: [],
+    };
+
+    await schedulerTriggers.handleDiscordPollDelete.run({
+      params: { schedulerId: 'sched1' },
+      data: {
+        data: () => ({
+          title: 'Quest Session',
+          questingGroupId: 'group1',
+          discord: { messageId: 'msg1', channelId: 'chan1', guildId: 'guild1' },
+        }),
+      },
+    });
+
+    expect(editChannelMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'chan1', messageId: 'msg1' })
+    );
+    expect(createChannelMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: 'chan1',
+        body: expect.objectContaining({
+          content: expect.stringContaining('Poll deleted for **Quest Session**.'),
+          allowed_mentions: { roles: ['role1'] },
+        }),
+      })
+    );
+  });
+
   test('processDiscordSchedulerUpdate edits message without finalization note', async () => {
     schedulerData = {
       status: 'FINALIZED',

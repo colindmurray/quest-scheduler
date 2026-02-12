@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
 import { format, parse, startOfWeek, getDay, isBefore, startOfDay, startOfHour } from "date-fns";
@@ -78,11 +78,18 @@ function EventCell({ event }) {
 export function DashboardCalendar({
   sessions = [],
   getGroupColor = () => null,
+  focusedDate = null,
   height = 500,
 }) {
   const [view, setView] = useState("month");
   const [date, setDate] = useState(new Date());
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const next = focusedDate ? new Date(focusedDate) : null;
+    if (!next || Number.isNaN(next.getTime())) return;
+    setDate(next);
+  }, [focusedDate]);
 
   const events = useMemo(() => {
     const now = new Date();

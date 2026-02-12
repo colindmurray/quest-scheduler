@@ -1,12 +1,34 @@
 ---
 created: 2026-01-06
-lastUpdated: 2026-02-11
+lastUpdated: 2026-02-12
 summary: "Primary global execution tracker for current long-running work, checkpoints, and validation notes."
 category: TASK_TRACKER
 status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-12: Stabilized flaky dashboard embedded-poll e2e card click/login timing and re-ran full validation gate (web/functions/rules/integration/e2e emulators) with all suites passing."
+  - "2026-02-12: Finalized General Poll modal polish pass (settings button, inline `+ Option | + Other`, ranked help icon simplification), reworked calendar nav alignment/centering, and redeployed hosting to staging."
+  - "2026-02-12: Updated poll modal voting setup to multiple/ranked + customization popover chips (allow multiple, max selections), enforced max-selection bounds, and centered calendar nav controls within date picker."
+  - "2026-02-12: Refined General Poll modal to compact single-column layout, moved voting setup into Options header, replaced deadline input with chip+popover calendar/time picker, and added write-in option toggle row."
+  - "2026-02-12: Refined General Poll create/edit modal UX with wider two-panel layout, cleaner settings cards, improved option editing controls, and enhanced visual hierarchy."
+  - "2026-02-12: Switched general-poll edit to shared create/edit modal flow, removed dedicated group-poll page routing in favor of dashboard redirect + modal open params, and added edit-mode modal test coverage."
+  - "2026-02-12: Expanded Discord channel-role critical-event coverage to include general poll lifecycle events (created/finalized/re-opened/deleted), added scheduler cancel/restore lifecycle emits and delete role pings, and renamed Group settings copy to `Channel notification role`."
+  - "2026-02-11: Removed Questing Groups page poll UI/logic (Polls/Open polls/Recent finalized/Create poll) and validated with focused settings tests + web build."
+  - "2026-02-11: Moved date-filter `Clear` action into the date popover header row to remove unnecessary vertical space."
+  - "2026-02-11: Centered chip labels, widened date filter popover, and hardened date-range normalization (always valid start/end ordering)."
+  - "2026-02-11: Fixed newly-added dashboard filter chips auto-closing immediately by ignoring the first post-add dismiss event."
+  - "2026-02-11: Switched chip filter editing to popover overlays (matching `+ Filter`) and removed apply buttons in favor of immediate-save behavior."
+  - "2026-02-11: Reworked dashboard filters into chip-based add/edit/remove UX with `+ Filter`, animated editor panels, and compact one-line desktop layout."
+  - "2026-02-11: Replaced dashboard filter block with a compact multi-filter bar (group colorized select, search, status multi-select, date window) and synced session calendar focus to the selected start date."
+  - "2026-02-11: Deployed latest web/functions changes to staging (hosting, functions, storage rules, firestore rules)."
+  - "2026-02-11: Fixed timezone label formatting so Pacific/Auckland no longer collapses to plain GMT during auto-convert."
+  - "2026-02-11: Renamed dashboard/basic-poll UI copy to General Polls, added kebab action menus, converted scheduler embedded poll heading to Add-on polls, and switched scheduler add-on poll cards to 2-column layout."
+  - "2026-02-11: Added desktop dashboard modal flow for group basic polls and introduced shared basic-poll voting card UI reused by scheduler embedded polls."
+  - "2026-02-11: Switched dashboard basic-poll cards to whole-card navigation and removed inline edit-vote action button."
+  - "2026-02-11: Aligned dashboard basic-poll cards with session-card UX language (hover, spacing, chips, avatar rows, accent borders)."
+  - "2026-02-11: Fixed dashboard basic-poll loading loop by decoupling fetch state from derived card classification."
+  - "2026-02-11: Added dashboard basic-poll UX card system with tabbed states, avatar stacks, tests, and staging deploy."
   - "2026-02-11: Added embedded poll independent finalize/reopen flow for scheduler polls and validated unit/rules/integration/e2e coverage."
   - "2026-02-11: Rechecked pending/ongoing doc statuses and corrected completed design docs."
   - "2026-02-02: chore: ignore local env and gemini settings"
@@ -19,12 +41,339 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: `basic-poll` `P1 A.16`
-- Next Step: Execute `basic-poll` `P3 12.1` (Discord `/session-create` post-core phase)
-- Open Issues: Firestore indexes deploy currently fails in staging with HTTP 400 for at least one unnecessary composite index in `firestore.indexes.json`; deploys succeed when scoping Firestore to rules only.
-- Last Updated (YYYY-MM-DD): 2026-02-11
+- Last Completed: Stabilized remaining flaky dashboard embedded-poll e2e flow and completed full validation gate across web/functions/rules/integration/e2e emulators (all passing)
+- Next Step: Commit validated changes, merge `feature/basic-poll-dashboard-ux` to `main`, and deploy to staging + production
+- Open Issues: None in automated test gates.
+- Last Updated (YYYY-MM-DD): 2026-02-12
 
 ## Progress Notes
+
+- 2026-02-12: Full validation sweep + e2e stability hardening:
+  - `web/e2e/basic-poll-dashboard-embedded.spec.js`:
+    - Added resilient dashboard-card click helper to handle transient detach/re-render timing in poll cards.
+    - Hardened auth/login helper (`domcontentloaded`, visible field waits, `/auth` exit assertion) and raised per-test timeout to reduce emulator timing flake.
+  - Validation:
+    - `npm --prefix web run test` (pass, `64 files`, `316 passed`, exit code `0`).
+    - `npm --prefix functions run test` (pass, `45 files`, `344 passed`, exit code `0`).
+    - `npm --prefix web run test:rules` (pass, `21 passed`, exit code `0`).
+    - `npm --prefix web run test:integration` (pass, `11 passed`, exit code `0`; expected emulator warnings only).
+    - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`, exit code `0`).
+
+- 2026-02-12: Latest modal/calendar polish + staging deploy:
+  - `web/src/features/basic-polls/components/CreateGroupPollModal.jsx`:
+    - Replaced `+ Customization` label with `Settings`.
+    - Removed options-header `+ Add option` button and added centered inline footer actions: `+ Option | + Other`.
+    - Simplified ranked-choice help icon treatment (single icon, no extra outer circle wrapper).
+  - `web/src/components/ui/calendar.jsx`:
+    - Reworked day-picker layout classes so month caption remains centered with previous/next arrows visually aligned around the month header.
+    - Improved horizontal centering behavior across month grid/week rows.
+  - Validation and deploy:
+    - `npm --prefix web run test -- src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/dashboard/DashboardPage.test.jsx` (pass, `12 passed`, exit code `0`).
+    - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+    - `DEPLOY_ONLY=hosting ./scripts/deploy-staging.sh` (pass; hosting deployed to `https://quest-scheduler-stg.web.app`).
+
+- 2026-02-12: Modal customization-chip and calendar navigation pass:
+  - `web/src/features/basic-polls/components/CreateGroupPollModal.jsx`:
+    - Simplified vote-type selector to `Multiple choice` and `Ranked choice`.
+    - Added `+ Customization` popover for multiple-choice settings.
+    - Added removable customization chips:
+      - `Allow multiple`
+      - `Max selections: N`
+    - Added validation: max selections must be `> 2` and `< total option count`.
+    - Hid max-selection controls unless `Allow multiple` is enabled.
+  - `web/src/components/ui/calendar.jsx`:
+    - Repositioned previous/next arrows inside the month header area.
+    - Centered calendar month layout horizontally.
+  - Added/updated tests:
+    - `web/src/features/basic-polls/components/CreateGroupPollModal.test.jsx` (chip removal and max-selection bound validation).
+- 2026-02-12: Validation for customization-chip/calendar pass:
+  - `npm --prefix web run test -- src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/dashboard/DashboardPage.test.jsx` (pass, `12 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-12: Follow-up modal UX refinement based on review feedback:
+  - `web/src/features/basic-polls/components/CreateGroupPollModal.jsx`:
+    - Returned modal to compact single-column layout.
+    - Replaced deadline `datetime-local` field with optional deadline chip + themed popover editor (calendar + time).
+    - Moved voting setup controls into the Options panel header via styled dropdown selector.
+    - Added ranked-choice help as hover tooltip instead of inline explanatory block.
+    - Moved multiple-choice controls into the Options header and added `+ Write-in option` flow that toggles an explicit removable write-in row.
+- 2026-02-12: Validation for compact modal follow-up:
+  - `npm --prefix web run test -- src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/dashboard/DashboardPage.test.jsx` (pass, `10 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-12: Streamlined and restyled General Poll create/edit modal UX:
+  - `web/src/components/ui/simple-modal.jsx`:
+    - Added `contentClassName` prop to allow modal width/layout overrides for high-density dialogs.
+  - `web/src/features/basic-polls/components/CreateGroupPollModal.jsx`:
+    - Reworked modal into a wider two-panel structure with clearer information hierarchy.
+    - Added polished header with quick context chips (group, vote type, option count).
+    - Grouped fields into visual cards (content/options vs voting/deadline settings).
+    - Replaced plain vote-type select with a cleaner segmented choice UI.
+    - Improved options rows with numeric badges, icon-based reorder controls, and clearer action spacing.
+    - Tightened footer/action region for less visual clutter while preserving existing behavior.
+- 2026-02-12: Validation for General Poll modal UX refresh:
+  - `npm --prefix web run test -- src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/dashboard/DashboardPage.test.jsx` (pass, `10 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-12: General poll modal-only flow hardening:
+  - `web/src/features/basic-polls/components/CreateGroupPollModal.jsx`:
+    - Added edit mode support to reuse the create modal for edits (`mode="edit"` + `initialPoll` + `onEdited`).
+    - Prefills title/description/options/settings/deadline from existing poll state.
+    - Locks questing-group selection in edit mode (no group switch during edit).
+    - Persists edits through `updateBasicPoll(...)`.
+  - `web/src/features/dashboard/DashboardPage.jsx`:
+    - Switched general-poll edit action to open the shared edit modal instead of navigating to a dedicated page.
+    - Switched group general-poll open behavior to dashboard modal flow (no desktop/mobile route split).
+    - Added support for opening a poll modal from dashboard query params (`groupPollGroupId`, `groupPollId`) so legacy links can route into the dashboard modal experience.
+  - `web/src/features/dashboard/components/group-basic-poll-modal.jsx`:
+    - Replaced `Edit` action navigation with callback-driven edit modal opening in dashboard context.
+  - `web/src/App.jsx`:
+    - Removed dedicated `GroupPollPage` route rendering.
+    - Added protected redirect for `/groups/:groupId/polls/:pollId` to `/dashboard?...` modal params.
+  - Removed obsolete dedicated page implementation files:
+    - deleted `web/src/features/basic-polls/GroupPollPage.jsx`
+    - deleted `web/src/features/basic-polls/GroupPollPage.test.jsx`
+  - Added test coverage:
+    - `web/src/features/basic-polls/components/CreateGroupPollModal.test.jsx` (edit-mode prefill + locked group + update call).
+- 2026-02-12: Validation for modal-only general-poll flow:
+  - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx src/features/basic-polls/components/CreateGroupPollModal.test.jsx` (pass, `10 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-12: Expanded Discord critical-event role notifications and updated settings terminology:
+  - `functions/src/notifications/discord.js`:
+    - Added Discord routing support for general poll lifecycle events:
+      - `BASIC_POLL_CREATED`
+      - `BASIC_POLL_FINALIZED`
+      - `BASIC_POLL_REOPENED`
+      - `BASIC_POLL_REMOVED`
+      - `BASIC_POLL_FINALIZED_WITH_MISSING_REQUIRED_VOTES`
+    - Added lifecycle coverage hooks for `POLL_CREATED` and `POLL_RESTORED`.
+    - Added parent-aware Discord context resolution for `basicPoll` resources (`group` and `scheduler` parents).
+    - Added role-mention message builders for critical general poll lifecycle updates.
+  - `functions/src/triggers/scheduler.js`:
+    - Added delete-time role ping message (respecting group Discord lifecycle setting) in `handleDiscordPollDelete`.
+  - `web/src/features/scheduler/SchedulerPage.jsx`:
+    - Added lifecycle notification emits for `POLL_CANCELLED` and `POLL_RESTORED` so Discord role pings flow through the notification router for cancel/restore events.
+  - `web/src/features/scheduler/CreateSchedulerPage.jsx`:
+    - Added `POLL_CREATED` lifecycle notification emit on new session poll creation so Discord role pings fire when a fresh session poll card is posted.
+  - `web/src/features/scheduler/utils/poll-lifecycle-notifications.js`:
+    - Added `POLL_RESTORED` to the lifecycle event allowlist used for discord-linked no-recipient fallback emission.
+  - `web/src/features/scheduler/utils/poll-lifecycle-notifications.test.js`:
+    - Added coverage for `POLL_RESTORED` lifecycle emission behavior.
+  - `web/src/features/settings/components/GroupCard.jsx`:
+    - Renamed `Finalization notification` UI copy to `Channel notification role`.
+    - Renamed `Finalization & reschedule updates` toggle copy to `Critical lifecycle updates`.
+    - Updated helper descriptions to reflect created/finalized/re-opened/cancelled/deleted coverage.
+  - Updated tests:
+    - `functions/src/notifications/discord.test.js`
+    - `functions/src/triggers/scheduler.test.js`
+- 2026-02-12: Validation for Discord notification-role coverage and copy updates:
+  - `npm --prefix functions run test -- src/notifications/discord.test.js src/triggers/scheduler.test.js` (pass, `20 passed`, exit code `0`).
+  - `npm --prefix web run test -- src/features/settings/components/GroupCard.test.jsx src/features/scheduler/utils/poll-lifecycle-notifications.test.js` (pass, `9 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-11: Removed poll logic from Questing Groups cards:
+  - `web/src/features/settings/components/GroupCard.jsx`:
+    - Removed group poll subscriptions, vote-count subscriptions, and poll helper state/functions.
+    - Removed poll UI section (`Polls`, `Open polls`, `Recent finalized`) and removed `Create poll` action/modal usage.
+  - `web/src/features/settings/components/GroupCard.test.jsx`:
+    - Removed poll subscription/auth mocks and poll-specific tests.
+    - Added regression assertion that poll sections/actions are absent on group cards.
+- 2026-02-11: Validation for Questing Groups poll cleanup:
+  - `npm --prefix web run test -- src/features/settings/components/GroupCard.test.jsx` (pass, `3 passed`, exit code `0`).
+  - `npm --prefix web run test -- src/features/settings/SettingsPage.test.jsx` (pass, `3 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-11: Adjusted date-range popover layout:
+  - `web/src/features/dashboard/DashboardPage.jsx`:
+    - Moved the date filter `Clear` action into the header row beside `DATE RANGE` to keep the popover compact and avoid an extra row.
+- 2026-02-11: Validation for date-range popover layout tweak:
+  - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx` (pass, `9 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-11: Polished dashboard filter chips and date-range editor:
+  - `web/src/features/dashboard/DashboardPage.jsx`:
+    - Centered chip labels horizontally/vertically within filter chips.
+    - Added defensive date-range normalization so start/end ordering is always valid for filtering/display.
+    - Increased date filter popover width and date field minimum widths to prevent wrapping.
+  - `web/src/components/ui/date-picker.jsx`:
+    - Added `whitespace-nowrap` to prevent dates wrapping onto multiple lines in compact contexts.
+- 2026-02-11: Validation for dashboard filter chip/date-range polish:
+  - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx` (pass, `9 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-11: Fixed dashboard filter-chip add flow regression:
+  - `web/src/features/dashboard/DashboardPage.jsx`:
+    - Added first-dismiss guard for newly added filter chips so the editor popover stays open after selecting a filter from `+ Filter`.
+    - Preserved close-on-empty behavior once the user explicitly dismisses an untouched pending filter.
+- 2026-02-11: Validation for dashboard filter-chip add flow regression fix:
+  - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx` (pass, `9 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-11: Refined chip-filter editing UX to use popover overlays and immediate-save behavior:
+  - `web/src/features/dashboard/DashboardPage.jsx`:
+    - Removed inline expanding filter editor panel under the filter bar.
+    - Replaced chip editing with popover overlays matching the `+ Filter` add-filter interaction.
+    - Removed Apply buttons; filter changes now apply immediately as selections are made.
+    - Added pending-chip close behavior: if a newly added filter remains empty when dismissed, the chip disappears.
+    - Preserved compact desktop one-line layout and mobile wrapping behavior.
+- 2026-02-11: Validation for popover immediate-save filter UX:
+  - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx` (pass, `9 passed`, exit code `0`).
+  - `npm --prefix web run test -- src/features/dashboard` (pass, `20 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-11: Reworked dashboard filtering to chip-based add/edit/remove UX:
+  - `web/src/features/dashboard/DashboardPage.jsx`:
+    - Kept free-text search and replaced static controls with dynamic filter chips plus a `+ Filter` chip.
+    - Added add-filter picker (`Questing group`, `Status`, `Date range`) with animated reveal behavior.
+    - Added compact read-only chips that summarize active filters and reopen pre-filled editors when clicked.
+    - Added hover remove affordance (`x`) on chips to remove filters quickly.
+    - Added animated inline editor panels for group/status/date filters with apply/cancel semantics.
+    - Kept desktop one-line layout behavior and mobile wrap behavior (chips above search when needed).
+  - Filtering behavior remains unified across session polls and general polls.
+- 2026-02-11: Validation for chip-based dashboard filter UX:
+  - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx` (pass, `9 passed`, exit code `0`).
+  - `npm --prefix web run test -- src/features/dashboard` (pass, `20 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-11: Implemented compact dashboard filter bar and unified filtering across session + general polls:
+  - `web/src/features/dashboard/DashboardPage.jsx`:
+    - Replaced the old titled dashboard filter block with a compact inline filter bar.
+    - Added colorized questing-group selector using the selected group color.
+    - Added free-text search (title + description) applied to both session polls and general polls.
+    - Added unified status multi-select (`Open`, `Finalized`, `Cancelled`, `Closed`, `Archived`) applied to both session and general poll datasets.
+    - Added date-window filtering (`From` / `To`) for both session and general polls.
+    - Added clear-all filters action and filter-state summaries.
+    - Wired filter start date to the session calendar focus date.
+  - `web/src/features/dashboard/components/DashboardCalendar.jsx`:
+    - Added `focusedDate` prop and synchronization effect so dashboard date-filter start updates calendar visible date/month.
+  - `web/src/features/dashboard/DashboardPage.test.jsx`:
+    - Added coverage for text-filter behavior across session/general poll cards.
+    - Added coverage for status + date filter behavior across session/general poll cards.
+- 2026-02-11: Validation for compact dashboard filter bar updates:
+  - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx` (pass, `9 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-11: Implemented dashboard questing-group filter + dashboard general-poll creation flow:
+  - `web/src/features/dashboard/DashboardPage.jsx`:
+    - Added dashboard-level questing-group selector (`Dashboard filter`) that scopes session and general-poll lists to a selected group.
+    - Added `+ New poll` action to the `General Polls` section (visible for questing-group members, enabled for group managers).
+    - Wired dashboard create flow via `CreateGroupPollModal` and post-create dashboard refresh.
+    - Added refresh nonce path so create/finalize/reopen/delete actions refresh dashboard general-poll sources.
+  - `web/src/features/basic-polls/components/CreateGroupPollModal.jsx`:
+    - Added dashboard mode with selectable questing group (reusing scheduler `QuestingGroupSelect` dropdown).
+    - Preserved existing fixed-group settings flow behavior.
+  - `web/src/features/scheduler/components/questing-group-select.jsx`:
+    - Added optional `showNoneOption` prop for required-selection contexts.
+  - Updated coverage:
+    - `web/src/features/dashboard/DashboardPage.test.jsx`
+    - `web/e2e/basic-poll-dashboard-embedded.spec.js` (dashboard card behavior alignment + create-from-dashboard flow)
+- 2026-02-11: Validation for dashboard filter/create updates:
+  - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx` (pass, `7 passed`, exit code `0`).
+  - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx src/features/settings/SettingsPage.test.jsx src/lib/data/basicPolls.test.js` (pass, `37 passed`, exit code `0`).
+  - `npm --prefix functions run test -- src/basic-polls/callables.test.js src/triggers/basic-poll-card.test.js` (pass, `26 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warning).
+  - `set -a; source web/.env.e2e.local; set +a; firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT "node functions/scripts/seed-e2e-scheduler.js && npm --prefix web run test:e2e -- e2e/basic-poll-dashboard-embedded.spec.js"` (pass; `2 passed`, `6 skipped`, exit code `0`).
+
+- 2026-02-11: Deployed current workspace state to staging after timezone-label fix:
+  - Command: `DEPLOY_ONLY=hosting,functions,storage,firestore:rules ./scripts/deploy-staging.sh`
+  - Result: deploy succeeded (hosting release complete, functions updated, storage/firestore rules released).
+  - Staging URL: `https://quest-scheduler-stg.web.app`
+
+- 2026-02-11: Fixed auto-convert timezone label regression affecting Pacific/Auckland:
+  - Root cause: timezone label parsing extracted uppercase letters and collapsed values like `GMT+13` into `GMT`.
+  - Updated `web/src/lib/time.js` and `functions/src/discord/time-utils.js` to use the formatter-provided short timezone token directly with whitespace normalization only.
+  - Added regression tests:
+    - `web/src/lib/time.test.js`
+    - `functions/src/discord/time-utils.test.js`
+- 2026-02-11: Validation for timezone label regression fix:
+  - `npm --prefix web run test -- src/lib/time.test.js` (pass, `6 passed`, exit code `0`).
+  - `npm --prefix functions run test -- src/discord/time-utils.test.js src/discord/poll-card.test.js` (pass, `5 passed`, exit code `0`).
+
+- 2026-02-11: Applied General Polls terminology + action-menu UX pass:
+  - Dashboard card copy updated from `Basic Polls` to `General Polls` and subtitle shortened to `Standalone and add-on polls.`.
+  - Added kebab menus to dashboard general poll cards (`web/src/components/polls/basic-poll-card.jsx`) with operations:
+    - archive/unarchive
+    - re-open (when finalized)
+    - finalize (when open)
+    - edit
+    - delete
+  - Wired dashboard action handlers in `web/src/features/dashboard/DashboardPage.jsx` for finalize/reopen/delete/edit across group + scheduler parent poll types.
+  - Updated dashboard modal (`web/src/features/dashboard/components/group-basic-poll-modal.jsx`) so:
+    - archive/unarchive is a dedicated header button
+    - re-open is a dedicated header button (when finalized)
+    - kebab menu includes finalize/edit/delete
+  - Kept shared poll rendering centralized via `web/src/components/polls/basic-poll-voting-card.jsx` and reused in both scheduler and dashboard modal.
+  - Renamed session-page embedded poll wording to add-on wording and changed add-on poll list to 2-column layout in `web/src/features/scheduler/SchedulerPage.jsx`.
+  - Updated create/edit flow wording to add-on wording in `web/src/features/scheduler/CreateSchedulerPage.jsx`.
+  - Updated notification preference labels in settings from basic-poll naming to general-poll naming in `web/src/features/settings/SettingsPage.jsx`.
+- 2026-02-11: Validation for General Polls copy + menu/actions + add-on layout pass:
+  - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx src/lib/data/basicPolls.test.js src/features/settings/SettingsPage.test.jsx src/features/scheduler/components/finalize-embedded-polls-choice-dialog.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx` (pass, `38 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+  - `DEPLOY_ONLY=hosting ./scripts/deploy-staging.sh` (pass; hosting released).
+  - Staging URL: `https://quest-scheduler-stg.web.app`
+
+- 2026-02-11: Implemented group basic-poll modal flow from dashboard and unified poll-card widgeting:
+  - Added shared card component `web/src/components/polls/basic-poll-voting-card.jsx` extracted from scheduler embedded poll UI.
+  - Refactored `web/src/features/scheduler/SchedulerPage.jsx` embedded poll list to render via `BasicPollVotingCard`.
+  - Added `web/src/features/dashboard/components/group-basic-poll-modal.jsx` to render group polls in an in-dashboard desktop modal using the same voting card widget as embedded scheduler polls.
+  - Updated `web/src/features/dashboard/DashboardPage.jsx`:
+    - group basic polls open modal on desktop
+    - mobile still navigates to route (`/groups/:groupId/polls/:pollId`)
+  - Updated `web/src/components/polls/basic-poll-card.jsx` to support custom `onOpen` callback.
+  - Added modal-open regression test in `web/src/features/dashboard/DashboardPage.test.jsx`.
+- 2026-02-11: Validation for dashboard group-poll modal + shared basic poll voting card:
+  - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx src/lib/data/basicPolls.test.js` (pass, `32 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+  - `DEPLOY_ONLY=hosting ./scripts/deploy-staging.sh` (pass; hosting released).
+  - Staging URL: `https://quest-scheduler-stg.web.app`
+
+- 2026-02-11: Updated dashboard basic-poll interaction model to match session cards:
+  - Removed inline `Vote/Edit vote/View results` button from `web/src/components/polls/basic-poll-card.jsx`.
+  - Made entire basic-poll card clickable + keyboard accessible (`role="button"`, `Enter`/`Space`) with navigate/fallback behavior consistent with session cards.
+  - Preserved archive/unarchive icon action and prevented navigation on archive button click via `stopPropagation`.
+  - Updated assertions in `web/src/features/dashboard/DashboardPage.test.jsx` for card-level action label (`Edit vote: <title>`) instead of link buttons.
+- 2026-02-11: Validation for basic-poll whole-card navigation update:
+  - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx src/lib/data/basicPolls.test.js` (pass, `31 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-11: Improved dashboard basic-poll cards to align with session poll card UX:
+  - Updated `web/src/components/polls/basic-poll-card.jsx` to mirror session-card interaction language:
+    - card hover/lift motion (`hover:scale` + shadow)
+    - white elevated card surface and shared spacing rhythm
+    - title row chips aligned to session-card patterns
+    - cleaner meta line (`context • deadline`)
+    - avatar rows now use session-style copy and layout (`invitees`, `voted`, `pending`, `All voted!`)
+  - Updated `web/src/features/dashboard/DashboardPage.jsx` to pass context accent color to basic-poll cards:
+    - group polls use questing-group color
+    - embedded polls use parent scheduler questing-group color when available
+- 2026-02-11: Validation for basic-poll/session-card UX alignment pass:
+  - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx src/lib/data/basicPolls.test.js` (pass, `31 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-11: Fixed dashboard basic-poll loading loop/regression on `feature/basic-poll-dashboard-ux`:
+  - Root cause: basic-poll fetch effect depended on unstable derived objects/maps (`schedulerMetaById`, group maps, archived state), causing repeated fetches and `basicPollLoading` flip-flopping.
+  - Refactor in `web/src/features/dashboard/DashboardPage.jsx`:
+    - fetches now write only to `basicPollSourceItems` based on stable query keys
+    - card state/classification is derived via `useMemo` from source items + local metadata
+  - Added regression assertion in `web/src/features/dashboard/DashboardPage.test.jsx` to ensure a no-data render path performs only one fetch for each dashboard basic-poll source.
+- 2026-02-11: Validation for dashboard basic-poll loading-loop fix:
+  - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx src/lib/data/basicPolls.test.js` (pass, `31 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-11: Implemented dashboard basic-poll UX refresh on branch `feature/basic-poll-dashboard-ux`:
+  - Added reusable card component `web/src/components/polls/basic-poll-card.jsx` with status chips, poll-type badges, voting avatar stacks, and archive/unarchive actions.
+  - Expanded dashboard data loaders in `web/src/lib/data/basicPolls.js` to fetch and normalize both group basic polls and embedded scheduler basic polls for tabbed dashboard views.
+  - Refactored `web/src/features/dashboard/DashboardPage.jsx` to render a new `Basic Polls` section with tabs (`Needs vote`, `Open voted`, `Closed`, `Archived`) and shared card rendering.
+  - Updated coverage in:
+    - `web/src/lib/data/basicPolls.test.js`
+    - `web/src/features/dashboard/DashboardPage.test.jsx`
+- 2026-02-11: Validation and deploy for dashboard basic-poll UX refresh:
+  - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx src/lib/data/basicPolls.test.js` (pass, `31 passed`, exit code `0`).
+  - `npm --prefix web run build` (pass; existing non-blocking chunk-size warning).
+  - `./scripts/deploy-staging.sh` (fails on Firestore index sync: HTTP `400` "this index is not necessary, configure using single field index controls").
+  - `DEPLOY_ONLY=hosting ./scripts/deploy-staging.sh` (pass; hosting released successfully).
+  - Staging URL: `https://quest-scheduler-stg.web.app`
 
 - 2026-02-11: Implemented independent embedded-poll finalize/reopen controls for scheduler polls and updated scheduler finalization UX:
   - Scheduler creators can now finalize or reopen any embedded poll individually from the embedded poll card (`Finalize poll` / `Re-open poll`).

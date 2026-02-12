@@ -504,11 +504,10 @@ This matches the requirement: warn loudly, do not hard-block finalization.
 Basic polls need stable URLs for notification `actionUrl` fields, Discord "View on web" links, and direct sharing.
 
 ### Standalone Group-Linked Polls
-- Poll detail page: `/groups/:groupId/polls/:pollId`
-  - Shows: poll title, description, voting UI (if open), results (if finalized or live), option notes.
-- Group polls list (within Friends & Groups page): `/friends#group-:groupId-polls` (anchor hash within existing page) or a dedicated route `/groups/:groupId/polls`.
-
-v1 recommendation: use `/groups/:groupId/polls/:pollId` as a dedicated route. This is simpler to implement than anchor navigation and provides a clean deep-link target. The Friends & Groups page links to it from the group card's "Polls" section.
+- Canonical deep-link URL remains `/groups/:groupId/polls/:pollId` for notifications and Discord cards.
+- Runtime behavior: this URL redirects into dashboard modal state (query-param bootstrap) rather than rendering a separate dedicated page.
+  - The dashboard modal shows poll title, description, voting UI (if open), results (if finalized/live), and option notes.
+- Group poll discovery/listing is dashboard-first (General Polls section + filters), not a Friends & Groups poll section.
 
 ### Embedded Polls (Scheduler)
 - Embedded polls live within the scheduler page: `/scheduler/:schedulerId`
@@ -518,7 +517,7 @@ v1 recommendation: use `/groups/:groupId/polls/:pollId` as a dedicated route. Th
 
 ### New Routes Required
 Add to `web/src/App.jsx`:
-- `/groups/:groupId/polls/:pollId` — `GroupPollPage` (new component, protected)
+- `/groups/:groupId/polls/:pollId` — protected redirect route to `/dashboard?groupPollGroupId=:groupId&groupPollId=:pollId`
 - No new route needed for embedded polls (they use the existing `/scheduler/:id` route with a query param).
 
 ## Dashboard Integration
@@ -881,7 +880,9 @@ The ingress layer defers immediately (ephemeral response, type 5 + flags 64). Th
    - `createdAt`, `updatedAt`: server timestamps
 7. **Post poll card** to the channel (non-ephemeral `createChannelMessage`).
 8. **Store Discord metadata** on the poll doc: `discord: { messageId, channelId, guildId }`.
-9. **Edit ephemeral response** with success confirmation including a **Link button** (style 5) pointing to the web edit page: `{APP_URL}/groups/{groupId}/polls/{pollId}`. Message: "Poll created! See the poll card above. Click **Edit on Web** to add descriptions, option notes, or fine-tune settings."
+9. **Edit ephemeral response** with success confirmation including a **Link button** (style 5) pointing to `{APP_URL}/groups/{groupId}/polls/{pollId}`.
+   - This deep link resolves into the dashboard modal view/edit experience.
+   - Message: "Poll created! See the poll card above. Click **Edit on Web** to add descriptions, option notes, or fine-tune settings."
 10. **Emit `BASIC_POLL_CREATED` notification event** targeting group members.
 
 #### Limitations (Discord-Created Polls)
@@ -1287,12 +1288,12 @@ No draft state is needed. The poll exists and works immediately; web editing is 
 - Link sharing toggle
 
 ### URL Patterns
-- Basic poll edit: `{APP_URL}/groups/{groupId}/polls/{pollId}` (the detail page with edit mode for managers)
+- Basic poll view/edit: `{APP_URL}/groups/{groupId}/polls/{pollId}` (redirects to dashboard modal; managers can edit via shared create/edit modal)
 - Session poll edit: `{APP_URL}/scheduler/{schedulerId}/edit` (existing `CreateSchedulerPage` in edit mode)
 
 ### Web Page Behavior on Load
 - **Session poll edit page** (`CreateSchedulerPage` with `editId`): already loads the scheduler + slots from Firestore and populates the form. No changes needed — Discord-created schedulers load identically to web-created ones.
-- **Basic poll detail page**: needs an "Edit" button/mode for group managers that enables editing title, description, options, notes, and settings. This page is new (part of the basic polls feature) and should support both read-only (voting/results) and edit modes.
+- **Basic poll link target** (`/groups/{groupId}/polls/{pollId}`): redirects to dashboard and auto-opens the shared general-poll modal. Editing uses the same modal form as creation (with questing group locked in edit mode).
 
 ### UX Considerations
 - The **Edit on Web** button should always be visible in the ephemeral confirmation message, even if the user doesn't need it — it doubles as a "view your poll on the web" shortcut.

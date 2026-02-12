@@ -291,6 +291,23 @@ describe('basic-poll callables', () => {
         status: 'queued',
       })
     );
+    const createdEvent = notificationEventSetMock.mock.calls[0][0];
+    expect(createdEvent?.resource).toEqual(
+      expect.objectContaining({
+        type: 'basicPoll',
+        title: 'Snack vote',
+      })
+    );
+    expect(createdEvent?.payload).toEqual(
+      expect.objectContaining({
+        parentType: 'group',
+        parentId: 'g1',
+        basicPollTitle: 'Snack vote',
+      })
+    );
+    expect(createdEvent?.recipients?.userIds).toEqual(
+      expect.arrayContaining(['owner-1', 'member-1', 'member-2'])
+    );
   });
 
   test('finalizeBasicPoll supports scheduler embedded polls for scheduler creator', async () => {

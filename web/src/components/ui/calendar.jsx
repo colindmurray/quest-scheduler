@@ -9,22 +9,23 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }) {
       showOutsideDays={showOutsideDays}
       className={cn("p-3", className)}
       classNames={{
-        months: "flex flex-col sm:flex-row gap-2",
-        month: "flex flex-col gap-4",
-        month_caption: "flex justify-center pt-1 relative items-center w-full",
+        root: "relative",
+        months: "mx-auto flex w-fit flex-col gap-2 sm:flex-row",
+        month: "mx-auto flex flex-col gap-4",
+        month_caption: "relative flex h-9 w-full items-center justify-center py-1",
         caption_label: "text-sm font-semibold",
-        nav: "flex items-center gap-1",
+        nav: "absolute left-1/2 top-4 z-10 flex w-[15.5rem] -translate-x-1/2 items-center justify-between",
         button_previous: cn(
-          "absolute left-1 top-0 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-transparent p-0 opacity-50 transition-opacity hover:opacity-100 dark:border-slate-700"
+          "flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-transparent p-0 opacity-60 transition-opacity hover:opacity-100 dark:border-slate-700"
         ),
         button_next: cn(
-          "absolute right-1 top-0 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-transparent p-0 opacity-50 transition-opacity hover:opacity-100 dark:border-slate-700"
+          "flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-transparent p-0 opacity-60 transition-opacity hover:opacity-100 dark:border-slate-700"
         ),
-        month_grid: "w-full border-collapse",
-        weekdays: "flex",
+        month_grid: "mx-auto w-full border-collapse",
+        weekdays: "flex justify-center",
         weekday:
           "text-slate-500 dark:text-slate-400 rounded-md w-9 font-normal text-[0.8rem]",
-        week: "flex w-full mt-2",
+        week: "mt-2 flex w-full justify-center",
         day: cn(
           "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-slate-100 dark:[&:has([aria-selected])]:bg-slate-800 first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-slate-100/50 dark:[&:has([aria-selected].day-outside)]:bg-slate-800/50"
         ),

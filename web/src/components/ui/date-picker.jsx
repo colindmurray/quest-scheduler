@@ -12,7 +12,7 @@ function DatePicker({ date, onSelect, className, placeholder = "Pick a date" }) 
         <button
           type="button"
           className={cn(
-            "flex h-10 w-full items-center justify-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800",
+            "flex h-10 w-full items-center justify-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 whitespace-nowrap dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800",
             !date && "text-slate-400 dark:text-slate-500",
             className
           )}

@@ -269,6 +269,48 @@ export async function fetchOpenGroupPollsWithoutVote(groupIds = [], userId) {
   return allResults.flat();
 }
 
+async function buildDashboardPollSummary(parentType, parentId, pollData, userId) {
+  const settings = pollData?.settings || {};
+  const voteType = settings.voteType === "RANKED_CHOICE" ? "RANKED_CHOICE" : "MULTIPLE_CHOICE";
+  const allowWriteIn = voteType === "MULTIPLE_CHOICE" && settings.allowWriteIn === true;
+  const votesSnapshot = await getDocs(basicPollVotesRef(parentType, parentId, pollData.id));
+  const voteDocs = mapSnapshotDocs(votesSnapshot);
+  const submittedVotes = voteDocs.filter((voteDoc) => hasSubmittedVote(voteType, allowWriteIn, voteDoc));
+  const voterIds = submittedVotes.map((voteDoc) => voteDoc.id).filter(Boolean);
+
+  return {
+    ...pollData,
+    parentType,
+    parentId,
+    pollId: pollData.id,
+    voteType,
+    allowWriteIn,
+    deadlineAt: resolvePollDeadline(pollData),
+    isDeadlineOpen: isPollDeadlineOpen(pollData),
+    hasVoted: submittedVotes.some((voteDoc) => voteDoc.id === userId),
+    votedCount: submittedVotes.length,
+    voterIds,
+  };
+}
+
+export async function fetchDashboardGroupBasicPolls(groupIds = [], userId) {
+  const normalizedGroupIds = Array.from(new Set((groupIds || []).filter(Boolean)));
+  if (!userId || normalizedGroupIds.length === 0) return [];
+
+  const groupPolls = await Promise.all(
+    normalizedGroupIds.map(async (groupId) => {
+      const pollsSnapshot = await getDocs(groupBasicPollsRef(groupId));
+      const polls = pollsSnapshot.docs.map((pollDoc) => ({ id: pollDoc.id, ...pollDoc.data() }));
+      const summaries = await Promise.all(
+        polls.map((pollData) => buildDashboardPollSummary("group", groupId, pollData, userId))
+      );
+      return summaries;
+    })
+  );
+
+  return groupPolls.flat();
+}
+
 export async function updateBasicPoll(groupId, pollId, updates = {}) {
   if (!groupId || !pollId) return;
 
@@ -483,6 +525,24 @@ export async function fetchRequiredEmbeddedPollsWithoutVote(schedulerIds = [], u
   );
 
   return allResults.flat();
+}
+
+export async function fetchDashboardEmbeddedBasicPolls(schedulerIds = [], userId) {
+  const normalizedSchedulerIds = Array.from(new Set((schedulerIds || []).filter(Boolean)));
+  if (!userId || normalizedSchedulerIds.length === 0) return [];
+
+  const schedulerPolls = await Promise.all(
+    normalizedSchedulerIds.map(async (schedulerId) => {
+      const pollsSnapshot = await getDocs(collection(db, "schedulers", schedulerId, "basicPolls"));
+      const polls = pollsSnapshot.docs.map((pollDoc) => ({ id: pollDoc.id, ...pollDoc.data() }));
+      const summaries = await Promise.all(
+        polls.map((pollData) => buildDashboardPollSummary("scheduler", schedulerId, pollData, userId))
+      );
+      return summaries;
+    })
+  );
+
+  return schedulerPolls.flat();
 }
 
 export async function updateEmbeddedBasicPoll(schedulerId, pollId, updates = {}) {

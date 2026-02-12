@@ -14,6 +14,7 @@ export function QuestingGroupSelect({
   helperText = "Group members will be auto-added as invitees.",
   placeholder = "Select a group",
   noneLabel = "No group",
+  showNoneOption = true,
   labelClassName = "text-sm font-semibold text-slate-700 dark:text-slate-200",
   triggerClassName = "h-12 rounded-2xl px-4",
 }) {
@@ -27,7 +28,7 @@ export function QuestingGroupSelect({
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="none">{noneLabel}</SelectItem>
+          {showNoneOption ? <SelectItem value="none">{noneLabel}</SelectItem> : null}
           {groups.map((group) => {
             const memberCount = (() => {
               if (typeof group.members === "number") return group.members;

@@ -64,9 +64,10 @@ test.describe.serial("Embedded poll editor lifecycle", () => {
 
     await updatedCard.getByRole("button", { name: "Remove", exact: true }).click();
     const removeDialog = page.getByRole("dialog");
-    await expect(removeDialog.getByText("Remove embedded poll")).toBeVisible();
+    await expect(removeDialog.getByText("Remove add-on poll")).toBeVisible();
     await removeDialog.getByRole("button", { name: "Remove poll", exact: true }).click();
-    await expect(cardForTitle(updatedAddedTitle)).toHaveCount(0);
+    await expect(page.getByText("Add-on poll removed")).toBeVisible({ timeout: 15000 });
+    await expect(cardForTitle(updatedAddedTitle)).toHaveCount(0, { timeout: 30000 });
 
     const existingCard = cardForTitle(existingEmbeddedPollTitle);
     await existingCard.getByRole("button", { name: "Edit", exact: true }).click();

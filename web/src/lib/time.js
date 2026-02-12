@@ -7,6 +7,14 @@ function toDate(value) {
   return value instanceof Date ? value : new Date(value);
 }
 
+function getIntlTimeZoneName(date, timeZone, timeZoneName) {
+  const parts = new Intl.DateTimeFormat(undefined, {
+    timeZone,
+    timeZoneName,
+  }).formatToParts(date);
+  return parts.find((part) => part.type === "timeZoneName")?.value || null;
+}
+
 export function getBrowserTimeZone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || FALLBACK_TIME_ZONE;
 }
@@ -55,16 +63,9 @@ export function getTimeZoneAbbr(value, timeZone) {
   const targetZone = timeZone || getBrowserTimeZone();
 
   try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: targetZone,
-      timeZoneName: "short",
-    }).formatToParts(date);
-    const tzName = parts.find((part) => part.type === "timeZoneName")?.value;
+    const tzName = getIntlTimeZoneName(date, targetZone, "short");
     if (tzName) {
-      const match = tzName.match(/[A-Z]{3}/);
-      if (match) return match[0];
-      const fallback = tzName.match(/[A-Z]{2,5}/);
-      if (fallback) return fallback[0].slice(0, 3);
+      return tzName.replace(/\s+/g, " ").trim();
     }
   } catch (err) {
     // ignore and fall back
