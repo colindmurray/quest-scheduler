@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {
   SimpleModal,
   SimpleModalDescription,
@@ -8,6 +6,7 @@ import {
   SimpleModalHeader,
   SimpleModalTitle,
 } from "../../../components/ui/simple-modal";
+import { PollMarkdownContent } from "../../../components/polls/poll-markdown-content";
 
 function buildDefaultOptions() {
   return [
@@ -272,11 +271,11 @@ export function EmbeddedPollEditorModal({
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 />
               ) : (
-                <div className="prose prose-sm prose-slate max-w-none rounded-lg border border-slate-200 bg-white px-3 py-2 prose-headings:font-display prose-a:text-brand-primary prose-a:underline hover:prose-a:text-brand-primary/80 dark:prose-invert dark:border-slate-700 dark:bg-slate-900">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {draft.description || "_No description_"}
-                  </ReactMarkdown>
-                </div>
+                <PollMarkdownContent
+                  content={draft.description}
+                  fallback="_No description_"
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                />
               )}
             </div>
 
@@ -533,11 +532,11 @@ export function EmbeddedPollEditorModal({
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
               />
             ) : (
-              <div className="prose prose-sm prose-slate max-w-none rounded-lg border border-slate-200 bg-white px-3 py-2 prose-headings:font-display prose-a:text-brand-primary prose-a:underline hover:prose-a:text-brand-primary/80 dark:prose-invert dark:border-slate-700 dark:bg-slate-900">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {draft.noteEditor.value || "_No note_"}
-                </ReactMarkdown>
-              </div>
+              <PollMarkdownContent
+                content={draft.noteEditor.value}
+                fallback="_No note_"
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+              />
             )}
           </div>
 

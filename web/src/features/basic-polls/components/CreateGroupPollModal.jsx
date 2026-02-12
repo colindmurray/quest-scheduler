@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { format } from "date-fns";
 import { ArrowDown, ArrowUp, CalendarClock, CircleHelp, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -21,6 +19,7 @@ import {
   SelectValue,
 } from "../../../components/ui/select";
 import { createBasicPoll, updateBasicPoll } from "../../../lib/data/basicPolls";
+import { PollMarkdownContent } from "../../../components/polls/poll-markdown-content";
 import { QuestingGroupSelect } from "../../scheduler/components/questing-group-select";
 
 function createDefaultOptions() {
@@ -504,11 +503,11 @@ export function CreateGroupPollModal({
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition-colors focus:border-brand-primary/60 focus:ring-2 focus:ring-brand-primary/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 />
               ) : (
-                <div className="prose prose-sm prose-slate max-w-none rounded-xl border border-slate-200 bg-white px-3 py-2 prose-headings:font-display prose-a:text-brand-primary prose-a:underline hover:prose-a:text-brand-primary/80 dark:prose-invert dark:border-slate-700 dark:bg-slate-900">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {state.description || "_No description_"}
-                  </ReactMarkdown>
-                </div>
+                <PollMarkdownContent
+                  content={state.description}
+                  fallback="_No description_"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                />
               )}
             </div>
 
@@ -836,11 +835,11 @@ export function CreateGroupPollModal({
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
               />
             ) : (
-              <div className="prose prose-sm prose-slate max-w-none rounded-lg border border-slate-200 bg-white px-3 py-2 prose-headings:font-display prose-a:text-brand-primary prose-a:underline hover:prose-a:text-brand-primary/80 dark:prose-invert dark:border-slate-700 dark:bg-slate-900">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {state.noteEditor.value || "_No note_"}
-                </ReactMarkdown>
-              </div>
+              <PollMarkdownContent
+                content={state.noteEditor.value}
+                fallback="_No note_"
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+              />
             )}
           </div>
 

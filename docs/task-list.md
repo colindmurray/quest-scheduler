@@ -58,6 +58,19 @@ changelog:
   - `docs/poll-unification-prettifying-task-list.md`
   - Scope covers shared poll UI primitives, Discord sync internals consolidation, session/general parity improvements, and phased validation gates.
 
+- 2026-02-12: Poll unification implementation kickoff (Phase 1.3 + 3.1 slice):
+  - Added shared markdown renderer + shared option-note dialog primitives:
+    - `web/src/components/polls/poll-markdown-content.jsx`
+    - `web/src/components/polls/poll-option-note-dialog.jsx`
+  - Replaced duplicated markdown rendering wrappers in scheduler/basic-poll create/edit/view surfaces.
+  - Applied shared markdown rendering to session poll description (scheduler detail header).
+  - Replaced duplicated option-note modal markup in scheduler and dashboard general poll modal.
+  - Added tests:
+    - `web/src/components/polls/poll-markdown-content.test.jsx`
+    - `web/src/components/polls/poll-option-note-dialog.test.jsx`
+  - Validation:
+    - `npm --prefix web run test -- src/components/polls/poll-markdown-content.test.jsx src/components/polls/poll-option-note-dialog.test.jsx src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx src/features/dashboard/DashboardPage.test.jsx` (pass, `19 passed`, exit code `0`).
+
 - 2026-02-12: Removed legacy poll-create command fallback:
   - `functions/src/discord/worker.js`:
     - `handlePollCreate` now requires subcommand `multiple` or `ranked`.

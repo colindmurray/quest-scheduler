@@ -13,8 +13,8 @@ changelog:
 # Poll Unification + Prettifying — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Plan and task tracker created.
-- Next Step: Phase 1 kickoff (shared frontend poll primitives).
+- Last Completed: Phase 1.3 markdown primitive extraction completed and Phase 3.1 session markdown parity applied.
+- Next Step: Phase 1.1/1.2 shared poll metadata and participant summary primitives.
 - Open Issues: None.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
@@ -185,3 +185,19 @@ Acceptance:
 
 ## Progress Notes
 - 2026-02-12: Created initial plan and task list docs for poll unification + prettifying initiative.
+- 2026-02-12: Completed first shared-frontend extraction pass:
+  - Added shared markdown primitive: `web/src/components/polls/poll-markdown-content.jsx`.
+  - Added shared option-note dialog primitive: `web/src/components/polls/poll-option-note-dialog.jsx`.
+  - Replaced duplicated markdown wrappers in:
+    - `web/src/components/polls/basic-poll-voting-card.jsx`
+    - `web/src/features/basic-polls/components/CreateGroupPollModal.jsx`
+    - `web/src/features/scheduler/components/EmbeddedPollEditorModal.jsx`
+    - `web/src/features/scheduler/SchedulerPage.jsx`
+  - Replaced duplicated option-note modal markup in:
+    - `web/src/features/dashboard/components/group-basic-poll-modal.jsx`
+    - `web/src/features/scheduler/SchedulerPage.jsx`
+  - Added unit coverage:
+    - `web/src/components/polls/poll-markdown-content.test.jsx`
+    - `web/src/components/polls/poll-option-note-dialog.test.jsx`
+  - Validation:
+    - `npm --prefix web run test -- src/components/polls/poll-markdown-content.test.jsx src/components/polls/poll-option-note-dialog.test.jsx src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx src/features/dashboard/DashboardPage.test.jsx` (pass, `19 passed`, exit code `0`).

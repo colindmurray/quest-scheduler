@@ -3,8 +3,6 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { format, parse, startOfWeek, getDay, isSameDay, isBefore, startOfDay, startOfHour } from "date-fns";
 import { enUS } from "date-fns/locale";
 import { toast } from "sonner";
@@ -101,6 +99,8 @@ import { RemoveParticipantDialog } from "./components/remove-participant-dialog"
 import { RevokeInviteDialog } from "./components/revoke-invite-dialog";
 import { CalendarToolbar } from "./components/CalendarToolbar";
 import { BasicPollVotingCard } from "../../components/polls/basic-poll-voting-card";
+import { PollMarkdownContent } from "../../components/polls/poll-markdown-content";
+import { PollOptionNoteDialog } from "../../components/polls/poll-option-note-dialog";
 import { buildEffectiveTallies, buildUserBlockInfo } from "./utils/effective-votes";
 import { canUserCopyVotes } from "./utils/copy-votes-eligibility";
 import { shouldEmitPollLifecycleEvent } from "./utils/poll-lifecycle-notifications";
@@ -2472,11 +2472,10 @@ export default function SchedulerPage() {
                 Session Poll
               </p>
               <h2 className="text-2xl font-semibold dark:text-slate-100">{scheduler.data.title}</h2>
-              {pollDescription && (
-                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
-                  {pollDescription}
-                </p>
-              )}
+              <PollMarkdownContent
+                content={pollDescription}
+                className="mt-2 text-sm text-slate-600 dark:text-slate-300"
+              />
               <PollStatusMeta
                 scheduler={scheduler.data}
                 winningSlot={winningSlot}
@@ -3478,39 +3477,10 @@ export default function SchedulerPage() {
           </div>
         </div>
 
-      {embeddedOptionNoteViewer ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Option note for ${embeddedOptionNoteViewer.optionLabel}`}
-            className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900"
-          >
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                  {embeddedOptionNoteViewer.pollTitle}
-                </p>
-                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                  Option note: {embeddedOptionNoteViewer.optionLabel}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEmbeddedOptionNoteViewer(null)}
-                className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 dark:border-slate-600 dark:text-slate-300"
-              >
-                Close
-              </button>
-            </div>
-            <div className="prose prose-sm prose-slate max-h-[65vh] max-w-none overflow-auto rounded-lg border border-slate-200 bg-white px-3 py-2 prose-headings:font-display prose-a:text-brand-primary prose-a:underline hover:prose-a:text-brand-primary/80 dark:prose-invert dark:border-slate-700 dark:bg-slate-900">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {embeddedOptionNoteViewer.note}
-              </ReactMarkdown>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <PollOptionNoteDialog
+        noteViewer={embeddedOptionNoteViewer}
+        onClose={() => setEmbeddedOptionNoteViewer(null)}
+      />
 
       <VoteDialog
         open={Boolean(modalDate)}
