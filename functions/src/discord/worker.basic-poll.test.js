@@ -62,14 +62,26 @@ describe('discord worker basic poll voting', () => {
       },
     };
 
+    let pollRef;
     const groupRef = {
       id: 'group-1',
       parent: { id: 'questingGroups' },
       get: async () => ({ exists: true, data: () => state.groupData }),
+      collection: (name) => {
+        if (name !== 'basicPolls') return { doc: () => ({ get: async () => ({ exists: false }) }) };
+        return {
+          doc: (id) => ({
+            get: async () => {
+              if (id !== 'poll-1') return { exists: false, data: () => null };
+              return { exists: true, data: () => state.pollData, ref: pollRef };
+            },
+          }),
+        };
+      },
     };
     const pollCollectionRef = { id: 'basicPolls', parent: groupRef };
 
-    const pollRef = {
+    pollRef = {
       id: 'poll-1',
       parent: pollCollectionRef,
       set: async (payload, options) => {
@@ -119,6 +131,16 @@ describe('discord worker basic poll voting', () => {
           data: () => state.pollData,
         },
       ],
+    });
+    const collectionGroupWhereMock = vi.fn((fieldPath) => {
+      if (fieldPath === '__name__') {
+        throw new Error('invalid documentId query for collection group');
+      }
+      return {
+        limit: () => ({
+          get: collectionGroupGet,
+        }),
+      };
     });
 
     const db = {
@@ -170,19 +192,42 @@ describe('discord worker basic poll voting', () => {
             }),
           };
         }
+        if (name === 'questingGroups') {
+          return {
+            where: (fieldPath, op, value) => ({
+              get: async () => {
+                if (
+                  fieldPath === 'discord.channelId' &&
+                  op === '==' &&
+                  value === state.groupData?.discord?.channelId
+                ) {
+                  return {
+                    empty: false,
+                    docs: [
+                      {
+                        id: 'group-1',
+                        ref: groupRef,
+                        data: () => state.groupData,
+                      },
+                    ],
+                  };
+                }
+                return { empty: true, docs: [] };
+              },
+            }),
+            doc: () => groupRef,
+          };
+        }
         return { doc: () => ({}) };
       },
       collectionGroup: (name) => {
         if (name !== 'basicPolls') throw new Error('unexpected collectionGroup');
         return {
-          where: () => ({
-            limit: () => ({
-              get: collectionGroupGet,
-            }),
-          }),
+          where: collectionGroupWhereMock,
         };
       },
     };
+    state.collectionGroupWhereMock = collectionGroupWhereMock;
 
     const adminMock = {
       apps: [],
@@ -300,6 +345,9 @@ describe('discord worker basic poll voting', () => {
     expect(responseBody.content).toContain('Ranked poll: **Campaign vote**');
     expect(responseBody.components[0].components[0].custom_id).toBe('bp_rank_select:poll-1');
     expect(responseBody.components[0].components[0].placeholder).toContain('Pick rank #1');
+    expect(
+      state.collectionGroupWhereMock.mock.calls.some((call) => call[0] === '__name__')
+    ).toBe(false);
   });
 
   test('stores MC selection and submits vote doc', async () => {

@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-12: Fixed Discord ranked basic-poll voting failure by removing invalid collection-group documentId lookup in `processDiscordInteraction`, added regression coverage, and deployed worker to production/staging."
   - "2026-02-12: Removed redundant Firestore indexes rejected by deploy API (`basicPolls.order`, `votes.updatedAt`) and completed staging + production deploys from merged `master`."
   - "2026-02-12: Stabilized flaky dashboard embedded-poll e2e card click/login timing and re-ran full validation gate (web/functions/rules/integration/e2e emulators) with all suites passing."
   - "2026-02-12: Finalized General Poll modal polish pass (settings button, inline `+ Option | + Other`, ranked help icon simplification), reworked calendar nav alignment/centering, and redeployed hosting to staging."
@@ -48,6 +49,24 @@ changelog:
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
 ## Progress Notes
+
+- 2026-02-12: Discord ranked basic-poll voting hotfix:
+  - Root cause from production logs (`processDiscordInteraction`):
+    - `When querying a collection group and ordering by FieldPath.documentId() ... contains an odd number of segments.`
+    - Triggered by `loadGroupBasicPollById` querying `collectionGroup("basicPolls")` with `documentId == pollId`.
+  - Fix:
+    - `functions/src/discord/worker.js`:
+      - Replaced invalid documentId collection-group lookup with:
+        - primary lookup via linked questing group (`discord.channelId`/`guildId`) then direct `questingGroups/{groupId}/basicPolls/{pollId}` fetch
+        - fallback metadata lookup (`discord.messageId` then `discord.channelId`) and in-memory poll-id match
+      - Updated callsites to pass `interaction` into poll resolution.
+  - Test coverage:
+    - `functions/src/discord/worker.basic-poll.test.js`:
+      - Added regression guard that fails if `__name__`/documentId collection-group query is used for this flow.
+  - Validation/deploy:
+    - `npm --prefix functions run test -- src/discord/worker.basic-poll.test.js src/discord/worker.poll-create.test.js src/discord/worker.test.js` (pass, `24 passed`, exit code `0`).
+    - `firebase deploy --project default --only functions:processDiscordInteraction` (pass).
+    - `firebase deploy --project staging --only functions:processDiscordInteraction` (pass).
 
 - 2026-02-12: Merge/deploy completion + Firestore index cleanup:
   - Merged `feature/basic-poll-dashboard-ux` into `master`.

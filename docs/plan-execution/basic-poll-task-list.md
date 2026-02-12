@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Active plan execution tracker synchronized with docs/task-list.md."
 changelog:
+  - "2026-02-12: Hotfixed Discord ranked basic-poll voting resolution path in `processDiscordInteraction` (invalid collection-group documentId query), added regression test, and deployed to production/staging."
   - "2026-02-12: Merged basic-poll dashboard UX branch to `master`, removed deploy-rejected redundant Firestore indexes, and deployed staging + production successfully."
   - "2026-02-12: Stabilized flaky dashboard embedded-poll e2e navigation and completed full validation gate (web/functions/rules/integration/e2e emulators) with all suites passing."
   - "2026-02-12: Applied latest General Poll modal polish (settings button, centered `+ Option | + Other`, simplified ranked help icon), refined calendar nav/caption alignment, and redeployed staging hosting."
@@ -121,6 +122,18 @@ changelog:
 - [ ] `P3` `13.8` Inline banner: unvoted required embedded polls (Section: Phase 13: Nice-to-Have Enhancements)
 
 ## Progress Notes
+
+- 2026-02-12: Discord basic-poll vote-path hotfix:
+  - `functions/src/discord/worker.js`:
+    - Removed invalid `collectionGroup(\"basicPolls\") + FieldPath.documentId()==pollId` lookup.
+    - Added channel-linked group resolution + metadata fallback (`discord.messageId` / `discord.channelId`) for robust poll context loading.
+    - Updated context/finalize callsites to pass `interaction`.
+  - `functions/src/discord/worker.basic-poll.test.js`:
+    - Added regression assertion preventing reintroduction of `__name__` collection-group lookup in this flow.
+  - Validation/deploy:
+    - `npm --prefix functions run test -- src/discord/worker.basic-poll.test.js src/discord/worker.poll-create.test.js src/discord/worker.test.js` → pass (`24 passed`, exit code `0`).
+    - `firebase deploy --project default --only functions:processDiscordInteraction` → pass.
+    - `firebase deploy --project staging --only functions:processDiscordInteraction` → pass.
 
 - 2026-02-12: Merge/deploy completion:
   - Merged `feature/basic-poll-dashboard-ux` into `master`.

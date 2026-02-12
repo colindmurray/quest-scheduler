@@ -452,27 +452,11 @@ function buildBasicPollRankComponents({
   };
 }
 
-async function loadGroupBasicPollById(pollId) {
-  const snapshot = await db
-    .collectionGroup("basicPolls")
-    .where(admin.firestore.FieldPath.documentId(), "==", String(pollId))
-    .limit(5)
-    .get();
-
-  if (snapshot.empty) {
-    return null;
-  }
-
-  const pollDoc = snapshot.docs.find((docSnap) => {
-    const parentDoc = docSnap.ref.parent?.parent;
-    const parentCollectionId = parentDoc?.parent?.id;
-    return parentCollectionId === "questingGroups";
-  });
-  if (!pollDoc) return null;
-
-  const pollRef = pollDoc.ref;
-  const parentGroupRef = pollRef.parent?.parent;
-  if (!parentGroupRef) return null;
+async function buildGroupBasicPollContextFromDoc(pollDoc) {
+  const pollRef = pollDoc?.ref;
+  const parentGroupRef = pollRef?.parent?.parent;
+  if (!pollRef || !parentGroupRef) return null;
+  if (parentGroupRef?.parent?.id !== "questingGroups") return null;
 
   const groupSnap = await parentGroupRef.get();
   if (!groupSnap.exists) return null;
@@ -484,6 +468,63 @@ async function loadGroupBasicPollById(pollId) {
     groupData: groupSnap.data() || {},
     groupId: parentGroupRef.id,
   };
+}
+
+async function loadGroupBasicPollById(pollId, interaction = null) {
+  const normalizedPollId = String(pollId || "").trim();
+  if (!normalizedPollId) return null;
+
+  if (interaction) {
+    const linkedGroup = await getLinkedGroupForChannel(interaction);
+    if (linkedGroup?.groupRef) {
+      const pollSnap = await linkedGroup.groupRef
+        .collection("basicPolls")
+        .doc(normalizedPollId)
+        .get();
+      if (pollSnap.exists) {
+        return {
+          pollRef: pollSnap.ref,
+          pollData: pollSnap.data() || {},
+          groupRef: linkedGroup.groupRef,
+          groupData: linkedGroup.groupData || {},
+          groupId: linkedGroup.groupId,
+        };
+      }
+    }
+  }
+
+  const fallbackQueries = [];
+  if (interaction?.message?.id) {
+    fallbackQueries.push({
+      field: "discord.messageId",
+      value: String(interaction.message.id),
+      limit: 8,
+    });
+  }
+  if (interaction?.channelId) {
+    fallbackQueries.push({
+      field: "discord.channelId",
+      value: String(interaction.channelId),
+      limit: 50,
+    });
+  }
+
+  for (const fallback of fallbackQueries) {
+    const snapshot = await db
+      .collectionGroup("basicPolls")
+      .where(fallback.field, "==", fallback.value)
+      .limit(fallback.limit)
+      .get();
+    if (snapshot.empty) continue;
+
+    const pollDoc = snapshot.docs.find((docSnap) => docSnap.id === normalizedPollId);
+    if (!pollDoc) continue;
+
+    const context = await buildGroupBasicPollContextFromDoc(pollDoc);
+    if (context) return context;
+  }
+
+  return null;
 }
 
 function ensureGroupMemberForBasicPoll(groupData, linkedUser) {
@@ -572,9 +613,10 @@ function parsePollCreateDeadline(rawDeadlineValue) {
 
 async function getLinkedGroupForChannel(interaction) {
   if (!interaction?.channelId) return null;
+  const groupCollection = db.collection("questingGroups");
+  if (!groupCollection || typeof groupCollection.where !== "function") return null;
 
-  const linkedGroupsSnap = await db
-    .collection("questingGroups")
+  const linkedGroupsSnap = await groupCollection
     .where("discord.channelId", "==", interaction.channelId)
     .get();
 
@@ -1645,7 +1687,7 @@ async function handleSubmitVote(interaction, schedulerId) {
 }
 
 async function getBasicPollContext(interaction, pollId) {
-  const context = await loadGroupBasicPollById(pollId);
+  const context = await loadGroupBasicPollById(pollId, interaction);
   if (!context) {
     await respondWithError(
       interaction,
@@ -1934,7 +1976,7 @@ async function handleBasicPollFinalize(interaction, pollId) {
   const linked = await getBasicPollLinkedUser(interaction);
   if (!linked) return;
 
-  const context = await loadGroupBasicPollById(pollId);
+  const context = await loadGroupBasicPollById(pollId, interaction);
   if (!context) {
     return respondWithError(
       interaction,
