@@ -22,6 +22,13 @@ import {
   normalizeVoteOptionIds,
   normalizeVoteRankings,
 } from "../../../lib/basic-polls/vote-submission";
+import {
+  addRankedOptionToVoteDraft,
+  moveRankedOptionInVoteDraft,
+  removeRankedOptionFromVoteDraft,
+  setMultipleChoiceOptionOnVoteDraft,
+  setOtherTextOnVoteDraft,
+} from "../../../lib/basic-polls/vote-draft";
 import { BASIC_POLL_STATUSES, BASIC_POLL_VOTE_TYPES } from "../../../lib/basic-polls/constants";
 import { coerceDate } from "../../../lib/time";
 import {
@@ -264,64 +271,36 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
 
   function setMultipleChoiceSelection(optionId) {
     setVoteError(null);
+    let selectionLimitReached = false;
     setVoteDraft((previous) => {
-      const selected = Array.isArray(previous.optionIds) ? previous.optionIds : [];
-      const alreadySelected = selected.includes(optionId);
-      if (!allowMultiple) {
-        return {
-          ...previous,
-          optionIds: alreadySelected ? [] : [optionId],
-        };
-      }
-      if (alreadySelected) {
-        return {
-          ...previous,
-          optionIds: selected.filter((entry) => entry !== optionId),
-        };
-      }
-      if (maxSelections && selected.length >= maxSelections) {
-        setVoteError(`You can select up to ${maxSelections} options.`);
-        return previous;
-      }
-      return {
-        ...previous,
-        optionIds: [...selected, optionId],
-      };
+      const { draft, limitReached } = setMultipleChoiceOptionOnVoteDraft(previous, optionId, {
+        allowMultiple,
+        maxSelections,
+      });
+      selectionLimitReached = limitReached;
+      return draft;
     });
+    if (selectionLimitReached && maxSelections) {
+      setVoteError(`You can select up to ${maxSelections} options.`);
+    }
   }
 
   function setOtherText(value) {
-    setVoteDraft((previous) => ({ ...previous, otherText: value }));
+    setVoteDraft((previous) => setOtherTextOnVoteDraft(previous, value));
   }
 
   function addRankedOption(optionId) {
     setVoteError(null);
-    setVoteDraft((previous) => {
-      const rankings = Array.isArray(previous.rankings) ? previous.rankings : [];
-      if (rankings.includes(optionId)) return previous;
-      return { ...previous, rankings: [...rankings, optionId] };
-    });
+    setVoteDraft((previous) => addRankedOptionToVoteDraft(previous, optionId));
   }
 
   function moveRankedOption(optionId, direction) {
-    setVoteDraft((previous) => {
-      const rankings = Array.isArray(previous.rankings) ? [...previous.rankings] : [];
-      const index = rankings.indexOf(optionId);
-      if (index < 0) return previous;
-      const nextIndex = direction === "up" ? index - 1 : index + 1;
-      if (nextIndex < 0 || nextIndex >= rankings.length) return previous;
-      const [item] = rankings.splice(index, 1);
-      rankings.splice(nextIndex, 0, item);
-      return { ...previous, rankings };
-    });
+    setVoteDraft((previous) => moveRankedOptionInVoteDraft(previous, optionId, direction));
   }
 
   function removeRankedOption(optionId) {
     setVoteError(null);
-    setVoteDraft((previous) => {
-      const rankings = Array.isArray(previous.rankings) ? previous.rankings : [];
-      return { ...previous, rankings: rankings.filter((entry) => entry !== optionId) };
-    });
+    setVoteDraft((previous) => removeRankedOptionFromVoteDraft(previous, optionId));
   }
 
   async function submitVote() {

@@ -25,10 +25,13 @@ Date: 2026-02-12
   - Phase 4.1 kickoff: extracted dashboard filter/status/date helper logic into `web/src/features/dashboard/lib/dashboard-filters.js` with direct unit tests.
   - Phase 4.1 additional slices: extracted dashboard basic-poll source loading into `use-dashboard-basic-poll-source`, moved poll derivation/bucketing/user mapping into `dashboard-basic-polls`, and split pending-invite/general-poll sidebar sections into dedicated components.
   - Phase 4.1 additional slice: extracted dashboard basic-poll archive/finalize/reopen/delete orchestration into `use-dashboard-basic-poll-actions`.
+  - Phase 4.1 additional slice: extracted general-poll modal/edit orchestration into `use-dashboard-general-poll-modals`.
+  - Phase 2.1 additional slice: replaced duplicated embedded poll vote-submission checks in `SchedulerPage` and `CreateSchedulerPage` with shared `hasSubmittedVoteForPoll`.
+  - Phase 4.2 kickoff slice: extracted shared vote-draft mutation helpers into `web/src/lib/basic-polls/vote-draft.js` and adopted them in `SchedulerPage` embedded poll vote handlers and `group-basic-poll-modal` vote handlers.
   - Phase 5.1 additional coverage: added direct tests for `DashboardCalendar` and `useCalendarNavigation`.
   - Phase 7.1: documented dependency adopt/reject/defer decisions in `docs/decisions.md` for form/testing/motion packages and additional parsing-library candidates.
 - Remaining high-priority work:
-  - Continue Phase 4 monolith decomposition for `DashboardPage`, `SchedulerPage`, and Discord worker.
+  - Continue Phase 4 monolith decomposition for `SchedulerPage`, `CreateSchedulerPage`, and Discord worker.
   - Execute Phase 7 dependency re-evaluation/adopt-reject decisions in `docs/decisions.md`.
 
 ## Findings (Prioritized)

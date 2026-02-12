@@ -48,6 +48,7 @@ import { sendPendingPollInvites, revokePollInvite } from "../../lib/data/pollInv
 import { findUserIdsByEmails } from "../../lib/data/users";
 import { buildEmailSet, normalizeEmail, normalizeEmailList } from "../../lib/utils";
 import { formatZonedDateTime, formatZonedTime, shouldShowTimeZone, toDisplayDate } from "../../lib/time";
+import { hasSubmittedVoteForPoll } from "../../lib/basic-polls/vote-submission";
 import { validateInviteCandidate } from "./utils/invite-utils";
 import {
   removeEmbeddedPollDraft,
@@ -552,15 +553,7 @@ export default function CreateSchedulerPage() {
   const embeddedPollSensors = useSensors(useSensor(PointerSensor));
 
   const countSubmittedEmbeddedVotes = (poll, voteDocs = []) => {
-    const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
-    return voteDocs.filter((voteDoc) => {
-      if (voteType === "RANKED_CHOICE") {
-        return Array.isArray(voteDoc?.rankings) && voteDoc.rankings.some(Boolean);
-      }
-      const hasOptionIds = Array.isArray(voteDoc?.optionIds) && voteDoc.optionIds.some(Boolean);
-      const hasWriteIn = String(voteDoc?.otherText || "").trim().length > 0;
-      return hasOptionIds || hasWriteIn;
-    }).length;
+    return voteDocs.filter((voteDoc) => hasSubmittedVoteForPoll(poll, voteDoc)).length;
   };
 
 

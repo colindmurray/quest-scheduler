@@ -7,6 +7,8 @@ status: CURRENT
 implementationStatus: PLANNED
 note: "Companion audit: docs/code-health-audit-pt2.md"
 changelog:
+  - "2026-02-12: Phase 2.1 additional slice complete: replaced duplicated embedded vote-submission checks in scheduler create/view flows with shared `hasSubmittedVoteForPoll`."
+  - "2026-02-12: Phase 4.2 kickoff slice complete: extracted shared vote-draft helpers and adopted them in scheduler embedded poll and dashboard group poll vote handlers with direct tests."
   - "2026-02-12: Initial task list created from Code Health Audit (Pt 2) findings."
   - "2026-02-12: Added dependency re-evaluation phase for selective re-introduction of removed/optional libraries."
 ---
@@ -14,8 +16,8 @@ changelog:
 # Code Health Audit (Pt 2) — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Phase 4.1 fourth dashboard slice complete (basic-poll action/state orchestration extracted to `use-dashboard-basic-poll-actions`), Phase 5.1 coverage for `DashboardCalendar`/`useCalendarNavigation`, and Phase 7.1 dependency re-evaluation decisions documented in `docs/decisions.md`.
-- Next Step: Continue Phase 4.1 with remaining `DashboardPage` modal/edit orchestration extraction, then proceed into Phase 4.2 scheduler page decomposition.
+- Last Completed: Phase 4.2 kickoff slice complete (shared vote-draft helper extraction adopted by scheduler embedded polls + dashboard group poll modal) with direct helper and impacted-surface coverage.
+- Next Step: Continue Phase 4.2 scheduler page decomposition (`SchedulerPage`/`CreateSchedulerPage` extraction slices + targeted tests).
 - Open Issues: None.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
@@ -67,6 +69,7 @@ Acceptance:
 - Replace duplicated implementations in:
   - web data layer and modal surfaces
   - functions callables/triggers/summary paths
+- Progress (2026-02-12): adopted shared `hasSubmittedVoteForPoll` in `SchedulerPage` and `CreateSchedulerPage` to remove duplicated embedded vote-submission checks.
 
 Acceptance:
 - One canonical helper per runtime boundary is reused by all consumers.
@@ -133,6 +136,7 @@ Acceptance:
 ### 4.2 Decompose `SchedulerPage` and `CreateSchedulerPage` (P1)
 - Move business logic into hooks/services.
 - Split major UI sections into composable, testable components.
+- Progress (2026-02-12): kickoff slice complete via shared vote-draft mutation helper extraction (`web/src/lib/basic-polls/vote-draft.js`) and adoption in scheduler/dashboard poll-vote handlers.
 
 Acceptance:
 - Large files reduced substantially.

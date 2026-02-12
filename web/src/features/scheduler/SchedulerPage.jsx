@@ -69,6 +69,14 @@ import {
   subscribeToEmbeddedBasicPolls,
   subscribeToMyBasicPollVote,
 } from "../../lib/data/basicPolls";
+import {
+  addRankedOptionToVoteDraft,
+  moveRankedOptionInVoteDraft,
+  removeRankedOptionFromVoteDraft,
+  setMultipleChoiceOptionOnVoteDraft,
+  setOtherTextOnVoteDraft,
+} from "../../lib/basic-polls/vote-draft";
+import { hasSubmittedVoteForPoll } from "../../lib/basic-polls/vote-submission";
 import { buildNotificationActor, emitPollEvent } from "../../lib/data/notification-events";
 import { validateInviteCandidate } from "./utils/invite-utils";
 import { nudgeDiscordSessionPoll, repostDiscordPollCard } from "../../lib/data/discord";
@@ -418,14 +426,7 @@ export default function SchedulerPage() {
   }, [userVote.data]);
 
   function hasSubmittedEmbeddedVote(poll, voteDoc) {
-    if (!poll || !voteDoc) return false;
-    const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
-    if (voteType === "RANKED_CHOICE") {
-      return Array.isArray(voteDoc.rankings) && voteDoc.rankings.some(Boolean);
-    }
-    const hasOptionIds = Array.isArray(voteDoc.optionIds) && voteDoc.optionIds.some(Boolean);
-    const hasWriteIn = String(voteDoc.otherText || "").trim().length > 0;
-    return hasOptionIds || hasWriteIn;
+    return hasSubmittedVoteForPoll(poll, voteDoc);
   }
 
   function openEmbeddedOptionNoteViewer(pollTitle, option) {
@@ -1301,22 +1302,13 @@ export default function SchedulerPage() {
     setEmbeddedVoteErrors((previous) => ({ ...previous, [pollId]: null }));
     setEmbeddedVoteDrafts((previous) => {
       const current = previous[pollId] || { optionIds: [], otherText: "" };
-      const existing = Array.isArray(current.optionIds) ? current.optionIds : [];
-      const hasOption = existing.includes(optionId);
-      let optionIds = existing;
-      if (!allowMultiple) {
-        optionIds = hasOption ? [] : [optionId];
-      } else if (hasOption) {
-        optionIds = existing.filter((idEntry) => idEntry !== optionId);
-      } else {
-        optionIds = [...existing, optionId];
-      }
+      const { draft: nextDraft } = setMultipleChoiceOptionOnVoteDraft(current, optionId, {
+        allowMultiple,
+      });
+      if (nextDraft === current) return previous;
       return {
         ...previous,
-        [pollId]: {
-          ...current,
-          optionIds,
-        },
+        [pollId]: nextDraft,
       };
     });
   };
@@ -1325,12 +1317,11 @@ export default function SchedulerPage() {
     if (!pollId) return;
     setEmbeddedVoteDrafts((previous) => {
       const current = previous[pollId] || { optionIds: [], otherText: "" };
+      const nextDraft = setOtherTextOnVoteDraft(current, value);
+      if (nextDraft === current) return previous;
       return {
         ...previous,
-        [pollId]: {
-          ...current,
-          otherText: value,
-        },
+        [pollId]: nextDraft,
       };
     });
   };
@@ -1340,13 +1331,11 @@ export default function SchedulerPage() {
     setEmbeddedVoteErrors((previous) => ({ ...previous, [pollId]: null }));
     setEmbeddedVoteDrafts((previous) => {
       const current = previous[pollId] || { rankings: [] };
-      const rankings = Array.isArray(current.rankings) ? current.rankings : [];
-      if (rankings.includes(optionId)) return previous;
+      const nextDraft = addRankedOptionToVoteDraft(current, optionId);
+      if (nextDraft === current) return previous;
       return {
         ...previous,
-        [pollId]: {
-          rankings: [...rankings, optionId],
-        },
+        [pollId]: nextDraft,
       };
     });
   };
@@ -1355,19 +1344,11 @@ export default function SchedulerPage() {
     if (!pollId || !optionId) return;
     setEmbeddedVoteDrafts((previous) => {
       const current = previous[pollId] || { rankings: [] };
-      const rankings = Array.isArray(current.rankings) ? current.rankings : [];
-      const index = rankings.indexOf(optionId);
-      if (index < 0) return previous;
-      const nextIndex = direction === "up" ? index - 1 : index + 1;
-      if (nextIndex < 0 || nextIndex >= rankings.length) return previous;
-      const nextRankings = [...rankings];
-      const [moved] = nextRankings.splice(index, 1);
-      nextRankings.splice(nextIndex, 0, moved);
+      const nextDraft = moveRankedOptionInVoteDraft(current, optionId, direction);
+      if (nextDraft === current) return previous;
       return {
         ...previous,
-        [pollId]: {
-          rankings: nextRankings,
-        },
+        [pollId]: nextDraft,
       };
     });
   };
@@ -1376,12 +1357,11 @@ export default function SchedulerPage() {
     if (!pollId || !optionId) return;
     setEmbeddedVoteDrafts((previous) => {
       const current = previous[pollId] || { rankings: [] };
-      const rankings = Array.isArray(current.rankings) ? current.rankings : [];
+      const nextDraft = removeRankedOptionFromVoteDraft(current, optionId);
+      if (nextDraft === current) return previous;
       return {
         ...previous,
-        [pollId]: {
-          rankings: rankings.filter((entry) => entry !== optionId),
-        },
+        [pollId]: nextDraft,
       };
     });
   };

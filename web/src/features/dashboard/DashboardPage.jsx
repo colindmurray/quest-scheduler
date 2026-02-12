@@ -19,6 +19,7 @@ import { normalizeEmail } from "../../lib/utils";
 import { coerceDate, resolveDisplayTimeZone, shouldShowTimeZone } from "../../lib/time";
 import { useDashboardBasicPollSource } from "./hooks/use-dashboard-basic-poll-source";
 import { useDashboardBasicPollActions } from "./hooks/use-dashboard-basic-poll-actions";
+import { useDashboardGeneralPollModals } from "./hooks/use-dashboard-general-poll-modals";
 import { NextSessionCard } from "./components/NextSessionCard";
 import { SessionCard } from "./components/SessionCard";
 import { DashboardCalendar } from "./components/DashboardCalendar";
@@ -94,9 +95,6 @@ export default function DashboardPage({
     () => parseGroupPollModalFromSearch(location.search),
     [location.search]
   );
-  const [activeGroupPollModal, setActiveGroupPollModal] = useState(initialGroupPollModal);
-  const [editingGeneralPoll, setEditingGeneralPoll] = useState(null);
-  const [createGeneralPollOpen, setCreateGeneralPollOpen] = useState(false);
   const [selectedGroupFilterId, setSelectedGroupFilterId] = useState(initialGroupFilterId);
   const [dashboardSearchText, setDashboardSearchText] = useState(initialSearchText);
   const [dashboardStatusFilters, setDashboardStatusFilters] = useState(initialStatusFilters);
@@ -213,6 +211,24 @@ export default function DashboardPage({
     setBasicPollRefreshNonce((value) => value + 1);
   }, []);
   const {
+    activeGroupPollModal,
+    editingGeneralPoll,
+    createGeneralPollOpen,
+    setCreateGeneralPollOpen,
+    handleEditBasicPoll,
+    handleOpenBasicPoll,
+    handleCreatedGeneralPoll,
+    handleEditedGeneralPoll,
+    openCreateGeneralPoll,
+    closeEditingGeneralPoll,
+    closeActiveGroupPollModal,
+    handleGroupModalEditPoll,
+  } = useDashboardGeneralPollModals({
+    initialGroupPollModal,
+    safeNavigate,
+    refreshBasicPolls,
+  });
+  const {
     basicPollArchiveBusy,
     basicPollActionBusy,
     deletePollRequest,
@@ -227,18 +243,6 @@ export default function DashboardPage({
     unarchivePoll,
     refreshBasicPolls,
   });
-  useEffect(() => {
-    if (!initialGroupPollModal?.groupId || !initialGroupPollModal?.pollId) return;
-    setActiveGroupPollModal((current) => {
-      if (
-        current?.groupId === initialGroupPollModal.groupId &&
-        current?.pollId === initialGroupPollModal.pollId
-      ) {
-        return current;
-      }
-      return initialGroupPollModal;
-    });
-  }, [initialGroupPollModal]);
   const hasDashboardFilterValue = useCallback(
     (filterKey) => {
       if (filterKey === "group") return Boolean(selectedGroupFilterId);
@@ -850,66 +854,6 @@ export default function DashboardPage({
     [basicPollBuckets, basicPollTab, pollCardProfilesById]
   );
 
-  const handleEditBasicPoll = useCallback(
-    (poll) => {
-      if (poll?.parentType === "group" && poll?.parentId && poll?.pollId) {
-        setActiveGroupPollModal(null);
-        setCreateGeneralPollOpen(false);
-        setEditingGeneralPoll({
-          groupId: poll.parentId,
-          pollId: poll.pollId,
-          poll: {
-            ...poll,
-            parentType: "group",
-            parentId: poll.parentId,
-            pollId: poll.pollId,
-          },
-        });
-        return;
-      }
-      if (!poll?.voteLink) return;
-      safeNavigate(poll.voteLink, { compareMode: "pathname+search" });
-    },
-    [safeNavigate]
-  );
-
-  const handleOpenBasicPoll = useCallback(
-    (poll) => {
-      if (!poll?.voteLink) return;
-      if (poll.parentType === "group") {
-        setActiveGroupPollModal({
-          groupId: poll.parentId,
-          pollId: poll.pollId,
-        });
-        return;
-      }
-      safeNavigate(poll.voteLink, { compareMode: "pathname+search" });
-    },
-    [safeNavigate]
-  );
-
-  const handleCreatedGeneralPoll = useCallback(
-    (pollId, groupId) => {
-      refreshBasicPolls();
-      if (!pollId || !groupId) return;
-      setActiveGroupPollModal({
-        groupId,
-        pollId,
-      });
-    },
-    [refreshBasicPolls]
-  );
-
-  const handleEditedGeneralPoll = useCallback(
-    (pollId, groupId) => {
-      setEditingGeneralPoll(null);
-      refreshBasicPolls();
-      if (!pollId || !groupId) return;
-      setActiveGroupPollModal({ groupId, pollId });
-    },
-    [refreshBasicPolls]
-  );
-
   const handleOpenInvite = (inviteId) => {
     const target = `/scheduler/${inviteId}`;
     safeNavigate(target);
@@ -1145,7 +1089,7 @@ export default function DashboardPage({
           <GeneralPollsSection
             hasQuestingGroupMembership={hasQuestingGroupMembership}
             canCreateGeneralPoll={canCreateGeneralPoll}
-            onCreateGeneralPoll={() => setCreateGeneralPollOpen(true)}
+            onCreateGeneralPoll={openCreateGeneralPoll}
             basicPollTab={basicPollTab}
             setBasicPollTab={setBasicPollTab}
             basicPollBuckets={basicPollBuckets}
@@ -1235,7 +1179,7 @@ export default function DashboardPage({
       <CreateGroupPollModal
         open={Boolean(editingGeneralPoll)}
         onOpenChange={(nextOpen) => {
-          if (!nextOpen) setEditingGeneralPoll(null);
+          if (!nextOpen) closeEditingGeneralPoll();
         }}
         mode="edit"
         groupId={editingGeneralPoll?.groupId || null}
@@ -1251,21 +1195,8 @@ export default function DashboardPage({
         <GroupBasicPollModal
           groupId={activeGroupPollModal.groupId}
           pollId={activeGroupPollModal.pollId}
-          onClose={() => setActiveGroupPollModal(null)}
-          onEditPoll={(pollDetails) => {
-            if (!pollDetails?.groupId || !pollDetails?.pollId) return;
-            setActiveGroupPollModal(null);
-            setEditingGeneralPoll({
-              groupId: pollDetails.groupId,
-              pollId: pollDetails.pollId,
-              poll: {
-                ...(pollDetails.poll || {}),
-                parentType: "group",
-                parentId: pollDetails.groupId,
-                pollId: pollDetails.pollId,
-              },
-            });
-          }}
+          onClose={closeActiveGroupPollModal}
+          onEditPoll={handleGroupModalEditPoll}
         />
       ) : null}
       <ConfirmDialog

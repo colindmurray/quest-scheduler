@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-12: Code Health Pt2 progress: extracted shared basic-poll vote-draft mutation helpers, adopted them in scheduler embedded poll voting + dashboard group poll modal, and kicked off Phase 4.2 scheduler decomposition."
   - "2026-02-12: Code Health Pt2 progress: extracted dashboard basic-poll action orchestration into `use-dashboard-basic-poll-actions`, further reduced dashboard complexity, and re-ran full web + e2e emulator validation."
   - "2026-02-12: Code Health Pt2 progress: extracted dashboard basic-poll source/derivation into dedicated hook+lib modules, split pending-invite/general-poll sidebar sections, reduced `DashboardPage.jsx` to 1352 lines, and added direct tests for `DashboardCalendar` + `useCalendarNavigation`."
   - "2026-02-12: Code Health Pt2 progress: replaced dashboard/general-poll `window.confirm` delete flows with shared confirm dialogs, fixed stale Firestore hook error reset behavior, extracted dashboard filter/status utilities into `lib/dashboard-filters`, and expanded unit coverage."
@@ -50,12 +51,37 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Code Health Pt2 Phase 4.1 fourth slice (dashboard basic-poll action orchestration extraction into hook) and expanded dashboard hotspot coverage.
-- Next Step: Continue Code Health Pt2 Phase 4.1 with remaining modal/edit orchestration extraction, then begin Phase 4.2 scheduler-page decomposition.
+- Last Completed: Code Health Pt2 Phase 4.2 kickoff slice (shared vote-draft helper extraction used by scheduler embedded polls and dashboard group poll modal) with direct coverage.
+- Next Step: Continue Code Health Pt2 Phase 4.2 with scheduler-page hook/component extraction slices in `SchedulerPage` and `CreateSchedulerPage`.
 - Open Issues: None in automated test gates.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
 ## Progress Notes
+
+- 2026-02-12: Kicked off Code Health Pt2 Phase 4.2 by extracting shared vote-draft mutations.
+  - Decomposition:
+    - Added `web/src/lib/basic-polls/vote-draft.js` to centralize vote-draft interactions (single/multi toggle, ranked add/move/remove, other-text updates).
+    - Refactored `web/src/features/scheduler/SchedulerPage.jsx` embedded poll voting draft handlers to consume shared helpers.
+    - Refactored `web/src/features/dashboard/components/group-basic-poll-modal.jsx` vote-draft handlers to consume shared helpers, including max-selection limit handling.
+    - Replaced duplicated embedded vote-submission checks in `web/src/features/scheduler/SchedulerPage.jsx` and `web/src/features/scheduler/CreateSchedulerPage.jsx` with shared `hasSubmittedVoteForPoll`.
+  - Coverage:
+    - Added `web/src/lib/basic-polls/vote-draft.test.js`.
+  - Validation:
+    - `npm --prefix web run test -- src/lib/basic-polls/vote-draft.test.js src/features/dashboard/components/group-basic-poll-modal.test.jsx src/features/dashboard/DashboardPage.test.jsx` (pass, `15 passed`, exit code `0`)
+    - `npm --prefix web run test -- src/lib/basic-polls/vote-submission.test.js src/components/polls/basic-poll-voting-card.test.jsx` (pass, `7 passed`, exit code `0`)
+    - `npm --prefix web run test` (pass, `384 passed`, exit code `0`)
+    - `npm --prefix web run build` (pass, exit code `0`)
+
+- 2026-02-12: Continued Code Health Pt2 with dashboard modal/edit orchestration extraction.
+  - Decomposition:
+    - Added `web/src/features/dashboard/hooks/use-dashboard-general-poll-modals.js`.
+    - Refactored `web/src/features/dashboard/DashboardPage.jsx` to delegate group/general poll open/edit/create modal state and handlers.
+  - Coverage:
+    - Added `web/src/features/dashboard/hooks/use-dashboard-general-poll-modals.test.js`.
+  - Validation:
+    - `npm --prefix web run test -- src/features/dashboard/hooks/use-dashboard-general-poll-modals.test.js src/features/dashboard/DashboardPage.test.jsx` (pass, `13 passed`, exit code `0`)
+    - `npm --prefix web run test` (pass, `380 passed`, exit code `0`)
+    - `npm --prefix web run build` (pass, exit code `0`)
 
 - 2026-02-12: Added Discord poll-description truncation budgets for cleaner embeds.
   - Added shared helper: `functions/src/discord/card-description.js`.
