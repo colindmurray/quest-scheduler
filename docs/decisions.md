@@ -1,11 +1,12 @@
 ---
 created: 2026-01-06
-lastUpdated: 2026-02-02
+lastUpdated: 2026-02-12
 summary: "Living architecture decision log covering product, data, auth, and implementation tradeoff decisions."
 category: DECISION_LOG
 status: CURRENT
 note: "Still used as the primary repository for durable architecture and process decisions."
 changelog:
+  - "2026-02-12: Code Health Pt2 dependency re-evaluation decisions recorded (adopt/reject/defer)."
   - "2026-02-02: chore: sync notifications, discord, and identity updates"
   - "2026-01-31: Improve invite flows, notifications, and tests"
   - "2026-01-29: Chore: consolidate audit/docs and recent updates"
@@ -143,3 +144,20 @@ changelog:
 - Decision: compute and persist snapshots at finalization time only (`finalizeBasicPoll` for group polls; `googleCalendarFinalizePoll` for embedded polls), including deterministic tallies/IRV rounds and `voterCount`.
 - Decision: closed poll UIs render from snapshots and do not require live vote docs; live-doc fallbacks are retained only for legacy finalized records without snapshots.
 - Rationale: finalized outcomes must remain stable even if vote docs are later pruned by cleanup/privacy flows.
+
+## Code Health Pt2: Dependency Re-Evaluation (2026-02-12)
+- `react-hook-form` + `zod` + `@hookform/resolvers`
+  - Decision: `DEFER`.
+  - Rationale: these are still a strong fit for poll editor form-state simplification, but adoption should land together with Phase 6.2 (`poll editors`) so schema validation replaces existing form state in one coherent change. Re-adding them before that would reintroduce idle dependencies.
+- `@testing-library/jest-dom`
+  - Decision: `REJECT FOR NOW`.
+  - Rationale: current test suite is stable and readable with existing assertions. No immediate reliability gain justified package churn; revisit when broad test-style cleanup is scheduled.
+- `msw`
+  - Decision: `REJECT FOR NOW`.
+  - Rationale: this repo already leans on emulator-backed integration/e2e tests for Firebase callable behavior. Introducing a parallel network-mocking layer now adds maintenance overhead without closing a current confidence gap.
+- `framer-motion`
+  - Decision: `REJECT FOR NOW`.
+  - Rationale: no high-value shared motion system requirement is currently blocked on Framer Motion. Existing CSS/Tailwind transitions are sufficient; avoid dependency and bundle-size cost until a concrete UX interaction set is approved.
+- Additional candidate: `chrono-node`/`ms` for Discord deadline parsing
+  - Decision: `REJECT FOR NOW`.
+  - Rationale: current Discord deadline parsing path is constrained and covered by tests; moving to third-party parsing is only worthwhile if new parsing formats are product requirements.

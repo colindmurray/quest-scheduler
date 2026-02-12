@@ -7,6 +7,9 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-12: Code Health Pt2 progress: extracted dashboard basic-poll action orchestration into `use-dashboard-basic-poll-actions`, further reduced dashboard complexity, and re-ran full web + e2e emulator validation."
+  - "2026-02-12: Code Health Pt2 progress: extracted dashboard basic-poll source/derivation into dedicated hook+lib modules, split pending-invite/general-poll sidebar sections, reduced `DashboardPage.jsx` to 1352 lines, and added direct tests for `DashboardCalendar` + `useCalendarNavigation`."
+  - "2026-02-12: Code Health Pt2 progress: replaced dashboard/general-poll `window.confirm` delete flows with shared confirm dialogs, fixed stale Firestore hook error reset behavior, extracted dashboard filter/status utilities into `lib/dashboard-filters`, and expanded unit coverage."
   - "2026-02-12: Added Discord nudge coverage across functions and web layers (grouped required-poll sections, callable wrappers, shared nudge button helper/UI tests)."
   - "2026-02-12: Removed legacy `/poll-create` fallback payload support; Discord worker now requires explicit subcommands (`multiple`/`ranked`) and returns a clear error for legacy shape."
   - "2026-02-12: Updated Discord basic/general poll card formatting to include a clickable `View on web` embed field link (instead of non-clickable footer URL text), with tests and prod/staging function deploys."
@@ -47,12 +50,117 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Code Health Pt2 Phase 3.2 poll domain constant modules (status/vote type) adopted in high-touch poll paths.
-- Next Step: Code Health Pt2 Phase 4.1 monolith decomposition kickoff (extract focused dashboard hooks/components).
+- Last Completed: Code Health Pt2 Phase 4.1 fourth slice (dashboard basic-poll action orchestration extraction into hook) and expanded dashboard hotspot coverage.
+- Next Step: Continue Code Health Pt2 Phase 4.1 with remaining modal/edit orchestration extraction, then begin Phase 4.2 scheduler-page decomposition.
 - Open Issues: None in automated test gates.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
 ## Progress Notes
+
+- 2026-02-12: Added Discord poll-description truncation budgets for cleaner embeds.
+  - Added shared helper: `functions/src/discord/card-description.js`.
+    - Enforces description budget at 25% of Discord description limit (`1024` chars of `4096`).
+    - Applies row-aware wrapping cap (~`75` chars/row), explicit newline cap, and word-count cap.
+    - Appends `_View full content on [Quest Scheduler](<poll-url>)._` when truncation occurs.
+  - Integrated helper into:
+    - `functions/src/discord/poll-card.js`
+    - `functions/src/discord/basic-poll-card.js`
+  - Coverage:
+    - Added `functions/src/discord/card-description.test.js`.
+    - Expanded:
+      - `functions/src/discord/poll-card.test.js`
+      - `functions/src/discord/basic-poll-card.test.js`
+  - Validation:
+    - `npm --prefix functions run test -- src/discord/card-description.test.js src/discord/poll-card.test.js src/discord/basic-poll-card.test.js` (pass, `12 passed`, exit code `0`)
+
+- 2026-02-12: Continued Code Health Pt2 with dashboard basic-poll action orchestration extraction.
+  - Decomposition:
+    - Added `web/src/features/dashboard/hooks/use-dashboard-basic-poll-actions.js`.
+    - Refactored `web/src/features/dashboard/DashboardPage.jsx` to delegate archive/finalize/reopen/delete action handling + busy state + delete confirmation state for basic polls.
+    - Reduced `web/src/features/dashboard/DashboardPage.jsx` from `1352` lines to `1288` lines.
+  - Coverage:
+    - Added `web/src/features/dashboard/hooks/use-dashboard-basic-poll-actions.test.js`.
+  - Validation:
+    - `npm --prefix web run test -- src/features/dashboard/hooks/use-dashboard-basic-poll-actions.test.js src/features/dashboard/DashboardPage.test.jsx` (pass, `13 passed`, exit code `0`)
+    - `npm --prefix web run test` (pass, `377 passed`, exit code `0`)
+    - `npm --prefix web run build` (pass, exit code `0`)
+    - `npm --prefix functions run test` (pass, `366 passed`, exit code `0`)
+    - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`, exit code `0`)
+
+- 2026-02-12: Polished Discord poll card parity between scheduler and general polls.
+  - Session (`functions/src/discord/poll-card.js`) updates:
+    - Added calendar-prefixed scheduler titles (`📅`).
+    - Replaced raw URL embed description with optional scheduler description text (`scheduler.description`) when present.
+    - Added clickable `View on web` field using `[Open poll](...)` to match general poll card UX.
+  - General poll (`functions/src/discord/basic-poll-card.js`) update:
+    - Trimmed description whitespace before embedding so optional description rendering is clean.
+  - Coverage updates:
+    - `functions/src/discord/poll-card.test.js`
+    - `functions/src/discord/basic-poll-card.test.js`
+  - Validation:
+    - `npm --prefix functions run test -- src/discord/poll-card.test.js src/discord/basic-poll-card.test.js` (pass, `6 passed`, exit code `0`)
+
+- 2026-02-12: Continued Code Health Pt2 with deeper Dashboard decomposition and hotspot test backfill.
+  - Decomposition:
+    - Added `web/src/features/dashboard/hooks/use-dashboard-basic-poll-source.js` to own group+embedded poll fetch orchestration for dashboard surfaces.
+    - Added `web/src/features/dashboard/lib/dashboard-basic-polls.js` to centralize dashboard poll derivation, bucketing, and user-card mapping helpers.
+    - Added `web/src/features/dashboard/components/pending-invites-section.jsx` and `web/src/features/dashboard/components/general-polls-section.jsx`, and refactored `web/src/features/dashboard/DashboardPage.jsx` to delegate those sidebar sections.
+    - Reduced `web/src/features/dashboard/DashboardPage.jsx` from `1629` lines to `1352` lines.
+  - Coverage:
+    - Added tests:
+      - `web/src/features/dashboard/lib/dashboard-basic-polls.test.js`
+      - `web/src/features/dashboard/hooks/use-dashboard-basic-poll-source.test.js`
+      - `web/src/features/dashboard/components/pending-invites-section.test.jsx`
+      - `web/src/features/dashboard/components/general-polls-section.test.jsx`
+      - `web/src/features/dashboard/components/DashboardCalendar.test.jsx`
+      - `web/src/hooks/useCalendarNavigation.test.js`
+  - Dependency review:
+    - Recorded Code Health Pt2 dependency adopt/reject/defer decisions in `docs/decisions.md` for `react-hook-form`, `zod`, `@hookform/resolvers`, `@testing-library/jest-dom`, `msw`, `framer-motion`, and `chrono-node`/`ms` consideration.
+  - Validation:
+    - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx src/features/dashboard/lib/dashboard-basic-polls.test.js src/features/dashboard/hooks/use-dashboard-basic-poll-source.test.js src/features/dashboard/components/pending-invites-section.test.jsx src/features/dashboard/components/general-polls-section.test.jsx` (pass, `22 passed`, exit code `0`)
+    - `npm --prefix web run test -- src/hooks/useCalendarNavigation.test.js src/features/dashboard/components/DashboardCalendar.test.jsx` (pass, `5 passed`, exit code `0`)
+    - `npm --prefix web run test` (pass, `374 passed`, exit code `0`)
+    - `npm --prefix web run build` (pass, exit code `0`)
+    - `npm --prefix functions run test` (pass, `360 passed`, exit code `0`)
+    - `npm --prefix web run test:rules` (pass, `21 passed`, exit code `0`)
+    - `npm --prefix web run test:integration` (pass, `11 passed`, exit code `0`; known emulator log noise from `processNotificationEvent` NOT_FOUND/socket-hangup persisted)
+    - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`, exit code `0`)
+
+- 2026-02-12: Continued Code Health Pt2 execution with another Dashboard decomposition slice and test backfill.
+  - Decomposition:
+    - Added `web/src/features/dashboard/components/dashboard-filter-bar.jsx`.
+    - Refactored `web/src/features/dashboard/DashboardPage.jsx` to delegate filter UI rendering to the new component.
+  - Coverage:
+    - Added direct component tests for `web/src/components/polls/basic-poll-voting-card.jsx` via `web/src/components/polls/basic-poll-voting-card.test.jsx`.
+  - Validation:
+    - `npm --prefix web run test -- src/components/polls/basic-poll-voting-card.test.jsx src/features/dashboard/DashboardPage.test.jsx src/features/dashboard/lib/dashboard-filters.test.js src/features/dashboard/components/group-basic-poll-modal.test.jsx` (pass, `19 passed`, exit code `0`)
+    - `npm --prefix web run test` (pass, `357 passed`, exit code `0`)
+    - `npm --prefix web run build` (pass, exit code `0`)
+    - `npm --prefix functions run test` (pass, `360 passed`, exit code `0`)
+
+- 2026-02-12: Continued Code Health Pt2 implementation (Phases 5.2, 6.1, and 4.1 kickoff slice).
+  - Stale Firestore error reset hardening:
+    - Updated `web/src/hooks/useFirestoreDoc.js` and `web/src/hooks/useFirestoreCollection.js` to clear stale `error` values on ref changes and null refs.
+    - Added regression coverage in `web/src/hooks/useFirestoreDoc.test.js` and `web/src/hooks/useFirestoreCollection.test.js`.
+  - Confirm dialog migration:
+    - Added shared `web/src/components/ui/confirm-dialog.jsx` (+ `web/src/components/ui/confirm-dialog.test.jsx`).
+    - Replaced native confirm deletes in `web/src/features/dashboard/DashboardPage.jsx` and `web/src/features/dashboard/components/group-basic-poll-modal.jsx`.
+    - Added/expanded delete-flow tests in:
+      - `web/src/features/dashboard/components/group-basic-poll-modal.test.jsx`
+      - `web/src/features/dashboard/DashboardPage.test.jsx`
+    - Verified no remaining native confirms in web app: `rg -n "window\\.confirm" web/src` (no matches).
+  - Dashboard monolith decomposition kickoff:
+    - Added `web/src/features/dashboard/lib/dashboard-filters.js` and `web/src/features/dashboard/lib/dashboard-filters.test.js`.
+    - `DashboardPage` now imports filter/status/date helpers from the extracted module.
+    - Removed dead `useNavigate` binding in `DashboardPage`.
+  - Validation:
+    - `npm --prefix web run test -- src/features/dashboard/lib/dashboard-filters.test.js src/features/dashboard/DashboardPage.test.jsx src/features/dashboard/components/group-basic-poll-modal.test.jsx src/hooks/useFirestoreDoc.test.js src/hooks/useFirestoreCollection.test.js src/components/ui/confirm-dialog.test.jsx` (pass, `23 passed`, exit code `0`)
+    - `npm --prefix web run test` (pass, `354 passed`, exit code `0`)
+    - `npm --prefix web run test:rules` (pass, `21 passed`, exit code `0`)
+    - `npm --prefix web run test:integration` (pass, `11 passed`, exit code `0`; first run failed to start Firestore emulator due occupied port, immediate rerun passed)
+    - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`, exit code `0`)
+    - `npm --prefix web run build` (pass, exit code `0`)
+    - `npm --prefix functions run test` (pass, `360 passed`, exit code `0`)
 
 - 2026-02-12: Expanded Discord nudge test coverage following AGENTS testing conventions (functions Discord-send assertions + web data/UI layer tests).
   - Added function regression coverage in `functions/src/discord/nudge.test.js`:

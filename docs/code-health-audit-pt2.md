@@ -18,6 +18,19 @@ Date: 2026-02-12
   - targeted `rg` queries for repeated patterns and risky constructs.
   - file-size and test-gap scripts for hotspot detection.
 
+## Remediation Progress Update (2026-02-12)
+- Completed:
+  - Phase 5.2: Firestore hooks now clear stale errors when refs change (`useFirestoreDoc`, `useFirestoreCollection`) with regression tests.
+  - Phase 6.1: replaced native `window.confirm` delete prompts in dashboard general-poll flows with shared app-styled confirm dialogs.
+  - Phase 4.1 kickoff: extracted dashboard filter/status/date helper logic into `web/src/features/dashboard/lib/dashboard-filters.js` with direct unit tests.
+  - Phase 4.1 additional slices: extracted dashboard basic-poll source loading into `use-dashboard-basic-poll-source`, moved poll derivation/bucketing/user mapping into `dashboard-basic-polls`, and split pending-invite/general-poll sidebar sections into dedicated components.
+  - Phase 4.1 additional slice: extracted dashboard basic-poll archive/finalize/reopen/delete orchestration into `use-dashboard-basic-poll-actions`.
+  - Phase 5.1 additional coverage: added direct tests for `DashboardCalendar` and `useCalendarNavigation`.
+  - Phase 7.1: documented dependency adopt/reject/defer decisions in `docs/decisions.md` for form/testing/motion packages and additional parsing-library candidates.
+- Remaining high-priority work:
+  - Continue Phase 4 monolith decomposition for `DashboardPage`, `SchedulerPage`, and Discord worker.
+  - Execute Phase 7 dependency re-evaluation/adopt-reject decisions in `docs/decisions.md`.
+
 ## Findings (Prioritized)
 
 ## P1 High

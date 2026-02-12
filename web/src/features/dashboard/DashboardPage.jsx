@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Check, Plus, Search, X } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { Plus } from "lucide-react";
 import { useAuth } from "../../app/useAuth";
 import { useSafeNavigate } from "../../hooks/useSafeNavigate";
 import { useSchedulersByCreator, useSchedulersByGroupIds, useSchedulersByParticipant } from "../../hooks/useSchedulers";
@@ -12,20 +12,13 @@ import {
   pollInviteNotificationId,
   pollInviteLegacyNotificationId,
 } from "../../lib/data/notifications";
-import {
-  deleteBasicPoll,
-  deleteEmbeddedBasicPoll,
-  fetchDashboardEmbeddedBasicPolls,
-  fetchDashboardGroupBasicPolls,
-  finalizeBasicPollForParent,
-  reopenBasicPollForParent,
-} from "../../lib/data/basicPolls";
 import { LoadingState } from "../../components/ui/spinner";
 import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfiles";
-import { UserIdentity } from "../../components/UserIdentity";
 import { useSchedulerAttendance } from "./hooks/useSchedulerAttendance";
 import { normalizeEmail } from "../../lib/utils";
 import { coerceDate, resolveDisplayTimeZone, shouldShowTimeZone } from "../../lib/time";
+import { useDashboardBasicPollSource } from "./hooks/use-dashboard-basic-poll-source";
+import { useDashboardBasicPollActions } from "./hooks/use-dashboard-basic-poll-actions";
 import { NextSessionCard } from "./components/NextSessionCard";
 import { SessionCard } from "./components/SessionCard";
 import { DashboardCalendar } from "./components/DashboardCalendar";
@@ -33,163 +26,33 @@ import { MobileAgendaView } from "./components/MobileAgendaView";
 import { buildAttendanceSummary } from "./lib/attendance";
 import { PastSessionsSection } from "./components/past-sessions-section";
 import { SectionHeader } from "./components/section-header";
-import { TabButton } from "./components/tab-button";
-import { BasicPollCard } from "../../components/polls/basic-poll-card";
+import { DashboardFilterBar } from "./components/dashboard-filter-bar";
+import { PendingInvitesSection } from "./components/pending-invites-section";
+import { GeneralPollsSection } from "./components/general-polls-section";
+import {
+  DASHBOARD_STATUS_ORDER,
+  describeDateFilterSelection,
+  describeStatusFilterSelection,
+  isWithinDateWindow,
+  matchesSearch,
+  normalizeDateRangeBounds,
+  normalizeSearchValue,
+  resolveBasicPollDashboardStatus,
+  resolveSessionDashboardStatus,
+  toDayEndMs,
+  toDayStartMs,
+} from "./lib/dashboard-filters";
+import {
+  bucketDashboardBasicPolls,
+  buildUsersFromIds,
+  canManageGroupPoll,
+  deriveDashboardBasicPollItems,
+} from "./lib/dashboard-basic-polls";
 import { GroupBasicPollModal } from "./components/group-basic-poll-modal";
 import { CreateGroupPollModal } from "../basic-polls/components/CreateGroupPollModal";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
-import { DatePicker } from "../../components/ui/date-picker";
+import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 
 const toDate = coerceDate;
-
-function resolvePollDeadline(poll = {}) {
-  return toDate(poll?.settings?.deadlineAt || poll?.deadlineAt || null);
-}
-
-function buildBasicPollArchiveKey(poll) {
-  if (!poll?.parentType || !poll?.parentId || !poll?.pollId) return null;
-  return `basic:${poll.parentType}:${poll.parentId}:${poll.pollId}`;
-}
-
-function toCardUser(profile = {}, userId) {
-  return {
-    id: userId,
-    email: profile?.email || `user:${userId}`,
-    avatar: profile?.photoURL || null,
-    displayName: profile?.displayName || userId,
-  };
-}
-
-function canManageGroupPoll(group, userId) {
-  if (!group || !userId) return false;
-  return (
-    group.creatorId === userId ||
-    (group.memberManaged === true &&
-      Array.isArray(group.memberIds) &&
-      group.memberIds.includes(userId)) ||
-    (group.memberPermissionsEnabled === true &&
-      group.memberPermissions?.[userId]?.isManager === true)
-  );
-}
-
-const DASHBOARD_STATUS_OPTIONS = [
-  {
-    value: "OPEN",
-    label: "Open",
-    description: "Open session polls and open general polls.",
-  },
-  {
-    value: "FINALIZED",
-    label: "Finalized",
-    description: "Finalized session polls and finalized general polls.",
-  },
-  {
-    value: "CANCELLED",
-    label: "Cancelled",
-    description: "Cancelled session polls.",
-  },
-  {
-    value: "CLOSED",
-    label: "Closed",
-    description: "Closed general polls that are not finalized.",
-  },
-  {
-    value: "ARCHIVED",
-    label: "Archived",
-    description: "Archived session and general polls.",
-  },
-];
-
-const DASHBOARD_STATUS_ORDER = DASHBOARD_STATUS_OPTIONS.map((option) => option.value);
-
-function normalizeSearchValue(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function matchesSearch(fields, query) {
-  if (!query) return true;
-  const haystack = fields
-    .map((field) => String(field || ""))
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(query);
-}
-
-function toDayStartMs(value) {
-  const date = toDate(value);
-  if (!date) return null;
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  return start.getTime();
-}
-
-function toDayEndMs(value) {
-  const date = toDate(value);
-  if (!date) return null;
-  const end = new Date(date);
-  end.setHours(23, 59, 59, 999);
-  return end.getTime();
-}
-
-function isWithinDateWindow(value, fromMs, toMs) {
-  if (fromMs === null && toMs === null) return true;
-  const date = toDate(value);
-  if (!date) return false;
-  const time = date.getTime();
-  if (fromMs !== null && time < fromMs) return false;
-  if (toMs !== null && time > toMs) return false;
-  return true;
-}
-
-function resolveSessionDashboardStatus(scheduler, archivedPollSet) {
-  if (archivedPollSet.has(scheduler.id)) return "ARCHIVED";
-  if (scheduler.status === "FINALIZED") return "FINALIZED";
-  if (scheduler.status === "CANCELLED") return "CANCELLED";
-  return "OPEN";
-}
-
-function resolveBasicPollDashboardStatus(poll) {
-  if (poll.isArchived || poll.state === "ARCHIVED") return "ARCHIVED";
-  if (poll.pollStatus === "FINALIZED") return "FINALIZED";
-  if (poll.state === "CLOSED") return "CLOSED";
-  return "OPEN";
-}
-
-function describeStatusFilterSelection(selectedValues) {
-  if (!selectedValues?.length) return "Any status";
-  if (selectedValues.length === 1) {
-    const option = DASHBOARD_STATUS_OPTIONS.find((entry) => entry.value === selectedValues[0]);
-    return option?.label || selectedValues[0];
-  }
-  return `${selectedValues.length} statuses`;
-}
-
-function describeDateFilterSelection(from, to) {
-  const fromDate = toDate(from);
-  const toDateValue = toDate(to);
-  const formatDate = (value) =>
-    value.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  if (fromDate && toDateValue) return `${formatDate(fromDate)} to ${formatDate(toDateValue)}`;
-  if (fromDate) return `From ${formatDate(fromDate)}`;
-  if (toDateValue) return `Until ${formatDate(toDateValue)}`;
-  return "Date range";
-}
-
-function normalizeDateRangeBounds(from, to) {
-  const fromDate = toDate(from);
-  const toDateValue = toDate(to);
-  if (fromDate && toDateValue && fromDate.getTime() > toDateValue.getTime()) {
-    return { from: toDateValue, to: fromDate };
-  }
-  return { from: fromDate, to: toDateValue };
-}
 
 function parseGroupPollModalFromSearch(search) {
   const params = new URLSearchParams(search || "");
@@ -206,7 +69,6 @@ export default function DashboardPage({
   initialDateFrom = null,
   initialDateTo = null,
 }) {
-  const navigate = useNavigate();
   const safeNavigate = useSafeNavigate();
   const location = useLocation();
   const { user } = useAuth();
@@ -228,10 +90,6 @@ export default function DashboardPage({
   const [pastSessionsTab, setPastSessionsTab] = useState("finalized");
   const [basicPollTab, setBasicPollTab] = useState("needs-vote");
   const [isMobile, setIsMobile] = useState(false);
-  const [basicPollSourceItems, setBasicPollSourceItems] = useState([]);
-  const [basicPollLoading, setBasicPollLoading] = useState(false);
-  const [basicPollArchiveBusy, setBasicPollArchiveBusy] = useState({});
-  const [basicPollActionBusy, setBasicPollActionBusy] = useState({});
   const initialGroupPollModal = useMemo(
     () => parseGroupPollModalFromSearch(location.search),
     [location.search]
@@ -354,6 +212,21 @@ export default function DashboardPage({
   const refreshBasicPolls = useCallback(() => {
     setBasicPollRefreshNonce((value) => value + 1);
   }, []);
+  const {
+    basicPollArchiveBusy,
+    basicPollActionBusy,
+    deletePollRequest,
+    handleToggleBasicPollArchive,
+    handleFinalizeBasicPoll,
+    handleReopenBasicPoll,
+    handleDeleteBasicPoll,
+    confirmDeleteBasicPoll,
+    clearDeletePollRequest,
+  } = useDashboardBasicPollActions({
+    archivePoll,
+    unarchivePoll,
+    refreshBasicPolls,
+  });
   useEffect(() => {
     if (!initialGroupPollModal?.groupId || !initialGroupPollModal?.pollId) return;
     setActiveGroupPollModal((current) => {
@@ -597,20 +470,9 @@ export default function DashboardPage({
     });
     return Array.from(ids);
   }, [groups]);
-  const basicPollVoterIds = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          (basicPollSourceItems || []).flatMap((poll) =>
-            Array.isArray(poll?.voterIds) ? poll.voterIds : []
-          )
-        )
-      ),
-    [basicPollSourceItems]
-  );
   const profileLookupIds = useMemo(
-    () => Array.from(new Set([...allParticipantIds, ...allGroupMemberIds, ...basicPollVoterIds])),
-    [allParticipantIds, allGroupMemberIds, basicPollVoterIds]
+    () => Array.from(new Set([...allParticipantIds, ...allGroupMemberIds])),
+    [allParticipantIds, allGroupMemberIds]
   );
   const { profiles: participantProfilesById } = useUserProfilesByIds(profileLookupIds);
 
@@ -907,145 +769,25 @@ export default function DashboardPage({
     mine.loading ||
     settingsLoading ||
     pendingInvitesLoading;
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadBasicPolls() {
-      if (!user?.uid) {
-        setBasicPollSourceItems([]);
-        return;
-      }
-
-      const groupIdsForFetch = groupIdsKey ? groupIdsKey.split("|") : [];
-      const schedulerIdsForFetch = dashboardSchedulerIdsKey
-        ? dashboardSchedulerIdsKey.split("|")
-        : [];
-
-      setBasicPollLoading(true);
-      try {
-        const [groupPolls, embeddedPolls] = await Promise.all([
-          fetchDashboardGroupBasicPolls(groupIdsForFetch, user.uid),
-          fetchDashboardEmbeddedBasicPolls(schedulerIdsForFetch, user.uid),
-        ]);
-
-        if (!cancelled) {
-          setBasicPollSourceItems([...(groupPolls || []), ...(embeddedPolls || [])]);
-        }
-      } catch (error) {
-        console.error("Failed to load dashboard basic polls:", error);
-        if (!cancelled) setBasicPollSourceItems([]);
-      } finally {
-        if (!cancelled) setBasicPollLoading(false);
-      }
-    }
-
-    if (!isLoading) {
-      loadBasicPolls();
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    basicPollRefreshNonce,
-    dashboardSchedulerIdsKey,
+  const { basicPollSourceItems, basicPollLoading } = useDashboardBasicPollSource({
+    userId: user?.uid,
     groupIdsKey,
-    isLoading,
-    user?.uid,
-  ]);
+    dashboardSchedulerIdsKey,
+    isReady: !isLoading,
+    refreshNonce: basicPollRefreshNonce,
+  });
 
   const basicPollItems = useMemo(() => {
-    return (basicPollSourceItems || [])
-      .map((poll) => {
-        const schedulerMeta =
-          poll.parentType === "scheduler" ? schedulerMetaById.get(poll.parentId) || null : null;
-        const group = poll.parentType === "group" ? groupsById[poll.parentId] || null : null;
-        if (selectedGroupFilterId) {
-          if (poll.parentType === "group" && poll.parentId !== selectedGroupFilterId) return null;
-          if (
-            poll.parentType === "scheduler" &&
-            schedulerMeta?.questingGroupId !== selectedGroupFilterId
-          ) {
-            return null;
-          }
-        }
-        const archiveKey = buildBasicPollArchiveKey(poll);
-        const deadlineAt = resolvePollDeadline(poll);
-        const isDeadlineOpen = !deadlineAt || deadlineAt.getTime() > Date.now();
-        const pollStatus = poll?.status || "OPEN";
-        const isOpen =
-          pollStatus === "OPEN" &&
-          isDeadlineOpen &&
-          (poll.parentType !== "scheduler" || schedulerMeta?.status !== "CANCELLED");
-        const isArchived = Boolean(archiveKey && archivedPolls.includes(archiveKey));
-        const state = isArchived
-          ? "ARCHIVED"
-          : isOpen
-            ? poll.hasVoted
-              ? "OPEN_VOTED"
-              : "NEEDS_VOTE"
-            : "CLOSED";
-        const eligibleIds =
-          poll.parentType === "group"
-            ? (group?.memberIds || []).filter(Boolean)
-            : (schedulerMeta?.participantIds || []).filter(Boolean);
-        const voterIds = Array.from(
-          new Set((Array.isArray(poll.voterIds) ? poll.voterIds : []).filter(Boolean))
-        );
-        const votedIdSet = new Set(voterIds);
-        const pendingIds = eligibleIds.filter((userId) => !votedIdSet.has(userId));
-        const canManage =
-          poll.parentType === "group"
-            ? canManageGroupPoll(group, user?.uid)
-            : Boolean(schedulerMeta?.creatorId && user?.uid && schedulerMeta.creatorId === user.uid);
-
-        return {
-          ...poll,
-          archiveKey,
-          isArchived,
-          state,
-          isOpen,
-          deadlineAt,
-          pollStatus,
-          contextLabel:
-            poll.parentType === "group"
-              ? `in ${groupNameById.get(poll.parentId) || "Questing group"}`
-              : `in ${schedulerMeta?.title || "Session poll"}`,
-          accentColor:
-            poll.parentType === "group"
-              ? getGroupColor(poll.parentId)
-              : schedulerMeta?.questingGroupId
-                ? getGroupColor(schedulerMeta.questingGroupId)
-                : null,
-          voteLink:
-            poll.parentType === "group"
-              ? `/groups/${poll.parentId}/polls/${poll.pollId}`
-              : `/scheduler/${poll.parentId}?poll=${poll.pollId}`,
-          eligibleIds,
-          voterIds,
-          pendingIds,
-          eligibleCount: eligibleIds.length,
-          votedCount: voterIds.length,
-          canManage,
-        };
-      })
-      .filter(Boolean)
-      .sort((left, right) => {
-        const stateOrder = {
-          NEEDS_VOTE: 0,
-          OPEN_VOTED: 1,
-          CLOSED: 2,
-          ARCHIVED: 3,
-        };
-        const leftState = stateOrder[left.state] ?? 99;
-        const rightState = stateOrder[right.state] ?? 99;
-        if (leftState !== rightState) return leftState - rightState;
-        const leftDeadline = left.deadlineAt ? left.deadlineAt.getTime() : Number.MAX_SAFE_INTEGER;
-        const rightDeadline = right.deadlineAt ? right.deadlineAt.getTime() : Number.MAX_SAFE_INTEGER;
-        if (leftDeadline !== rightDeadline) return leftDeadline - rightDeadline;
-        return String(left.title || "").localeCompare(String(right.title || ""));
-      });
+    return deriveDashboardBasicPollItems({
+      basicPollSourceItems,
+      selectedGroupFilterId,
+      archivedPolls,
+      schedulerMetaById,
+      groupsById,
+      groupNameById,
+      getGroupColor,
+      userId: user?.uid,
+    });
   }, [
     archivedPolls,
     basicPollSourceItems,
@@ -1056,12 +798,24 @@ export default function DashboardPage({
     selectedGroupFilterId,
     user?.uid,
   ]);
-
-  const buildUsersFromIds = useCallback(
-    (userIds = []) => {
-      return (userIds || []).map((userId) => toCardUser(participantProfilesById[userId] || {}, userId));
-    },
-    [participantProfilesById]
+  const basicPollVoterIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (basicPollSourceItems || []).flatMap((poll) =>
+            Array.isArray(poll?.voterIds) ? poll.voterIds : []
+          )
+        )
+      ),
+    [basicPollSourceItems]
+  );
+  const { profiles: basicPollVoterProfilesById } = useUserProfilesByIds(basicPollVoterIds);
+  const pollCardProfilesById = useMemo(
+    () => ({
+      ...(participantProfilesById || {}),
+      ...(basicPollVoterProfilesById || {}),
+    }),
+    [basicPollVoterProfilesById, participantProfilesById]
   );
   const filteredBasicPollItems = useMemo(() => {
     return basicPollItems.filter((poll) => {
@@ -1081,94 +835,19 @@ export default function DashboardPage({
     dashboardSearchQuery,
     dashboardStatusFilterSet,
   ]);
-  const basicPollBuckets = useMemo(() => {
-    return {
-      "needs-vote": filteredBasicPollItems.filter((poll) => poll.state === "NEEDS_VOTE"),
-      "open-voted": filteredBasicPollItems.filter((poll) => poll.state === "OPEN_VOTED"),
-      closed: filteredBasicPollItems.filter((poll) => poll.state === "CLOSED"),
-      archived: filteredBasicPollItems.filter((poll) => poll.state === "ARCHIVED"),
-    };
-  }, [filteredBasicPollItems]);
+  const basicPollBuckets = useMemo(
+    () => bucketDashboardBasicPolls(filteredBasicPollItems),
+    [filteredBasicPollItems]
+  );
   const visibleBasicPolls = useMemo(
     () =>
       (basicPollBuckets[basicPollTab] || []).map((poll) => ({
         ...poll,
-        eligibleUsers: buildUsersFromIds(poll.eligibleIds),
-        votedUsers: buildUsersFromIds(poll.voterIds),
-        pendingUsers: buildUsersFromIds(poll.pendingIds),
+        eligibleUsers: buildUsersFromIds(poll.eligibleIds, pollCardProfilesById),
+        votedUsers: buildUsersFromIds(poll.voterIds, pollCardProfilesById),
+        pendingUsers: buildUsersFromIds(poll.pendingIds, pollCardProfilesById),
       })),
-    [basicPollBuckets, basicPollTab, buildUsersFromIds]
-  );
-
-  const handleToggleBasicPollArchive = useCallback(
-    async (poll) => {
-      if (!poll?.archiveKey) return;
-      setBasicPollArchiveBusy((current) => ({ ...current, [poll.archiveKey]: true }));
-      try {
-        if (poll.isArchived) {
-          await unarchivePoll(poll.archiveKey);
-        } else {
-          await archivePoll(poll.archiveKey);
-        }
-      } catch (error) {
-        console.error("Failed to update basic poll archive state:", error);
-      } finally {
-        setBasicPollArchiveBusy((current) => ({ ...current, [poll.archiveKey]: false }));
-      }
-    },
-    [archivePoll, unarchivePoll]
-  );
-
-  const withBasicPollActionBusy = useCallback(async (poll, actionKey, actionFn) => {
-    if (!poll?.archiveKey || !actionKey || typeof actionFn !== "function") return;
-    const busyKey = `${poll.archiveKey}:${actionKey}`;
-    setBasicPollActionBusy((current) => ({ ...current, [busyKey]: true }));
-    try {
-      await actionFn();
-    } finally {
-      setBasicPollActionBusy((current) => ({ ...current, [busyKey]: false }));
-    }
-  }, []);
-
-  const handleFinalizeBasicPoll = useCallback(
-    async (poll) => {
-      if (!poll?.parentType || !poll?.parentId || !poll?.pollId) return;
-      await withBasicPollActionBusy(poll, "finalize", async () => {
-        await finalizeBasicPollForParent(poll.parentType, poll.parentId, poll.pollId);
-        refreshBasicPolls();
-      });
-    },
-    [refreshBasicPolls, withBasicPollActionBusy]
-  );
-
-  const handleReopenBasicPoll = useCallback(
-    async (poll) => {
-      if (!poll?.parentType || !poll?.parentId || !poll?.pollId) return;
-      await withBasicPollActionBusy(poll, "reopen", async () => {
-        await reopenBasicPollForParent(poll.parentType, poll.parentId, poll.pollId);
-        refreshBasicPolls();
-      });
-    },
-    [refreshBasicPolls, withBasicPollActionBusy]
-  );
-
-  const handleDeleteBasicPoll = useCallback(
-    async (poll) => {
-      if (!poll?.parentType || !poll?.parentId || !poll?.pollId) return;
-      const confirmed = window.confirm(
-        `Delete "${poll.title || "this poll"}"? This will remove all votes.`
-      );
-      if (!confirmed) return;
-      await withBasicPollActionBusy(poll, "delete", async () => {
-        if (poll.parentType === "group") {
-          await deleteBasicPoll(poll.parentId, poll.pollId, { useServer: true });
-        } else {
-          await deleteEmbeddedBasicPoll(poll.parentId, poll.pollId, { useServer: true });
-        }
-        refreshBasicPolls();
-      });
-    },
-    [refreshBasicPolls, withBasicPollActionBusy]
+    [basicPollBuckets, basicPollTab, pollCardProfilesById]
   );
 
   const handleEditBasicPoll = useCallback(
@@ -1315,227 +994,36 @@ export default function DashboardPage({
         />
       )}
 
-      <section className="rounded-2xl border border-slate-200/70 bg-white/95 px-3 py-2 shadow-sm dark:border-slate-700 dark:bg-slate-800/90">
-        <div className="flex flex-wrap items-center gap-2 md:flex-nowrap">
-          <div className="order-1 flex flex-wrap items-center gap-2 md:order-2 md:flex-nowrap">
-            {visibleDashboardFilterKeys.map((filterKey) => {
-              let label = "";
-              let accentColor = null;
-              if (filterKey === "group") {
-                label = dashboardGroupFilterLabel;
-                accentColor = selectedGroupFilterColor;
-              } else if (filterKey === "status") {
-                label = dashboardStatusChipLabel;
-              } else if (filterKey === "date") {
-                label = dashboardDateChipLabel;
-              }
-              return (
-                <Popover
-                  key={filterKey}
-                  open={dashboardFilterEditor === filterKey}
-                  onOpenChange={(open) => handleDashboardFilterEditorOpenChange(filterKey, open)}
-                >
-                  <div className="group relative">
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        className="inline-flex h-9 items-center justify-center gap-2 rounded-full border border-slate-300 bg-slate-50 px-3 pr-7 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                        title={`Edit ${filterKey} filter`}
-                      >
-                        <span aria-hidden="true" className="inline-flex w-3.5 justify-center">
-                          {filterKey === "group" ? (
-                            <span
-                              className="h-2.5 w-2.5 rounded-full"
-                              style={{ backgroundColor: accentColor || "#94a3b8" }}
-                            />
-                          ) : null}
-                        </span>
-                        <span className="max-w-[220px] truncate text-center leading-none">
-                          {label}
-                        </span>
-                        <span aria-hidden="true" className="inline-flex w-3.5" />
-                      </button>
-                    </PopoverTrigger>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        removeDashboardFilter(filterKey);
-                      }}
-                      className="absolute right-1 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-slate-500 opacity-0 transition-opacity hover:bg-slate-400/15 hover:text-slate-700 group-hover:opacity-100 dark:text-slate-400 dark:hover:bg-slate-600/30 dark:hover:text-slate-200"
-                      aria-label={`Remove ${filterKey} filter`}
-                      title={`Remove ${filterKey} filter`}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                  <PopoverContent
-                    align="end"
-                    className={filterKey === "date" ? "w-[30rem] p-3" : "w-72 p-3"}
-                  >
-                    {filterKey === "group" ? (
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Questing group
-                        </p>
-                        <Select
-                          value={selectedGroupFilterId || "none"}
-                          onValueChange={(value) =>
-                            setSelectedGroupFilterId(value === "none" ? null : value)
-                          }
-                        >
-                          <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white text-sm dark:border-slate-600 dark:bg-slate-900">
-                            <SelectValue placeholder="Select a questing group" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Choose a questing group</SelectItem>
-                            {(groups || []).map((group) => (
-                              <SelectItem key={group.id} value={group.id}>
-                                <span className="inline-flex items-center gap-2">
-                                  <span
-                                    className="h-2.5 w-2.5 rounded-full"
-                                    style={{ backgroundColor: getGroupColor(group.id) }}
-                                  />
-                                  <span>{group.name || "Questing group"}</span>
-                                </span>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ) : null}
-                    {filterKey === "status" ? (
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Status
-                        </p>
-                        <div className="space-y-1">
-                          {DASHBOARD_STATUS_OPTIONS.map((option) => {
-                            const checked = dashboardStatusFilterSet.has(option.value);
-                            return (
-                              <label
-                                key={option.value}
-                                className="flex cursor-pointer items-start gap-2 rounded-lg px-1.5 py-1.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
-                                title={option.description}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleDashboardStatusFilter(option.value)}
-                                  className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-brand-primary focus:ring-brand-primary/40 dark:border-slate-600"
-                                />
-                                <span className="text-slate-700 dark:text-slate-200">{option.label}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                        {dashboardStatusFilters.length > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => setDashboardStatusFilters([])}
-                            className="text-xs font-semibold text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-                          >
-                            Clear
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    {filterKey === "date" ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            Date range
-                          </p>
-                          {(effectiveDashboardDateFrom || effectiveDashboardDateTo) ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDashboardDateFrom(null);
-                                setDashboardDateTo(null);
-                              }}
-                              className="text-xs font-semibold text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-                            >
-                              Clear
-                            </button>
-                          ) : null}
-                        </div>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <DatePicker
-                            date={effectiveDashboardDateFrom}
-                            onSelect={handleDashboardDateFromChange}
-                            placeholder="From date"
-                            className="h-10 min-w-[13rem] rounded-xl border-slate-200 text-sm dark:border-slate-600"
-                          />
-                          <DatePicker
-                            date={effectiveDashboardDateTo}
-                            onSelect={handleDashboardDateToChange}
-                            placeholder="To date"
-                            className="h-10 min-w-[13rem] rounded-xl border-slate-200 text-sm dark:border-slate-600"
-                          />
-                        </div>
-                      </div>
-                    ) : null}
-                  </PopoverContent>
-                </Popover>
-              );
-            })}
-            <Popover open={dashboardFilterPickerOpen} onOpenChange={setDashboardFilterPickerOpen}>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  disabled={availableDashboardFilters.length === 0}
-                  className="inline-flex h-9 items-center gap-1 rounded-full border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Filter
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-64 p-2">
-                <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Add filter
-                </p>
-                <div className="space-y-1">
-                  {availableDashboardFilters.length === 0 ? (
-                    <p className="px-2 py-1.5 text-xs text-slate-500 dark:text-slate-400">
-                      All filters are already active.
-                    </p>
-                  ) : (
-                    availableDashboardFilters.map((filterOption) => (
-                      <button
-                        key={filterOption.key}
-                        type="button"
-                        onClick={() => handleAddDashboardFilter(filterOption.key)}
-                        className="flex w-full flex-col items-start rounded-lg px-2 py-2 text-left transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
-                      >
-                        <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                          {filterOption.label}
-                        </span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">
-                          {filterOption.description}
-                        </span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </PopoverContent>
-            </Popover>
-          </div>
-          <label
-            className="relative order-2 w-full min-w-0 md:order-1 md:min-w-[33%] md:flex-[1_1_32rem]"
-            title="Search session and general poll titles and descriptions"
-          >
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
-            <input
-              type="search"
-              value={dashboardSearchText}
-              onChange={(event) => setDashboardSearchText(event.target.value)}
-              placeholder="Search title or description"
-              aria-label="Search title or description"
-              className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 outline-none transition-colors focus:border-brand-primary/70 focus:ring-2 focus:ring-brand-primary/20 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-            />
-          </label>
-        </div>
-      </section>
+      <DashboardFilterBar
+        visibleDashboardFilterKeys={visibleDashboardFilterKeys}
+        dashboardFilterEditor={dashboardFilterEditor}
+        handleDashboardFilterEditorOpenChange={handleDashboardFilterEditorOpenChange}
+        removeDashboardFilter={removeDashboardFilter}
+        dashboardGroupFilterLabel={dashboardGroupFilterLabel}
+        selectedGroupFilterColor={selectedGroupFilterColor}
+        dashboardStatusChipLabel={dashboardStatusChipLabel}
+        dashboardDateChipLabel={dashboardDateChipLabel}
+        selectedGroupFilterId={selectedGroupFilterId}
+        setSelectedGroupFilterId={setSelectedGroupFilterId}
+        groups={groups}
+        getGroupColor={getGroupColor}
+        dashboardStatusFilterSet={dashboardStatusFilterSet}
+        toggleDashboardStatusFilter={toggleDashboardStatusFilter}
+        dashboardStatusFilters={dashboardStatusFilters}
+        setDashboardStatusFilters={setDashboardStatusFilters}
+        effectiveDashboardDateFrom={effectiveDashboardDateFrom}
+        effectiveDashboardDateTo={effectiveDashboardDateTo}
+        setDashboardDateFrom={setDashboardDateFrom}
+        setDashboardDateTo={setDashboardDateTo}
+        handleDashboardDateFromChange={handleDashboardDateFromChange}
+        handleDashboardDateToChange={handleDashboardDateToChange}
+        dashboardFilterPickerOpen={dashboardFilterPickerOpen}
+        setDashboardFilterPickerOpen={setDashboardFilterPickerOpen}
+        availableDashboardFilters={availableDashboardFilters}
+        handleAddDashboardFilter={handleAddDashboardFilter}
+        dashboardSearchText={dashboardSearchText}
+        setDashboardSearchText={setDashboardSearchText}
+      />
 
       {/* Main Grid */}
       <div className="grid gap-6 lg:grid-cols-3">
@@ -1645,159 +1133,33 @@ export default function DashboardPage({
 
         {/* Sidebar - 1 column */}
         <div className="space-y-6">
-          {visiblePendingInvites.length > 0 && (
-            <section className="rounded-3xl bg-white p-6 shadow-xl shadow-slate-200 dark:bg-slate-800 dark:shadow-slate-900/50">
-              <SectionHeader
-                title="Pending poll invites"
-                subtitle="Session polls waiting for your response"
-              />
-              <div className="mt-4 space-y-2">
-                {visiblePendingInvites.map((invite) => {
-                  const meta = invite.pendingInviteMeta?.[normalizedUserEmail] || {};
-                  const inviterEmail = meta.invitedByEmail || invite.creatorEmail || null;
-                  const inviterProfile = inviterEmail
-                    ? inviterMap.get(normalizeEmail(inviterEmail)) || { email: inviterEmail }
-                    : null;
-                  const isBusy = Boolean(pendingInviteBusy[invite.id]);
-                  return (
-                    <div
-                      key={invite.id}
-                      className="flex w-full items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-xs text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200 dark:hover:bg-amber-900/40"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => handleOpenInvite(invite.id)}
-                        className="flex flex-1 flex-col text-left"
-                      >
-                        <p className="text-sm font-semibold">{invite.title || "Session Poll"}</p>
-                        <p className="mt-1 text-xs text-amber-700/90 dark:text-amber-200/80">
-                          Invited by{" "}
-                          {inviterProfile ? (
-                            <UserIdentity user={inviterProfile} />
-                          ) : (
-                            "Unknown"
-                          )}
-                        </p>
-                      </button>
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-800/60 dark:text-amber-200">
-                          Review
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            aria-label="Accept invite"
-                            onClick={() => handleAcceptInvite(invite)}
-                            disabled={isBusy}
-                            className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500 text-white transition-colors hover:bg-emerald-600 disabled:opacity-50"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            aria-label="Decline invite"
-                            onClick={() => handleDeclineInvite(invite)}
-                            disabled={isBusy}
-                            className="flex h-7 w-7 items-center justify-center rounded-full border border-amber-200 bg-white text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-900/40"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-          <section className="rounded-3xl bg-white p-6 shadow-xl shadow-slate-200 dark:bg-slate-800 dark:shadow-slate-900/50">
-            <SectionHeader
-              title="General Polls"
-              subtitle="Standalone and add-on polls."
-              action={
-                hasQuestingGroupMembership ? (
-                  <button
-                    type="button"
-                    aria-label="Create new general poll"
-                    onClick={() => setCreateGeneralPollOpen(true)}
-                    disabled={!canCreateGeneralPoll}
-                    title={
-                      canCreateGeneralPoll
-                        ? "Create a new general poll"
-                        : "You need manager access to create a general poll"
-                    }
-                    className="flex items-center gap-1 rounded-full bg-brand-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Plus className="h-3 w-3" />
-                    New poll
-                  </button>
-                ) : null
-              }
-            />
-            <div className="mt-3 flex w-fit gap-2 rounded-full border border-slate-200 bg-slate-50 p-1 dark:border-slate-600 dark:bg-slate-700">
-              <TabButton
-                active={basicPollTab === "needs-vote"}
-                onClick={() => setBasicPollTab("needs-vote")}
-              >
-                Needs vote ({basicPollBuckets["needs-vote"].length})
-              </TabButton>
-              <TabButton
-                active={basicPollTab === "open-voted"}
-                onClick={() => setBasicPollTab("open-voted")}
-              >
-                Open voted ({basicPollBuckets["open-voted"].length})
-              </TabButton>
-              <TabButton active={basicPollTab === "closed"} onClick={() => setBasicPollTab("closed")}>
-                Closed ({basicPollBuckets.closed.length})
-              </TabButton>
-              <TabButton
-                active={basicPollTab === "archived"}
-                onClick={() => setBasicPollTab("archived")}
-              >
-                Archived ({basicPollBuckets.archived.length})
-              </TabButton>
-            </div>
-            <div className="mt-4 space-y-3">
-              {basicPollLoading ? (
-                <p className="text-sm text-slate-500 dark:text-slate-400">Loading general polls...</p>
-              ) : visibleBasicPolls.length === 0 ? (
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {basicPollTab === "needs-vote"
-                    ? "No open general polls need your vote right now."
-                    : basicPollTab === "open-voted"
-                      ? "No open general polls where you've already voted."
-                      : basicPollTab === "closed"
-                        ? "No closed general polls right now."
-                        : "No archived general polls yet."}
-                </p>
-              ) : (
-                visibleBasicPolls.slice(0, 5).map((poll) => (
-                  <BasicPollCard
-                    key={`${poll.parentType}:${poll.parentId}:${poll.pollId}`}
-                    poll={poll}
-                    onOpen={() => handleOpenBasicPoll(poll)}
-                    onArchiveToggle={() => handleToggleBasicPollArchive(poll)}
-                    archiveBusy={Boolean(basicPollArchiveBusy[poll.archiveKey])}
-                    onFinalizePoll={() => handleFinalizeBasicPoll(poll)}
-                    onReopenPoll={() => handleReopenBasicPoll(poll)}
-                    onEditPoll={() => handleEditBasicPoll(poll)}
-                    onDeletePoll={() => handleDeleteBasicPoll(poll)}
-                    canManage={Boolean(poll.canManage)}
-                    actionBusy={Boolean(
-                      basicPollActionBusy[`${poll.archiveKey}:finalize`] ||
-                        basicPollActionBusy[`${poll.archiveKey}:reopen`] ||
-                        basicPollActionBusy[`${poll.archiveKey}:delete`]
-                    )}
-                  />
-                ))
-              )}
-              {visibleBasicPolls.length > 5 ? (
-                <p className="text-center text-xs text-slate-500 dark:text-slate-400">
-                  +{visibleBasicPolls.length - 5} more
-                </p>
-              ) : null}
-            </div>
-          </section>
+          <PendingInvitesSection
+            visiblePendingInvites={visiblePendingInvites}
+            normalizedUserEmail={normalizedUserEmail}
+            inviterMap={inviterMap}
+            pendingInviteBusy={pendingInviteBusy}
+            onOpenInvite={handleOpenInvite}
+            onAcceptInvite={handleAcceptInvite}
+            onDeclineInvite={handleDeclineInvite}
+          />
+          <GeneralPollsSection
+            hasQuestingGroupMembership={hasQuestingGroupMembership}
+            canCreateGeneralPoll={canCreateGeneralPoll}
+            onCreateGeneralPoll={() => setCreateGeneralPollOpen(true)}
+            basicPollTab={basicPollTab}
+            setBasicPollTab={setBasicPollTab}
+            basicPollBuckets={basicPollBuckets}
+            basicPollLoading={basicPollLoading}
+            visibleBasicPolls={visibleBasicPolls}
+            basicPollArchiveBusy={basicPollArchiveBusy}
+            basicPollActionBusy={basicPollActionBusy}
+            onOpenBasicPoll={handleOpenBasicPoll}
+            onToggleBasicPollArchive={handleToggleBasicPollArchive}
+            onFinalizeBasicPoll={handleFinalizeBasicPoll}
+            onReopenBasicPoll={handleReopenBasicPoll}
+            onEditBasicPoll={handleEditBasicPoll}
+            onDeleteBasicPoll={handleDeleteBasicPoll}
+          />
           {/* My Session Polls */}
           <section className="rounded-3xl bg-white p-6 shadow-xl shadow-slate-200 dark:bg-slate-800 dark:shadow-slate-900/50">
             <SectionHeader
@@ -1906,6 +1268,21 @@ export default function DashboardPage({
           }}
         />
       ) : null}
+      <ConfirmDialog
+        open={Boolean(deletePollRequest)}
+        onOpenChange={(open) => {
+          if (!open) clearDeletePollRequest();
+        }}
+        title={`Delete "${deletePollRequest?.title || "this poll"}"?`}
+        description="This will remove all votes and cannot be undone."
+        confirmLabel="Delete poll"
+        confirming={Boolean(
+          deletePollRequest?.archiveKey &&
+            basicPollActionBusy[`${deletePollRequest.archiveKey}:delete`]
+        )}
+        onConfirm={confirmDeleteBasicPoll}
+        variant="destructive"
+      />
     </div>
   );
 }

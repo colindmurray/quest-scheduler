@@ -1,9 +1,32 @@
 const { APP_URL } = require("./config");
+const { formatEmbedDescription } = require("./card-description");
 const { formatDateTime, formatDateTimeRange } = require("./time-utils");
 
+function normalizeText(value) {
+  const trimmed = String(value || "").trim();
+  return trimmed || null;
+}
+
+function buildSchedulerTitle(value) {
+  const baseTitle = normalizeText(value) || "Quest Session";
+  if (baseTitle.startsWith("📅 ") || baseTitle.startsWith("🗓️ ")) {
+    return baseTitle;
+  }
+  return `📅 ${baseTitle}`;
+}
+
+function buildSchedulerUrl(schedulerId) {
+  if (!schedulerId) return APP_URL;
+  return `${APP_URL}/scheduler/${schedulerId}`;
+}
+
 function buildPollCard({ schedulerId, scheduler, slots, voteCount, totalParticipants }) {
-  const title = scheduler.title || "Quest Session";
-  const description = `Vote in Quest Scheduler: ${APP_URL}/scheduler/${schedulerId}`;
+  const title = buildSchedulerTitle(scheduler?.title);
+  const pollUrl = buildSchedulerUrl(schedulerId);
+  const description = formatEmbedDescription({
+    description: scheduler?.description,
+    pollUrl,
+  });
   const pollTimeZone = scheduler.timezone || null;
 
   const sortedSlots = [...slots].sort((a, b) => new Date(a.start) - new Date(b.start));
@@ -53,6 +76,11 @@ function buildPollCard({ schedulerId, scheduler, slots, voteCount, totalParticip
     }
   }
 
+  fields.push({
+    name: "View on web",
+    value: `[Open poll](${pollUrl})`,
+  });
+
   const components = [
     {
       type: 1,
@@ -84,7 +112,7 @@ function buildPollStatusCard({ title, status, description }) {
   return {
     embeds: [
       {
-        title: title || "Quest Session",
+        title: buildSchedulerTitle(title),
         description,
         fields: [
           {

@@ -16,6 +16,7 @@ import { BasicPollVotingCard } from "../../../components/polls/basic-poll-voting
 import { PollDiscordMetaRow } from "../../../components/polls/poll-discord-meta-row";
 import { PollNudgeButton, getNudgeCooldownRemaining } from "../../../components/polls/poll-nudge-button";
 import { PollOptionNoteDialog } from "../../../components/polls/poll-option-note-dialog";
+import { ConfirmDialog } from "../../../components/ui/confirm-dialog";
 import {
   hasSubmittedVoteForPoll,
   normalizeVoteOptionIds,
@@ -54,6 +55,7 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
   const [optionNoteViewer, setOptionNoteViewer] = useState(null);
   const [headerActionBusy, setHeaderActionBusy] = useState(false);
   const [nudgeSending, setNudgeSending] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const group = useMemo(
     () => (groups || []).find((entry) => entry.id === groupId) || null,
@@ -440,15 +442,17 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
     }
   }
 
-  async function deletePollAction() {
+  function deletePollAction() {
     if (!canManagePoll || !groupId || !pollId) return;
-    const confirmed = window.confirm(
-      `Delete "${poll?.title || "this poll"}"? This will remove all votes.`
-    );
-    if (!confirmed) return;
+    setDeleteConfirmOpen(true);
+  }
+
+  async function confirmDeletePollAction() {
+    if (!canManagePoll || !groupId || !pollId) return;
     setHeaderActionBusy(true);
     try {
       await deleteBasicPoll(groupId, pollId, { useServer: true });
+      setDeleteConfirmOpen(false);
       onClose?.();
     } catch (error) {
       setVoteError(error?.message || "Failed to delete poll.");
@@ -619,6 +623,16 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
         noteViewer={optionNoteViewer}
         onClose={() => setOptionNoteViewer(null)}
         overlayClassName="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 px-4"
+      />
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title={`Delete "${poll?.title || "this poll"}"?`}
+        description="This will remove all votes and cannot be undone."
+        confirmLabel="Delete poll"
+        confirming={headerActionBusy}
+        onConfirm={confirmDeletePollAction}
+        variant="destructive"
       />
     </div>
   );

@@ -14,8 +14,8 @@ changelog:
 # Code Health Audit (Pt 2) — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Phase 3.2 complete (poll domain constant modules adopted in high-touch basic poll web/functions paths).
-- Next Step: Phase 4.1 monolith decomposition kickoff (extract focused dashboard hooks/components).
+- Last Completed: Phase 4.1 fourth dashboard slice complete (basic-poll action/state orchestration extracted to `use-dashboard-basic-poll-actions`), Phase 5.1 coverage for `DashboardCalendar`/`useCalendarNavigation`, and Phase 7.1 dependency re-evaluation decisions documented in `docs/decisions.md`.
+- Next Step: Continue Phase 4.1 with remaining `DashboardPage` modal/edit orchestration extraction, then proceed into Phase 4.2 scheduler page decomposition.
 - Open Issues: None.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
@@ -259,6 +259,58 @@ Acceptance:
 ---
 
 ## Progress Notes
+- 2026-02-12: Completed Phase 5.2 stale Firestore error reset hardening.
+  - Updated hooks:
+    - `web/src/hooks/useFirestoreDoc.js`
+    - `web/src/hooks/useFirestoreCollection.js`
+  - Behavior change:
+    - Clear stale `error` state when ref/query changes.
+    - Reset local state when ref/query becomes null.
+  - Added regression tests:
+    - `web/src/hooks/useFirestoreDoc.test.js`
+    - `web/src/hooks/useFirestoreCollection.test.js`
+
+- 2026-02-12: Completed Phase 6.1 replacement of native confirm dialogs in dashboard general-poll delete flows.
+  - Added shared UI primitive:
+    - `web/src/components/ui/confirm-dialog.jsx`
+    - `web/src/components/ui/confirm-dialog.test.jsx`
+  - Replaced `window.confirm` usage with app-styled confirm modals in:
+    - `web/src/features/dashboard/DashboardPage.jsx`
+    - `web/src/features/dashboard/components/group-basic-poll-modal.jsx`
+  - Added/expanded coverage:
+    - `web/src/features/dashboard/components/group-basic-poll-modal.test.jsx`
+    - `web/src/features/dashboard/DashboardPage.test.jsx` (delete-confirm flow)
+  - Verification:
+    - `rg -n "window\\.confirm" web/src` (no matches)
+
+- 2026-02-12: Phase 4.1 kickoff slice completed via dashboard utility extraction.
+  - Added module:
+    - `web/src/features/dashboard/lib/dashboard-filters.js`
+    - `web/src/features/dashboard/lib/dashboard-filters.test.js`
+  - `DashboardPage` now consumes extracted filter/status/date helpers.
+  - Removed dead local `useNavigate` usage from `DashboardPage`.
+  - Validation:
+    - `npm --prefix web run test -- src/features/dashboard/lib/dashboard-filters.test.js src/features/dashboard/DashboardPage.test.jsx src/features/dashboard/components/group-basic-poll-modal.test.jsx src/hooks/useFirestoreDoc.test.js src/hooks/useFirestoreCollection.test.js src/components/ui/confirm-dialog.test.jsx` (pass, `23 passed`)
+    - `npm --prefix web run test` (pass, `354 passed`)
+    - `npm --prefix web run test:rules` (pass, `21 passed`)
+    - `npm --prefix web run test:integration` (pass, `11 passed`; first attempt failed to start Firestore emulator due occupied port, rerun passed cleanly)
+    - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`)
+    - `npm --prefix web run build` (pass)
+    - `npm --prefix functions run test` (pass, `360 passed`)
+
+- 2026-02-12: Continued Phase 4.1 decomposition + Phase 5.1 test backfill.
+  - Extracted dashboard filter bar UI into dedicated component:
+    - `web/src/features/dashboard/components/dashboard-filter-bar.jsx`
+  - Updated `DashboardPage` to consume extracted filter bar component and reduced in-file UI complexity:
+    - `web/src/features/dashboard/DashboardPage.jsx`
+  - Added direct `BasicPollVotingCard` unit coverage:
+    - `web/src/components/polls/basic-poll-voting-card.test.jsx`
+  - Validation:
+    - `npm --prefix web run test -- src/components/polls/basic-poll-voting-card.test.jsx src/features/dashboard/DashboardPage.test.jsx src/features/dashboard/lib/dashboard-filters.test.js src/features/dashboard/components/group-basic-poll-modal.test.jsx` (pass, `19 passed`)
+    - `npm --prefix web run test` (pass, `357 passed`)
+    - `npm --prefix web run build` (pass)
+    - `npm --prefix functions run test` (pass, `360 passed`)
+
 - 2026-02-12: Created initial execution tracker from `docs/code-health-audit-pt2.md` with phased workstream, acceptance criteria, and validation gates.
 - 2026-02-12: Completed Phase 1 cleanup.
   - Removed orphaned files:
