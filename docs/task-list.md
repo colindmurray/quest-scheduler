@@ -53,6 +53,11 @@ changelog:
 
 ## Progress Notes
 
+- 2026-02-12: Added poll unification planning docs:
+  - `docs/poll-unification-prettifying-plan.md`
+  - `docs/poll-unification-prettifying-task-list.md`
+  - Scope covers shared poll UI primitives, Discord sync internals consolidation, session/general parity improvements, and phased validation gates.
+
 - 2026-02-12: Removed legacy poll-create command fallback:
   - `functions/src/discord/worker.js`:
     - `handlePollCreate` now requires subcommand `multiple` or `ranked`.
