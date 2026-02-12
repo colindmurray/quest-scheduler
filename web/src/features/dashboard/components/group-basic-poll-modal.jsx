@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { Archive, ArchiveRestore, CheckCircle2, MoreVertical, Pencil, Trash2, X } from "lucide-react";
 import { useAuth } from "../../../app/useAuth";
 import { LoadingState } from "../../../components/ui/spinner";
@@ -12,7 +10,10 @@ import {
 } from "../../../components/ui/dropdown-menu";
 import { useQuestingGroups } from "../../../hooks/useQuestingGroups";
 import { useUserSettings } from "../../../hooks/useUserSettings";
+import { useUserProfilesByIds } from "../../../hooks/useUserProfiles";
 import { BasicPollVotingCard } from "../../../components/polls/basic-poll-voting-card";
+import { PollDiscordMetaRow } from "../../../components/polls/poll-discord-meta-row";
+import { PollOptionNoteDialog } from "../../../components/polls/poll-option-note-dialog";
 import {
   deleteBasicPoll,
   deleteBasicPollVote,
@@ -88,7 +89,12 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
     [groupId, pollId]
   );
   const isArchived = Boolean(archiveKey && archivedPolls.includes(archiveKey));
-  const participantCount = Array.isArray(group?.memberIds) ? group.memberIds.length : 0;
+  const participantIds = useMemo(() => {
+    const ids = new Set(Array.isArray(group?.memberIds) ? group.memberIds : []);
+    if (group?.creatorId) ids.add(group.creatorId);
+    return Array.from(ids).filter(Boolean);
+  }, [group?.creatorId, group?.memberIds]);
+  const { profiles: participantProfilesById = {} } = useUserProfilesByIds(participantIds);
   const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
   const isMultipleChoice = voteType === "MULTIPLE_CHOICE";
   const isRankedChoice = voteType === "RANKED_CHOICE";
@@ -106,6 +112,52 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
     () => (votes || []).filter((voteDoc) => hasSubmittedVote(poll, voteDoc)).length,
     [poll, votes]
   );
+  const participantUsers = useMemo(
+    () =>
+      participantIds
+        .map((participantId) => {
+          const profile = participantProfilesById?.[participantId] || {};
+          return {
+            id: participantId,
+            email: profile?.email || null,
+            avatar: profile?.photoURL || null,
+            ...profile,
+          };
+        })
+        .filter((entry) => entry.email),
+    [participantIds, participantProfilesById]
+  );
+  const votedUsers = useMemo(() => {
+    const entries = (votes || [])
+      .filter((voteDoc) => hasSubmittedVote(poll, voteDoc))
+      .map((voteDoc) => {
+        const profile = participantProfilesById?.[voteDoc.id] || {};
+        return {
+          id: voteDoc.id,
+          email: profile?.email || voteDoc?.userEmail || null,
+          avatar: voteDoc?.userAvatar || profile?.photoURL || null,
+          ...profile,
+        };
+      })
+      .filter((entry) => entry.email);
+    const seen = new Set();
+    return entries.filter((entry) => {
+      if (!entry.id || seen.has(entry.id)) return false;
+      seen.add(entry.id);
+      return true;
+    });
+  }, [participantProfilesById, poll, votes]);
+  const pendingUsers = useMemo(() => {
+    const votedIdSet = new Set(votedUsers.map((entry) => entry.id).filter(Boolean));
+    return participantUsers.filter((entry) => !votedIdSet.has(entry.id));
+  }, [participantUsers, votedUsers]);
+  const participantCountForSummary = participantIds.length;
+  const pollDiscord = poll?.discord || null;
+  const discordStatusLabel = pollDiscord?.messageId
+    ? "Posted in Discord"
+    : group?.discord?.channelId
+      ? "Discord linked"
+      : "";
   const cardBusy = submittingVote || clearingVote;
 
   useEffect(() => {
@@ -392,6 +444,12 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
             {group?.name ? (
               <p className="text-xs text-slate-500 dark:text-slate-400">Questing group: {group.name}</p>
             ) : null}
+            <PollDiscordMetaRow
+              statusLabel={discordStatusLabel}
+              messageUrl={pollDiscord?.messageUrl || ""}
+              pendingSync={pollDiscord?.pendingSync === true}
+              className="mt-2"
+            />
           </div>
           <div className="flex items-center gap-2">
             {canManagePoll && (poll?.status || "OPEN") === "FINALIZED" ? (
@@ -483,7 +541,7 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
             <div className="space-y-4">
               <BasicPollVotingCard
                 poll={poll}
-                participantCount={participantCount}
+                participantCount={participantCountForSummary}
                 voteCount={voteCount}
                 hasSubmitted={hasSubmitted}
                 myVote={myVote}
@@ -498,6 +556,9 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
                 onChangeOtherText={setOtherText}
                 onSubmitVote={submitVote}
                 onClearVote={clearVote}
+                eligibleUsers={participantUsers}
+                votedUsers={votedUsers}
+                pendingUsers={pendingUsers}
                 onViewOptionNote={(pollTitle, option) =>
                   setOptionNoteViewer({
                     pollTitle: String(pollTitle || "General poll"),
@@ -511,37 +572,11 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
         </div>
       </div>
 
-      {optionNoteViewer ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 px-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Option note for ${optionNoteViewer.optionLabel}`}
-            className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900"
-          >
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                  {optionNoteViewer.pollTitle}
-                </p>
-                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                  Option note: {optionNoteViewer.optionLabel}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setOptionNoteViewer(null)}
-                className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 dark:border-slate-600 dark:text-slate-300"
-              >
-                Close
-              </button>
-            </div>
-            <div className="prose prose-sm prose-slate max-h-[65vh] max-w-none overflow-auto rounded-lg border border-slate-200 bg-white px-3 py-2 prose-headings:font-display prose-a:text-brand-primary prose-a:underline hover:prose-a:text-brand-primary/80 dark:prose-invert dark:border-slate-700 dark:bg-slate-900">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{optionNoteViewer.note}</ReactMarkdown>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <PollOptionNoteDialog
+        noteViewer={optionNoteViewer}
+        onClose={() => setOptionNoteViewer(null)}
+        overlayClassName="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 px-4"
+      />
     </div>
   );
 }

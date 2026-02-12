@@ -57,6 +57,13 @@ describe('scheduler helper functions', () => {
     require.cache[require.resolve('firebase-functions')] = {
       exports: { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } },
     };
+    require.cache[require.resolve('firebase-admin/functions')] = {
+      exports: {
+        getFunctions: () => ({
+          taskQueue: () => ({ enqueue: vi.fn() }),
+        }),
+      },
+    };
     require.cache[require.resolve('../discord/config')] = {
       exports: {
         DISCORD_REGION: 'us-central1',

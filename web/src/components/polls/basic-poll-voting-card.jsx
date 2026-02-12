@@ -1,5 +1,5 @@
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { PollMarkdownContent } from "./poll-markdown-content";
+import { PollParticipantSummary } from "./poll-participant-summary";
 
 function toDate(value) {
   if (!value) return null;
@@ -34,6 +34,9 @@ export function BasicPollVotingCard({
   onFinalizePoll,
   onReopenPoll,
   onViewOptionNote,
+  eligibleUsers = [],
+  votedUsers = [],
+  pendingUsers = [],
 }) {
   const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
   const isRanked = voteType === "RANKED_CHOICE";
@@ -105,11 +108,16 @@ export function BasicPollVotingCard({
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {voteCount}/{participantCount} voted
           </p>
-          {poll?.description ? (
-            <div className="prose prose-sm prose-slate max-w-none prose-headings:font-display prose-a:text-brand-primary prose-a:underline hover:prose-a:text-brand-primary/80 dark:prose-invert">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{poll.description}</ReactMarkdown>
-            </div>
-          ) : null}
+          <PollParticipantSummary
+            eligibleUsers={eligibleUsers}
+            votedUsers={votedUsers}
+            pendingUsers={pendingUsers}
+            eligibleCount={participantCount}
+            votedCount={voteCount}
+            showPending={!isFinalized}
+            className="mt-1"
+          />
+          <PollMarkdownContent content={poll?.description} />
         </div>
         {isCreator && (onReopenPoll || onFinalizePoll) ? (
           <div className="flex items-center gap-2">

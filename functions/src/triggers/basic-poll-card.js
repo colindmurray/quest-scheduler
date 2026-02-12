@@ -2,13 +2,16 @@ const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onTaskDispatched } = require("firebase-functions/v2/tasks");
 const { logger } = require("firebase-functions");
 const admin = require("firebase-admin");
-const crypto = require("crypto");
-const { getFunctions } = require("firebase-admin/functions");
 const {
   DISCORD_REGION,
   DISCORD_BOT_TOKEN,
   DISCORD_BASIC_POLL_TASK_QUEUE,
 } = require("../discord/config");
+const {
+  buildDiscordMessageUrl,
+  createSyncHash,
+  enqueueSyncTask,
+} = require("../discord/sync-core");
 const {
   createChannelMessage,
   editChannelMessage,
@@ -64,18 +67,14 @@ function computeBasicPollSyncHash(pollData, voteCount, totalParticipants) {
     totalParticipants: totalParticipants ?? null,
   };
 
-  return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
-}
-
-function buildQueueName() {
-  return DISCORD_REGION === "us-central1"
-    ? DISCORD_BASIC_POLL_TASK_QUEUE
-    : `locations/${DISCORD_REGION}/functions/${DISCORD_BASIC_POLL_TASK_QUEUE}`;
+  return createSyncHash(payload);
 }
 
 async function enqueueBasicPollSync(payload, scheduleDelaySeconds = 2) {
-  const queue = getFunctions().taskQueue(buildQueueName());
-  await queue.enqueue(payload, {
+  await enqueueSyncTask({
+    region: DISCORD_REGION,
+    queueName: DISCORD_BASIC_POLL_TASK_QUEUE,
+    payload,
     scheduleDelaySeconds,
   });
 }
@@ -144,7 +143,11 @@ async function upsertDiscordBasicPollCard({ groupId, pollId, groupData, pollRef,
         messageId,
         channelId: groupDiscord.channelId,
         guildId: groupDiscord.guildId,
-        messageUrl: `https://discord.com/channels/${groupDiscord.guildId}/${groupDiscord.channelId}/${messageId}`,
+        messageUrl: buildDiscordMessageUrl(
+          groupDiscord.guildId,
+          groupDiscord.channelId,
+          messageId
+        ),
         lastSyncedHash: syncHash,
         lastUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },

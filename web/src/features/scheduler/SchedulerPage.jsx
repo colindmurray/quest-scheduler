@@ -3,8 +3,6 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { format, parse, startOfWeek, getDay, isSameDay, isBefore, startOfDay, startOfHour } from "date-fns";
 import { enUS } from "date-fns/locale";
 import { toast } from "sonner";
@@ -101,6 +99,9 @@ import { RemoveParticipantDialog } from "./components/remove-participant-dialog"
 import { RevokeInviteDialog } from "./components/revoke-invite-dialog";
 import { CalendarToolbar } from "./components/CalendarToolbar";
 import { BasicPollVotingCard } from "../../components/polls/basic-poll-voting-card";
+import { PollDiscordMetaRow } from "../../components/polls/poll-discord-meta-row";
+import { PollMarkdownContent } from "../../components/polls/poll-markdown-content";
+import { PollOptionNoteDialog } from "../../components/polls/poll-option-note-dialog";
 import { buildEffectiveTallies, buildUserBlockInfo } from "./utils/effective-votes";
 import { canUserCopyVotes } from "./utils/copy-votes-eligibility";
 import { shouldEmitPollLifecycleEvent } from "./utils/poll-lifecycle-notifications";
@@ -190,6 +191,7 @@ export default function SchedulerPage() {
   const [embeddedPolls, setEmbeddedPolls] = useState([]);
   const [embeddedPollsLoading, setEmbeddedPollsLoading] = useState(true);
   const [embeddedPollVoteCounts, setEmbeddedPollVoteCounts] = useState({});
+  const [embeddedVotesByPoll, setEmbeddedVotesByPoll] = useState({});
   const [embeddedMyVotes, setEmbeddedMyVotes] = useState({});
   const [embeddedVoteDrafts, setEmbeddedVoteDrafts] = useState({});
   const [embeddedSubmittingByPoll, setEmbeddedSubmittingByPoll] = useState({});
@@ -506,6 +508,7 @@ export default function SchedulerPage() {
 
   useEffect(() => {
     setEmbeddedPollVoteCounts({});
+    setEmbeddedVotesByPoll({});
     if (!id || embeddedPolls.length === 0) return () => {};
     const unsubscribers = embeddedPolls.map((poll) =>
       subscribeToBasicPollVotes(
@@ -513,13 +516,16 @@ export default function SchedulerPage() {
         id,
         poll.id,
         (voteDocs) => {
+          const normalizedVotes = voteDocs || [];
           const count = (voteDocs || []).filter((voteDoc) => hasSubmittedEmbeddedVote(poll, voteDoc)).length;
+          setEmbeddedVotesByPoll((previous) => ({ ...previous, [poll.id]: normalizedVotes }));
           setEmbeddedPollVoteCounts((previous) => {
             if (previous[poll.id] === count) return previous;
             return { ...previous, [poll.id]: count };
           });
         },
         () => {
+          setEmbeddedVotesByPoll((previous) => ({ ...previous, [poll.id]: [] }));
           setEmbeddedPollVoteCounts((previous) => ({ ...previous, [poll.id]: 0 }));
         }
       )
@@ -2472,11 +2478,10 @@ export default function SchedulerPage() {
                 Session Poll
               </p>
               <h2 className="text-2xl font-semibold dark:text-slate-100">{scheduler.data.title}</h2>
-              {pollDescription && (
-                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
-                  {pollDescription}
-                </p>
-              )}
+              <PollMarkdownContent
+                content={pollDescription}
+                className="mt-2 text-sm text-slate-600 dark:text-slate-300"
+              />
               <PollStatusMeta
                 scheduler={scheduler.data}
                 winningSlot={winningSlot}
@@ -2489,50 +2494,40 @@ export default function SchedulerPage() {
                 displayTimeZone={displayTimeZone}
                 showTimeZone={showTimeZone}
               />
-              {discordStatus && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                    {discordStatus}
-                  </span>
-                  {discordMessageUrl && (
-                    <a
-                      href={discordMessageUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-full border border-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
-                    >
-                      View in Discord
-                    </a>
-                  )}
-                  {isCreator && scheduler.data?.discord?.messageId && scheduler.data?.status === "OPEN" && (
-                    <button
-                      type="button"
-                      onClick={handleNudge}
-                      disabled={nudgeSending || nudgeCooldownRemaining > 0}
-                      className={`rounded-full px-2 py-0.5 text-xs font-semibold transition-colors ${
-                        nudgeCooldownRemaining > 0
-                          ? "border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-500"
-                          : "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
-                      } ${nudgeSending ? "opacity-50" : ""}`}
-                      title={
-                        nudgeCooldownRemaining > 0
-                          ? "Nudge is on cooldown"
-                          : "Send a reminder to participants who haven't voted"
-                      }
-                    >
-                      {nudgeSending
-                        ? "Sending..."
-                        : nudgeCooldownRemaining > 0
-                          ? (() => {
-                              const hours = Math.floor(nudgeCooldownRemaining / (60 * 60 * 1000));
-                              const mins = Math.ceil((nudgeCooldownRemaining % (60 * 60 * 1000)) / (60 * 1000));
-                              return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-                            })()
-                          : "Nudge participants"}
-                    </button>
-                  )}
-                </div>
-              )}
+              <PollDiscordMetaRow
+                statusLabel={discordStatus}
+                messageUrl={discordMessageUrl}
+                pendingSync={scheduler.data?.discord?.pendingSync === true}
+                className="mt-2"
+              >
+                {isCreator && scheduler.data?.discord?.messageId && scheduler.data?.status === "OPEN" ? (
+                  <button
+                    type="button"
+                    onClick={handleNudge}
+                    disabled={nudgeSending || nudgeCooldownRemaining > 0}
+                    className={`rounded-full px-2 py-0.5 text-xs font-semibold transition-colors ${
+                      nudgeCooldownRemaining > 0
+                        ? "border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-500"
+                        : "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
+                    } ${nudgeSending ? "opacity-50" : ""}`}
+                    title={
+                      nudgeCooldownRemaining > 0
+                        ? "Nudge is on cooldown"
+                        : "Send a reminder to participants who haven't voted"
+                    }
+                  >
+                    {nudgeSending
+                      ? "Sending..."
+                      : nudgeCooldownRemaining > 0
+                        ? (() => {
+                            const hours = Math.floor(nudgeCooldownRemaining / (60 * 60 * 1000));
+                            const mins = Math.ceil((nudgeCooldownRemaining % (60 * 60 * 1000)) / (60 * 1000));
+                            return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+                          })()
+                        : "Nudge participants"}
+                  </button>
+                ) : null}
+              </PollDiscordMetaRow>
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -3405,6 +3400,10 @@ export default function SchedulerPage() {
                   const draft = embeddedVoteDrafts[poll.id] || {};
                   const hasSubmitted = hasSubmittedEmbeddedVote(poll, embeddedMyVotes[poll.id]);
                   const myVote = embeddedMyVotes[poll.id] || null;
+                  const pollVotes = embeddedVotesByPoll[poll.id] || [];
+                  const pollSubmittedVotes = pollVotes.filter((voteDoc) =>
+                    hasSubmittedEmbeddedVote(poll, voteDoc)
+                  );
                   const embeddedFinalResults = poll?.finalResults || null;
                   const canVoteEmbedded = canVoteEmbeddedPoll(poll);
                   const lifecycleBusy = embeddedLifecycleBusyByPoll[poll.id] === true;
@@ -3416,6 +3415,18 @@ export default function SchedulerPage() {
                     !canVoteEmbedded && Number.isFinite(embeddedFinalResults?.voterCount)
                       ? embeddedFinalResults.voterCount
                       : embeddedPollVoteCounts[poll.id] || 0;
+                  const eligibleUsers = participants.filter((participant) => participant?.email);
+                  const votedIdSet = new Set(
+                    pollSubmittedVotes
+                      .map((voteDoc) => String(voteDoc?.id || "").trim())
+                      .filter(Boolean)
+                  );
+                  const votedUsers = eligibleUsers.filter((participant) =>
+                    votedIdSet.has(String(participant.id || ""))
+                  );
+                  const pendingUsers = eligibleUsers.filter(
+                    (participant) => !votedIdSet.has(String(participant.id || ""))
+                  );
 
                   return (
                     <BasicPollVotingCard
@@ -3451,6 +3462,9 @@ export default function SchedulerPage() {
                       onChangeOtherText={(value) => setEmbeddedOtherText(poll.id, value)}
                       onSubmitVote={() => submitEmbeddedPollVote(poll)}
                       onClearVote={() => clearEmbeddedPollVote(poll)}
+                      eligibleUsers={eligibleUsers}
+                      votedUsers={votedUsers}
+                      pendingUsers={pendingUsers}
                       onFinalizePoll={() => finalizeEmbeddedPollIndividually(poll)}
                       onReopenPoll={() => reopenEmbeddedPollIndividually(poll)}
                       onViewOptionNote={(pollTitle, option) =>
@@ -3478,39 +3492,10 @@ export default function SchedulerPage() {
           </div>
         </div>
 
-      {embeddedOptionNoteViewer ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Option note for ${embeddedOptionNoteViewer.optionLabel}`}
-            className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900"
-          >
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                  {embeddedOptionNoteViewer.pollTitle}
-                </p>
-                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                  Option note: {embeddedOptionNoteViewer.optionLabel}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEmbeddedOptionNoteViewer(null)}
-                className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 dark:border-slate-600 dark:text-slate-300"
-              >
-                Close
-              </button>
-            </div>
-            <div className="prose prose-sm prose-slate max-h-[65vh] max-w-none overflow-auto rounded-lg border border-slate-200 bg-white px-3 py-2 prose-headings:font-display prose-a:text-brand-primary prose-a:underline hover:prose-a:text-brand-primary/80 dark:prose-invert dark:border-slate-700 dark:bg-slate-900">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {embeddedOptionNoteViewer.note}
-              </ReactMarkdown>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <PollOptionNoteDialog
+        noteViewer={embeddedOptionNoteViewer}
+        onClose={() => setEmbeddedOptionNoteViewer(null)}
+      />
 
       <VoteDialog
         open={Boolean(modalDate)}

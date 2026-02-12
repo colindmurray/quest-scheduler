@@ -20,10 +20,10 @@ if (fs.existsSync(envPath)) {
 
 export default defineConfig({
   testDir: '.',
-  fullyParallel: true,
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: process.env.CI ? 1 : Number(process.env.E2E_WORKERS || 1),
   reporter: [
     ['html'],
     ['json', { outputFile: 'test-results/results.json' }],

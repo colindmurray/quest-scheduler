@@ -46,12 +46,74 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Merged `feature/basic-poll-dashboard-ux` into `master`, removed deploy-rejected redundant Firestore indexes, and deployed successfully to staging + production
-- Next Step: Monitor production/staging behavior and begin planning/prioritizing Phase 12+ follow-on work
+- Last Completed: Implemented poll-unification shared UI/backend primitives on `feature/poll-unification-prettifying`, passed full validation gate, and deployed branch to staging
+- Next Step: Manual QA on staging and prepare PR merge for poll-unification milestones
 - Open Issues: None in automated test gates.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
 ## Progress Notes
+
+- 2026-02-12: Added poll unification planning docs:
+  - `docs/poll-unification-prettifying-plan.md`
+  - `docs/poll-unification-prettifying-task-list.md`
+  - Scope covers shared poll UI primitives, Discord sync internals consolidation, session/general parity improvements, and phased validation gates.
+
+- 2026-02-12: Poll unification implementation kickoff (Phase 1.3 + 3.1 slice):
+  - Added shared markdown renderer + shared option-note dialog primitives:
+    - `web/src/components/polls/poll-markdown-content.jsx`
+    - `web/src/components/polls/poll-option-note-dialog.jsx`
+  - Replaced duplicated markdown rendering wrappers in scheduler/basic-poll create/edit/view surfaces.
+  - Applied shared markdown rendering to session poll description (scheduler detail header).
+  - Replaced duplicated option-note modal markup in scheduler and dashboard general poll modal.
+  - Added tests:
+    - `web/src/components/polls/poll-markdown-content.test.jsx`
+    - `web/src/components/polls/poll-option-note-dialog.test.jsx`
+  - Validation:
+    - `npm --prefix web run test -- src/components/polls/poll-markdown-content.test.jsx src/components/polls/poll-option-note-dialog.test.jsx src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx src/features/dashboard/DashboardPage.test.jsx` (pass, `19 passed`, exit code `0`).
+
+- 2026-02-12: Poll unification milestone 2 (participant + Discord parity primitives):
+  - Added shared participant summary + Discord metadata row components:
+    - `web/src/components/polls/poll-participant-summary.jsx`
+    - `web/src/components/polls/poll-discord-meta-row.jsx`
+  - Replaced duplicated avatar/count row rendering in basic poll card surfaces.
+  - Added participant avatar summary and Discord metadata visibility in both:
+    - scheduler session poll header context
+    - dashboard general poll modal context
+  - Added tests:
+    - `web/src/components/polls/poll-participant-summary.test.jsx`
+    - `web/src/components/polls/poll-discord-meta-row.test.jsx`
+  - Validation:
+    - `npm --prefix web run test -- src/components/polls/poll-participant-summary.test.jsx src/components/polls/poll-discord-meta-row.test.jsx src/components/polls/poll-markdown-content.test.jsx src/components/polls/poll-option-note-dialog.test.jsx src/features/dashboard/DashboardPage.test.jsx src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx` (pass, `25 passed`, exit code `0`).
+    - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-12: Poll unification milestone 3 (shared backend Discord sync internals):
+  - Added shared Discord sync helper module:
+    - `functions/src/discord/sync-core.js`
+  - Refactored both trigger pipelines to use shared queue/hash/url helpers:
+    - `functions/src/triggers/basic-poll-card.js`
+    - `functions/src/triggers/scheduler.js`
+  - Added helper unit tests:
+    - `functions/src/discord/sync-core.test.js`
+  - Updated trigger helper test mocks for queue helper dependency:
+    - `functions/src/triggers/scheduler.helpers.test.js`
+  - Validation:
+    - `npm --prefix functions run test -- src/discord/sync-core.test.js src/triggers/basic-poll-card.test.js src/triggers/scheduler.helpers.test.js src/triggers/scheduler.test.js` (pass, `31 passed`, exit code `0`).
+    - `npm --prefix web run test -- src/components/polls/poll-discord-meta-row.test.jsx src/components/polls/poll-participant-summary.test.jsx src/components/polls/poll-markdown-content.test.jsx src/components/polls/poll-option-note-dialog.test.jsx src/features/dashboard/DashboardPage.test.jsx` (pass, `20 passed`, exit code `0`).
+    - `npm --prefix web run build` (pass; existing non-blocking chunk-size warnings).
+
+- 2026-02-12: Poll unification validation hardening + full gate pass:
+  - `web/e2e/playwright.config.js`:
+    - Disabled `fullyParallel` and defaulted local `workers` to `1` (with `E2E_WORKERS` override) to eliminate shared-state e2e flakes in emulator runs.
+  - Full validation gate:
+    - `npm --prefix web run test` (pass, `68 files`, `327 passed`, exit code `0`).
+    - `npm --prefix functions run test` (pass, `46 files`, `350 passed`, exit code `0`).
+    - `npm --prefix web run test:rules` (pass, `21 passed`, exit code `0`).
+    - `npm --prefix web run test:integration` (pass, `11 passed`, exit code `0`; expected emulator warnings only).
+    - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`, exit code `0`).
+
+- 2026-02-12: Poll unification staging deploy:
+  - `./scripts/deploy-staging.sh` (pass).
+  - Staging URL: `https://quest-scheduler-stg.web.app`.
 
 - 2026-02-12: Removed legacy poll-create command fallback:
   - `functions/src/discord/worker.js`:

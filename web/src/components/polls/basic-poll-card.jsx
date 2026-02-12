@@ -1,8 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { Archive, ArchiveRestore, MoreVertical, Pencil, RotateCcw, Trash2, CheckCircle2 } from "lucide-react";
-import { AvatarStack, VotingAvatarStack } from "../ui/voter-avatars";
-import { buildColorMap } from "../ui/voter-avatar-utils";
+import { PollParticipantSummary } from "./poll-participant-summary";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -75,10 +74,6 @@ export function BasicPollCard({
     pollStatus = "OPEN",
     accentColor = null,
   } = poll;
-  const participantEmails = (eligibleUsers || [])
-    .map((entry) => entry?.email)
-    .filter(Boolean);
-  const colorMap = buildColorMap(participantEmails);
   const primaryActionLabel = state === "NEEDS_VOTE" ? "Vote" : state === "OPEN_VOTED" ? "Edit vote" : "View results";
   const handleOpen = () => {
     if (typeof onOpen === "function") {
@@ -225,36 +220,14 @@ export function BasicPollCard({
         </DropdownMenu>
       </div>
 
-      {eligibleUsers.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-          <div className="flex items-center gap-1.5">
-            <span className="font-medium">
-              {eligibleUsers.length} invitee{eligibleUsers.length !== 1 ? "s" : ""}:
-            </span>
-            <AvatarStack users={eligibleUsers} max={10} size={18} colorMap={colorMap} />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="font-medium text-emerald-600 dark:text-emerald-400">
-              {votedCount}/{eligibleCount} voted:
-            </span>
-            <VotingAvatarStack users={votedUsers} max={10} size={18} colorMap={colorMap} />
-          </div>
-          {isOpen ? (
-            <div className="flex items-center gap-1.5">
-              {pendingUsers.length > 0 ? (
-                <>
-                  <span className="font-medium text-amber-600 dark:text-amber-400">
-                    {pendingUsers.length}/{eligibleCount} pending:
-                  </span>
-                  <VotingAvatarStack users={pendingUsers} max={10} size={18} colorMap={colorMap} />
-                </>
-              ) : (
-                <span className="text-emerald-600 dark:text-emerald-400">All voted!</span>
-              )}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      <PollParticipantSummary
+        eligibleUsers={eligibleUsers}
+        votedUsers={votedUsers}
+        pendingUsers={pendingUsers}
+        eligibleCount={eligibleCount}
+        votedCount={votedCount}
+        showPending={isOpen}
+      />
     </article>
   );
 }

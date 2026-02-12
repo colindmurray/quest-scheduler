@@ -7,14 +7,17 @@ const {
 const { onTaskDispatched } = require("firebase-functions/v2/tasks");
 const { logger } = require("firebase-functions");
 const admin = require("firebase-admin");
-const crypto = require("crypto");
-const { getFunctions } = require("firebase-admin/functions");
 const {
   DISCORD_REGION,
   DISCORD_BOT_TOKEN,
   DISCORD_SCHEDULER_TASK_QUEUE,
   DISCORD_NOTIFICATION_DEFAULTS,
 } = require("../discord/config");
+const {
+  buildDiscordMessageUrl,
+  createSyncHash,
+  enqueueSyncTask,
+} = require("../discord/sync-core");
 const { createChannelMessage, editChannelMessage } = require("../discord/discord-client");
 const { buildPollCard, buildPollStatusCard } = require("../discord/poll-card");
 
@@ -89,7 +92,7 @@ function computeSchedulerSyncHash(scheduler, slots, voteCount, totalParticipants
     totalParticipants: totalParticipants ?? null,
   };
 
-  return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  return createSyncHash(payload);
 }
 
 function getDiscordNotificationSettings(groupDiscord = {}) {
@@ -146,7 +149,7 @@ function buildSlotSnapshot(slots = []) {
 
 function computeSlotSetHash(slots = []) {
   const snapshot = buildSlotSnapshot(slots);
-  const hash = crypto.createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
+  const hash = createSyncHash(snapshot);
   return { hash, snapshot };
 }
 
@@ -213,7 +216,11 @@ exports.postDiscordPollCard = onDocumentCreated(
         return;
       }
 
-      const messageUrl = `https://discord.com/channels/${discordLink.guildId}/${discordLink.channelId}/${messageId}`;
+      const messageUrl = buildDiscordMessageUrl(
+        discordLink.guildId,
+        discordLink.channelId,
+        messageId
+      );
       await db.collection("schedulers").doc(schedulerId).set(
         {
           discord: {
@@ -317,7 +324,11 @@ exports.updateDiscordPollCard = onDocumentUpdated(
             });
             const messageId = message?.id;
             if (messageId) {
-              const messageUrl = `https://discord.com/channels/${nextGroupDiscord.guildId}/${nextGroupDiscord.channelId}/${messageId}`;
+              const messageUrl = buildDiscordMessageUrl(
+                nextGroupDiscord.guildId,
+                nextGroupDiscord.channelId,
+                messageId
+              );
               await db.collection("schedulers").doc(schedulerId).set(
                 {
                   discord: {
@@ -354,17 +365,12 @@ exports.updateDiscordPollCard = onDocumentUpdated(
         return;
       }
 
-      const queueName =
-        DISCORD_REGION === "us-central1"
-          ? DISCORD_SCHEDULER_TASK_QUEUE
-          : `locations/${DISCORD_REGION}/functions/${DISCORD_SCHEDULER_TASK_QUEUE}`;
-      const queue = getFunctions().taskQueue(queueName);
-      await queue.enqueue(
-        { schedulerId },
-        {
-          scheduleDelaySeconds: 5,
-        }
-      );
+      await enqueueSyncTask({
+        region: DISCORD_REGION,
+        queueName: DISCORD_SCHEDULER_TASK_QUEUE,
+        payload: { schedulerId },
+        scheduleDelaySeconds: 5,
+      });
     } catch (err) {
       logger.error("Failed to enqueue Discord poll card update", {
         schedulerId,
@@ -536,17 +542,12 @@ exports.updateDiscordPollOnVote = onDocumentWritten(
     );
 
     try {
-      const queueName =
-        DISCORD_REGION === "us-central1"
-          ? DISCORD_SCHEDULER_TASK_QUEUE
-          : `locations/${DISCORD_REGION}/functions/${DISCORD_SCHEDULER_TASK_QUEUE}`;
-      const queue = getFunctions().taskQueue(queueName);
-      await queue.enqueue(
-        { schedulerId },
-        {
-          scheduleDelaySeconds: 2,
-        }
-      );
+      await enqueueSyncTask({
+        region: DISCORD_REGION,
+        queueName: DISCORD_SCHEDULER_TASK_QUEUE,
+        payload: { schedulerId },
+        scheduleDelaySeconds: 2,
+      });
       logger.info("Enqueued Discord poll update on vote change", { schedulerId });
 
     } catch (err) {
