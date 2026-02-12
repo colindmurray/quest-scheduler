@@ -99,4 +99,32 @@ describe('discord data helpers', () => {
     expect(callable).toHaveBeenCalledWith({ schedulerId: 'sched1' });
     expect(result).toEqual({ messageId: 'm1' });
   });
+
+  test('nudgeDiscordSessionPoll returns data payload', async () => {
+    const callable = vi.fn().mockResolvedValueOnce({ data: { success: true } });
+    functionsMocks.httpsCallable.mockReturnValueOnce(callable);
+
+    const result = await discord.nudgeDiscordSessionPoll('sched2');
+
+    expect(functionsMocks.httpsCallable).toHaveBeenCalledWith(
+      { name: 'functions' },
+      'nudgeDiscordParticipants'
+    );
+    expect(callable).toHaveBeenCalledWith({ schedulerId: 'sched2' });
+    expect(result).toEqual({ success: true });
+  });
+
+  test('nudgeDiscordBasicPoll returns data payload', async () => {
+    const callable = vi.fn().mockResolvedValueOnce({ data: { success: true } });
+    functionsMocks.httpsCallable.mockReturnValueOnce(callable);
+
+    const result = await discord.nudgeDiscordBasicPoll('group1', 'poll1');
+
+    expect(functionsMocks.httpsCallable).toHaveBeenCalledWith(
+      { name: 'functions' },
+      'nudgeDiscordBasicPollParticipants'
+    );
+    expect(callable).toHaveBeenCalledWith({ groupId: 'group1', pollId: 'poll1' });
+    expect(result).toEqual({ success: true });
+  });
 });

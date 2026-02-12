@@ -71,7 +71,7 @@ import {
 } from "../../lib/data/basicPolls";
 import { buildNotificationActor, emitPollEvent } from "../../lib/data/notification-events";
 import { validateInviteCandidate } from "./utils/invite-utils";
-import { repostDiscordPollCard } from "../../lib/data/discord";
+import { nudgeDiscordSessionPoll, repostDiscordPollCard } from "../../lib/data/discord";
 import { filterSlotsByRequiredAttendance } from "./utils/required-attendance";
 import {
   formatZonedDateTimeRange,
@@ -101,6 +101,7 @@ import { CalendarToolbar } from "./components/CalendarToolbar";
 import { BasicPollVotingCard } from "../../components/polls/basic-poll-voting-card";
 import { PollDiscordMetaRow } from "../../components/polls/poll-discord-meta-row";
 import { PollMarkdownContent } from "../../components/polls/poll-markdown-content";
+import { PollNudgeButton, getNudgeCooldownRemaining } from "../../components/polls/poll-nudge-button";
 import { PollOptionNoteDialog } from "../../components/polls/poll-option-note-dialog";
 import { buildEffectiveTallies, buildUserBlockInfo } from "./utils/effective-votes";
 import { canUserCopyVotes } from "./utils/copy-votes-eligibility";
@@ -277,12 +278,7 @@ export default function SchedulerPage() {
         ? "Discord not linked"
         : null;
   const nudgeCooldownRemaining = useMemo(() => {
-    const lastNudge = scheduler.data?.discord?.nudgeLastSentAt;
-    if (!lastNudge) return 0;
-    const lastNudgeTime = lastNudge.toDate?.() || new Date(lastNudge);
-    const elapsed = Date.now() - lastNudgeTime.getTime();
-    const cooldownMs = 8 * 60 * 60 * 1000; // 8 hours
-    return Math.max(0, cooldownMs - elapsed);
+    return getNudgeCooldownRemaining(scheduler.data?.discord?.nudgeLastSentAt);
   }, [scheduler.data?.discord?.nudgeLastSentAt]);
   const questingGroupColor = useMemo(() => {
     const groupId = scheduler.data?.questingGroupId;
@@ -850,6 +846,49 @@ export default function SchedulerPage() {
       ),
     [explicitParticipantIds, questingGroupMemberIds]
   );
+  const nudgeEligibleParticipantIds = useMemo(() => {
+    const participantIds = new Set(
+      [...explicitParticipantIds, ...questingGroupMemberIds]
+        .map((idValue) => String(idValue || "").trim())
+        .filter(Boolean)
+    );
+    if (scheduler.data?.creatorId) {
+      participantIds.delete(String(scheduler.data.creatorId));
+    }
+    return Array.from(participantIds);
+  }, [explicitParticipantIds, questingGroupMemberIds, scheduler.data?.creatorId]);
+  const sessionPollMissingNudgeUserIds = useMemo(
+    () =>
+      nudgeEligibleParticipantIds.filter(
+        (participantId) => !voteMapById.has(String(participantId))
+      ),
+    [nudgeEligibleParticipantIds, voteMapById]
+  );
+  const hasRequiredEmbeddedNudgeTargets = useMemo(() => {
+    if (nudgeEligibleParticipantIds.length === 0) return false;
+
+    const requiredOpenPolls = (embeddedPolls || []).filter((poll) => {
+      if (!poll?.required) return false;
+      const pollStatus = String(poll?.status || "OPEN").toUpperCase();
+      return pollStatus === "OPEN";
+    });
+
+    if (requiredOpenPolls.length === 0) return false;
+
+    return requiredOpenPolls.some((poll) => {
+      const pollVotes = embeddedVotesByPoll[poll.id] || [];
+      const submittedVoterIds = new Set(
+        (pollVotes || [])
+          .filter((voteDoc) => hasSubmittedEmbeddedVote(poll, voteDoc))
+          .map((voteDoc) => String(voteDoc?.id || "").trim())
+          .filter(Boolean)
+      );
+
+      return nudgeEligibleParticipantIds.some(
+        (participantId) => !submittedVoterIds.has(participantId)
+      );
+    });
+  }, [embeddedPolls, embeddedVotesByPoll, nudgeEligibleParticipantIds]);
   const participantCount = participantIdSet.size;
   const voteCount = allVotes.data.length;
   const allVotesIn = useMemo(() => {
@@ -2322,10 +2361,8 @@ export default function SchedulerPage() {
     if (!id) return;
     setNudgeSending(true);
     try {
-      const functions = getFunctions();
-      const nudge = httpsCallable(functions, "nudgeDiscordParticipants");
-      const result = await nudge({ schedulerId: id });
-      const { nudgedCount, totalNonVoters } = result.data || {};
+      const result = await nudgeDiscordSessionPoll(id);
+      const { nudgedCount = 0, totalNonVoters = 0 } = result || {};
       if (nudgedCount < totalNonVoters) {
         toast.success(
           `Nudged ${nudgedCount} participant${nudgedCount === 1 ? "" : "s"} on Discord. ${totalNonVoters - nudgedCount} non-voter${totalNonVoters - nudgedCount === 1 ? " has" : "s have"} not linked Discord.`
@@ -2431,6 +2468,12 @@ export default function SchedulerPage() {
   const requiredEmbeddedPendingCount = requiredEmbeddedPolls.filter(
     (poll) => !hasSubmittedEmbeddedVote(poll, embeddedMyVotes[poll.id])
   ).length;
+  const showSessionNudgeButton = Boolean(
+    isCreator &&
+      scheduler.data?.discord?.messageId &&
+      scheduler.data?.status === "OPEN" &&
+      (sessionPollMissingNudgeUserIds.length > 0 || hasRequiredEmbeddedNudgeTargets)
+  );
   const pendingInviteMeta =
     (normalizedUserEmail && scheduler.data.pendingInviteMeta?.[normalizedUserEmail]) || {};
   const inviterLabel = pendingInviteMeta.invitedByEmail || scheduler.data.creatorEmail || "someone";
@@ -2500,32 +2543,12 @@ export default function SchedulerPage() {
                 pendingSync={scheduler.data?.discord?.pendingSync === true}
                 className="mt-2"
               >
-                {isCreator && scheduler.data?.discord?.messageId && scheduler.data?.status === "OPEN" ? (
-                  <button
-                    type="button"
+                {showSessionNudgeButton ? (
+                  <PollNudgeButton
                     onClick={handleNudge}
-                    disabled={nudgeSending || nudgeCooldownRemaining > 0}
-                    className={`rounded-full px-2 py-0.5 text-xs font-semibold transition-colors ${
-                      nudgeCooldownRemaining > 0
-                        ? "border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-500"
-                        : "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
-                    } ${nudgeSending ? "opacity-50" : ""}`}
-                    title={
-                      nudgeCooldownRemaining > 0
-                        ? "Nudge is on cooldown"
-                        : "Send a reminder to participants who haven't voted"
-                    }
-                  >
-                    {nudgeSending
-                      ? "Sending..."
-                      : nudgeCooldownRemaining > 0
-                        ? (() => {
-                            const hours = Math.floor(nudgeCooldownRemaining / (60 * 60 * 1000));
-                            const mins = Math.ceil((nudgeCooldownRemaining % (60 * 60 * 1000)) / (60 * 1000));
-                            return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-                          })()
-                        : "Nudge participants"}
-                  </button>
+                    sending={nudgeSending}
+                    cooldownRemainingMs={nudgeCooldownRemaining}
+                  />
                 ) : null}
               </PollDiscordMetaRow>
             </div>

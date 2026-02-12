@@ -14,8 +14,8 @@ changelog:
 # Code Health Audit (Pt 2) — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Phase 1 complete (removed orphaned files + cleaned unused web dependencies) with full validation gate pass.
-- Next Step: Phase 2 helper consolidation (`hasSubmittedVote`, safe navigation fallback, date coercion, notifications shared helpers).
+- Last Completed: Phase 3.2 complete (poll domain constant modules adopted in high-touch basic poll web/functions paths).
+- Next Step: Phase 4.1 monolith decomposition kickoff (extract focused dashboard hooks/components).
 - Open Issues: None.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
@@ -277,3 +277,95 @@ Acceptance:
     - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`)
     - `npm --prefix web run build` (pass)
 - 2026-02-12: Added Phase 7 dependency re-evaluation scope to ensure removed/optional libraries are reconsidered intentionally (adopt or reject), not implicitly discarded.
+- 2026-02-12: Completed Phase 2.1 vote-submission helper consolidation.
+  - Added shared helper modules:
+    - `web/src/lib/basic-polls/vote-submission.js`
+    - `functions/src/basic-polls/vote-submission.js`
+  - Replaced duplicated vote-submission logic in:
+    - `web/src/lib/data/basicPolls.js`
+    - `web/src/features/dashboard/components/group-basic-poll-modal.jsx`
+    - `functions/src/basic-polls/callables.js`
+    - `functions/src/basic-polls/required-summary.js`
+    - `functions/src/triggers/basic-polls.js`
+    - `functions/src/triggers/basic-poll-card.js`
+    - `functions/src/legacy.js`
+  - Added helper unit tests:
+    - `web/src/lib/basic-polls/vote-submission.test.js`
+    - `functions/src/basic-polls/vote-submission.test.js`
+  - Validation:
+    - `npm --prefix web run test -- src/lib/basic-polls/vote-submission.test.js src/lib/data/basicPolls.test.js src/features/dashboard/DashboardPage.test.jsx` (pass, `40 passed`)
+    - `npm --prefix functions run test -- src/basic-polls/vote-submission.test.js src/basic-polls/required-summary.test.js src/basic-polls/callables.test.js src/triggers/basic-polls.test.js src/triggers/basic-poll-card.test.js src/legacy.helpers.test.js` (pass, `58 passed`)
+- 2026-02-12: Completed Phase 2.2 safe navigation fallback consolidation.
+  - Added shared hook:
+    - `web/src/hooks/useSafeNavigate.js`
+  - Added unit coverage:
+    - `web/src/hooks/useSafeNavigate.test.jsx`
+  - Replaced duplicated `navigate + setTimeout + window.location.assign` blocks in:
+    - `web/src/components/polls/basic-poll-card.jsx`
+    - `web/src/features/dashboard/components/SessionCard.jsx`
+    - `web/src/features/dashboard/components/NextSessionCard.jsx`
+    - `web/src/features/dashboard/components/MobileAgendaView.jsx`
+    - `web/src/features/dashboard/components/DashboardCalendar.jsx`
+    - `web/src/features/dashboard/DashboardPage.jsx`
+  - Validation:
+    - `npm --prefix web run test -- src/hooks/useSafeNavigate.test.jsx src/features/dashboard/DashboardPage.test.jsx src/lib/data/basicPolls.test.js` (pass, `39 passed`)
+- 2026-02-12: Completed Phase 2.3 date coercion consolidation.
+  - Added shared date coercion utility:
+    - `web/src/lib/time.js` (`coerceDate`)
+  - Removed duplicated local `toDate` implementations in:
+    - `web/src/lib/data/basicPolls.js`
+    - `web/src/features/dashboard/components/group-basic-poll-modal.jsx`
+    - `web/src/components/polls/basic-poll-voting-card.jsx`
+    - `web/src/features/basic-polls/components/CreateGroupPollModal.jsx`
+    - `web/src/features/dashboard/DashboardPage.jsx`
+  - Added test coverage:
+    - `web/src/lib/time.test.js` (new `coerceDate` assertions)
+  - Validation:
+    - `npm --prefix web run test -- src/lib/time.test.js src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/dashboard/DashboardPage.test.jsx src/lib/data/basicPolls.test.js` (pass, `46 passed`)
+- 2026-02-12: Completed Phase 2.4 notification shared helper consolidation.
+  - Added shared Functions module:
+    - `functions/src/notifications/shared.js`
+  - Refactored consumers:
+    - `functions/src/notifications/router.js`
+    - `functions/src/notifications/reconcile.js`
+  - Added shared helper tests:
+    - `functions/src/notifications/shared.test.js`
+  - Validation:
+    - `npm --prefix functions run test -- src/notifications/shared.test.js src/notifications/router.test.js src/notifications/reconcile.test.js` (pass, `13 passed`)
+- 2026-02-12: Completed Phase 3.1 notification event parity guard.
+  - Added canonical web notification-event module:
+    - `web/src/lib/notification-types.js`
+  - Updated web notification data layer to consume shared constants:
+    - `web/src/lib/data/notifications.js`
+  - Added cross-runtime parity test:
+    - `functions/src/notifications/constants.parity.test.js`
+  - Validation:
+    - `npm --prefix web run test -- src/lib/data/notifications.test.js src/lib/data/notification-events.test.js src/components/ui/notification-dropdown.test.jsx src/components/ui/notification-bell.test.jsx` (pass, `14 passed`)
+    - `npm --prefix functions run test -- src/notifications/constants.test.js src/notifications/constants.parity.test.js src/notifications/router.test.js src/notifications/reconcile.test.js src/notifications/shared.test.js` (pass, `18 passed`)
+- 2026-02-12: Completed Phase 3.2 poll domain constants in high-touch paths.
+  - Added constants modules:
+    - `web/src/lib/basic-polls/constants.js`
+    - `functions/src/basic-polls/constants.js`
+  - Updated high-touch consumers:
+    - `web/src/lib/basic-polls/vote-submission.js`
+    - `functions/src/basic-polls/vote-submission.js`
+    - `web/src/lib/data/basicPolls.js`
+    - `web/src/features/dashboard/components/group-basic-poll-modal.jsx`
+    - `web/src/components/polls/basic-poll-voting-card.jsx`
+    - `web/src/features/basic-polls/components/CreateGroupPollModal.jsx`
+    - `functions/src/basic-polls/callables.js`
+    - `functions/src/basic-polls/required-summary.js`
+    - `functions/src/triggers/basic-poll-card.js`
+  - Added constants coverage:
+    - `web/src/lib/basic-polls/constants.test.js`
+    - `functions/src/basic-polls/constants.test.js`
+  - Validation:
+    - `npm --prefix web run test -- src/lib/basic-polls/constants.test.js src/lib/basic-polls/vote-submission.test.js src/lib/data/basicPolls.test.js src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/dashboard/DashboardPage.test.jsx src/lib/time.test.js` (pass, `52 passed`)
+    - `npm --prefix functions run test -- src/basic-polls/constants.test.js src/basic-polls/vote-submission.test.js src/basic-polls/required-summary.test.js src/basic-polls/callables.test.js src/triggers/basic-polls.test.js src/triggers/basic-poll-card.test.js` (pass, `44 passed`)
+- 2026-02-12: Re-ran full validation gate after Phases 2.1–3.2.
+  - `npm --prefix web run test` (pass, `337 passed`)
+  - `npm --prefix functions run test` (pass, `361 passed`)
+  - `npm --prefix web run test:rules` (pass, `21 passed`)
+  - `npm --prefix web run test:integration` (pass, `11 passed`; emulator-only function log warnings observed, non-blocking)
+  - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`)
+  - `npm --prefix web run build` (pass)

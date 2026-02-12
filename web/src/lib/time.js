@@ -2,9 +2,21 @@ import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 
 const FALLBACK_TIME_ZONE = "UTC";
 
-function toDate(value) {
+export function coerceDate(value) {
   if (!value) return null;
-  return value instanceof Date ? value : new Date(value);
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value?.toDate === "function") {
+    const converted = value.toDate();
+    return converted instanceof Date && !Number.isNaN(converted.getTime()) ? converted : null;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function toDate(value) {
+  return coerceDate(value);
 }
 
 function getIntlTimeZoneName(date, timeZone, timeZoneName) {

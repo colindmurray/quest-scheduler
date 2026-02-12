@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
 import { format, parse, startOfWeek, getDay, isBefore, startOfDay, startOfHour } from "date-fns";
 import { enUS } from "date-fns/locale";
@@ -7,6 +6,7 @@ import { AlertTriangle } from "lucide-react";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "../../scheduler/calendar-styles.css";
 import { useCalendarNavigation } from "../../../hooks/useCalendarNavigation";
+import { useSafeNavigate } from "../../../hooks/useSafeNavigate";
 import { CalendarJumpControls } from "../../../components/ui/calendar-jump-controls";
 import { CalendarToolbar } from "../../scheduler/components/CalendarToolbar";
 import { formatZonedTimeRange, toDisplayDate } from "../../../lib/time";
@@ -83,7 +83,7 @@ export function DashboardCalendar({
 }) {
   const [view, setView] = useState("month");
   const [date, setDate] = useState(new Date());
-  const navigate = useNavigate();
+  const safeNavigate = useSafeNavigate();
 
   useEffect(() => {
     const next = focusedDate ? new Date(focusedDate) : null;
@@ -145,12 +145,7 @@ export function DashboardCalendar({
 
   const handleSelectEvent = (event) => {
     const target = `/scheduler/${event.id}`;
-    navigate(target);
-    setTimeout(() => {
-      if (window.location.pathname !== target) {
-        window.location.assign(target);
-      }
-    }, 50);
+    safeNavigate(target);
   };
 
   const {

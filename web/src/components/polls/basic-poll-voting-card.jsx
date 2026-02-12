@@ -1,13 +1,7 @@
 import { PollMarkdownContent } from "./poll-markdown-content";
 import { PollParticipantSummary } from "./poll-participant-summary";
-
-function toDate(value) {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (typeof value?.toDate === "function") return value.toDate();
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
+import { BASIC_POLL_STATUSES, BASIC_POLL_VOTE_TYPES } from "../../lib/basic-polls/constants";
+import { coerceDate } from "../../lib/time";
 
 export function BasicPollVotingCard({
   poll,
@@ -38,8 +32,8 @@ export function BasicPollVotingCard({
   votedUsers = [],
   pendingUsers = [],
 }) {
-  const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
-  const isRanked = voteType === "RANKED_CHOICE";
+  const voteType = poll?.settings?.voteType || BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE;
+  const isRanked = voteType === BASIC_POLL_VOTE_TYPES.RANKED_CHOICE;
   const allowMultiple = poll?.settings?.allowMultiple === true;
   const allowWriteIn = poll?.settings?.allowWriteIn === true;
   const selectedOptionIds = Array.isArray(draft.optionIds) ? draft.optionIds : [];
@@ -58,10 +52,10 @@ export function BasicPollVotingCard({
     .filter(Boolean);
   const unrankedOptions = sortedOptions.filter((option) => option?.id && !rankings.includes(option.id));
   const embeddedFinalResults = poll?.finalResults || null;
-  const pollStatus = poll?.status || "OPEN";
-  const isFinalized = pollStatus === "FINALIZED";
+  const pollStatus = poll?.status || BASIC_POLL_STATUSES.OPEN;
+  const isFinalized = pollStatus === BASIC_POLL_STATUSES.FINALIZED;
   const requiredPending = poll?.required && !hasSubmitted;
-  const closedAt = toDate(poll?.settings?.deadlineAt || poll?.deadlineAt || null);
+  const closedAt = coerceDate(poll?.settings?.deadlineAt || poll?.deadlineAt || null);
   const deadlinePassed = Boolean(closedAt && closedAt.getTime() <= Date.now());
 
   return (
@@ -309,7 +303,7 @@ export function BasicPollVotingCard({
                   : "Voting is closed for this poll."}
           </p>
           {isRanked ? (
-            embeddedFinalResults?.voteType === "RANKED_CHOICE" ? (
+            embeddedFinalResults?.voteType === BASIC_POLL_VOTE_TYPES.RANKED_CHOICE ? (
               <div className="mt-2 space-y-2">
                 {Array.isArray(embeddedFinalResults?.tiedIds) && embeddedFinalResults.tiedIds.length > 1 ? (
                   <p className="font-semibold text-amber-700 dark:text-amber-300">
@@ -373,7 +367,7 @@ export function BasicPollVotingCard({
             ) : (
               <p className="mt-1">Final results unavailable.</p>
             )
-          ) : embeddedFinalResults?.voteType === "MULTIPLE_CHOICE" &&
+          ) : embeddedFinalResults?.voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE &&
             Array.isArray(embeddedFinalResults?.rows) ? (
             <div className="mt-2 space-y-2">
               {embeddedFinalResults.rows.map((row, index) => {

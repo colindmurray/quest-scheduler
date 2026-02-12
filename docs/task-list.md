@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-12: Added Discord nudge coverage across functions and web layers (grouped required-poll sections, callable wrappers, shared nudge button helper/UI tests)."
   - "2026-02-12: Removed legacy `/poll-create` fallback payload support; Discord worker now requires explicit subcommands (`multiple`/`ranked`) and returns a clear error for legacy shape."
   - "2026-02-12: Updated Discord basic/general poll card formatting to include a clickable `View on web` embed field link (instead of non-clickable footer URL text), with tests and prod/staging function deploys."
   - "2026-02-12: Migrated Discord `/poll-create` to subcommands (`multiple`, `ranked`), updated worker parsing for subcommand payloads, re-registered commands (global + two guilds), and deployed Discord worker to prod/staging."
@@ -46,12 +47,124 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Implemented poll-unification shared UI/backend primitives on `feature/poll-unification-prettifying`, passed full validation gate, and deployed branch to staging
-- Next Step: Manual QA on staging and prepare PR merge for poll-unification milestones
+- Last Completed: Code Health Pt2 Phase 3.2 poll domain constant modules (status/vote type) adopted in high-touch poll paths.
+- Next Step: Code Health Pt2 Phase 4.1 monolith decomposition kickoff (extract focused dashboard hooks/components).
 - Open Issues: None in automated test gates.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
 ## Progress Notes
+
+- 2026-02-12: Expanded Discord nudge test coverage following AGENTS testing conventions (functions Discord-send assertions + web data/UI layer tests).
+  - Added function regression coverage in `functions/src/discord/nudge.test.js`:
+    - Validates required embedded poll grouping behavior where multiple required polls with the same missing-user set are emitted as one grouped section in the Discord nudge message.
+    - Continues to assert outbound Discord send payloads via mocked `createChannelMessage` (the established repo convention for Discord emission validation).
+  - Added web-layer coverage:
+    - `web/src/lib/data/discord.test.js`: callable wrapper tests for `nudgeDiscordSessionPoll` and `nudgeDiscordBasicPoll`.
+    - `web/src/components/polls/poll-nudge-button.test.jsx`: UI/helper tests for cooldown math + button label/disabled behavior.
+  - Validation:
+    - `npm --prefix functions run test -- src/discord/nudge.test.js` (pass, `10 passed`, exit code `0`)
+    - `npm --prefix web run test -- src/lib/data/discord.test.js src/components/polls/poll-nudge-button.test.jsx` (pass, `13 passed`, exit code `0`)
+    - `npm --prefix web run test:integration` (pass, `11 passed`, exit code `0`; existing emulator `notificationEvents` NOT_FOUND/socket-hangup log noise observed, suite still succeeded)
+    - `npm --prefix web run build` (pass, exit code `0`)
+
+- 2026-02-12: Completed Code Health Pt2 Phase 3.2 (poll domain constants in high-touch paths).
+  - Added constants modules:
+    - `web/src/lib/basic-polls/constants.js`
+    - `functions/src/basic-polls/constants.js`
+  - Updated high-touch consumers:
+    - `web/src/lib/basic-polls/vote-submission.js`
+    - `functions/src/basic-polls/vote-submission.js`
+    - `web/src/lib/data/basicPolls.js`
+    - `web/src/features/dashboard/components/group-basic-poll-modal.jsx`
+    - `web/src/components/polls/basic-poll-voting-card.jsx`
+    - `web/src/features/basic-polls/components/CreateGroupPollModal.jsx`
+    - `functions/src/basic-polls/callables.js`
+    - `functions/src/basic-polls/required-summary.js`
+    - `functions/src/triggers/basic-poll-card.js`
+  - Added constants coverage:
+    - `web/src/lib/basic-polls/constants.test.js`
+    - `functions/src/basic-polls/constants.test.js`
+  - Validation:
+    - `npm --prefix web run test -- src/lib/basic-polls/constants.test.js src/lib/basic-polls/vote-submission.test.js src/lib/data/basicPolls.test.js src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/dashboard/DashboardPage.test.jsx src/lib/time.test.js` (pass, `52 passed`, exit code `0`)
+    - `npm --prefix functions run test -- src/basic-polls/constants.test.js src/basic-polls/vote-submission.test.js src/basic-polls/required-summary.test.js src/basic-polls/callables.test.js src/triggers/basic-polls.test.js src/triggers/basic-poll-card.test.js` (pass, `44 passed`, exit code `0`)
+
+- 2026-02-12: Full validation gate after Code Health Pt2 Phases 2.1–3.2:
+  - `npm --prefix web run test` (pass, `337 passed`, exit code `0`)
+  - `npm --prefix functions run test` (pass, `361 passed`, exit code `0`)
+  - `npm --prefix web run test:rules` (pass, `21 passed`, exit code `0`)
+  - `npm --prefix web run test:integration` (pass, `11 passed`, exit code `0`; emulator log noise only)
+  - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`, exit code `0`)
+  - `npm --prefix web run build` (pass, exit code `0`)
+
+- 2026-02-12: Completed Code Health Pt2 Phase 3.1 (notification event parity guard).
+  - Added canonical web notification-event module:
+    - `web/src/lib/notification-types.js`
+  - Updated web notification data layer to consume shared constants:
+    - `web/src/lib/data/notifications.js`
+  - Added cross-runtime parity test:
+    - `functions/src/notifications/constants.parity.test.js`
+  - Validation:
+    - `npm --prefix web run test -- src/lib/data/notifications.test.js src/lib/data/notification-events.test.js src/components/ui/notification-dropdown.test.jsx src/components/ui/notification-bell.test.jsx` (pass, `14 passed`, exit code `0`)
+    - `npm --prefix functions run test -- src/notifications/constants.test.js src/notifications/constants.parity.test.js src/notifications/router.test.js src/notifications/reconcile.test.js src/notifications/shared.test.js` (pass, `18 passed`, exit code `0`)
+
+- 2026-02-12: Completed Code Health Pt2 Phase 2.4 (notification metadata/hash helper consolidation).
+  - Added shared Functions module:
+    - `functions/src/notifications/shared.js`
+  - Refactored consumers:
+    - `functions/src/notifications/router.js`
+    - `functions/src/notifications/reconcile.js`
+  - Added coverage:
+    - `functions/src/notifications/shared.test.js`
+  - Validation:
+    - `npm --prefix functions run test -- src/notifications/shared.test.js src/notifications/router.test.js src/notifications/reconcile.test.js` (pass, `13 passed`, exit code `0`)
+
+- 2026-02-12: Completed Code Health Pt2 Phase 2.3 (date coercion consolidation).
+  - Added shared utility:
+    - `web/src/lib/time.js` now exports `coerceDate`.
+  - Removed duplicated local `toDate` implementations in:
+    - `web/src/lib/data/basicPolls.js`
+    - `web/src/features/dashboard/components/group-basic-poll-modal.jsx`
+    - `web/src/components/polls/basic-poll-voting-card.jsx`
+    - `web/src/features/basic-polls/components/CreateGroupPollModal.jsx`
+    - `web/src/features/dashboard/DashboardPage.jsx`
+  - Added coverage:
+    - `web/src/lib/time.test.js` (`coerceDate` scenarios)
+  - Validation:
+    - `npm --prefix web run test -- src/lib/time.test.js src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/dashboard/DashboardPage.test.jsx src/lib/data/basicPolls.test.js` (pass, `46 passed`, exit code `0`)
+
+- 2026-02-12: Completed Code Health Pt2 Phase 2.2 (safe navigation fallback consolidation).
+  - Added shared hook:
+    - `web/src/hooks/useSafeNavigate.js`
+  - Added unit coverage:
+    - `web/src/hooks/useSafeNavigate.test.jsx`
+  - Replaced duplicated `navigate + setTimeout + window.location.assign` blocks in:
+    - `web/src/components/polls/basic-poll-card.jsx`
+    - `web/src/features/dashboard/components/SessionCard.jsx`
+    - `web/src/features/dashboard/components/NextSessionCard.jsx`
+    - `web/src/features/dashboard/components/MobileAgendaView.jsx`
+    - `web/src/features/dashboard/components/DashboardCalendar.jsx`
+    - `web/src/features/dashboard/DashboardPage.jsx`
+  - Validation:
+    - `npm --prefix web run test -- src/hooks/useSafeNavigate.test.jsx src/features/dashboard/DashboardPage.test.jsx src/lib/data/basicPolls.test.js` (pass, `39 passed`, exit code `0`)
+
+- 2026-02-12: Completed Code Health Pt2 Phase 2.1 (vote-submission helper consolidation).
+  - Added shared helper modules:
+    - `web/src/lib/basic-polls/vote-submission.js`
+    - `functions/src/basic-polls/vote-submission.js`
+  - Replaced duplicated vote-submission logic in:
+    - `web/src/lib/data/basicPolls.js`
+    - `web/src/features/dashboard/components/group-basic-poll-modal.jsx`
+    - `functions/src/basic-polls/callables.js`
+    - `functions/src/basic-polls/required-summary.js`
+    - `functions/src/triggers/basic-polls.js`
+    - `functions/src/triggers/basic-poll-card.js`
+    - `functions/src/legacy.js`
+  - Added helper unit tests:
+    - `web/src/lib/basic-polls/vote-submission.test.js`
+    - `functions/src/basic-polls/vote-submission.test.js`
+  - Validation:
+    - `npm --prefix web run test -- src/lib/basic-polls/vote-submission.test.js src/lib/data/basicPolls.test.js src/features/dashboard/DashboardPage.test.jsx` (pass, `40 passed`, exit code `0`)
+    - `npm --prefix functions run test -- src/basic-polls/vote-submission.test.js src/basic-polls/required-summary.test.js src/basic-polls/callables.test.js src/triggers/basic-polls.test.js src/triggers/basic-poll-card.test.js src/legacy.helpers.test.js` (pass, `58 passed`, exit code `0`)
 
 - 2026-02-12: Expanded Code Health Pt2 planning docs with a dedicated dependency re-evaluation phase:
   - Updated `docs/code-health-audit-pt2.md` to include explicit adopt/reject criteria for selectively reintroducing removed/optional libraries (`react-hook-form`, `zod`, `@hookform/resolvers`, `@testing-library/jest-dom`, `msw`, `framer-motion`) and to capture additional library opportunities discovered during refactors.

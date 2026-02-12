@@ -16,8 +16,11 @@ import {
 } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "../firebase";
+import { BASIC_POLL_STATUSES, BASIC_POLL_VOTE_TYPES, resolveBasicPollVoteType } from "../basic-polls/constants";
 import { computeInstantRunoffResults } from "../basic-polls/irv";
 import { computeMultipleChoiceTallies } from "../basic-polls/multiple-choice";
+import { hasSubmittedVote } from "../basic-polls/vote-submission";
+import { coerceDate } from "../time";
 
 const DELETE_BATCH_SIZE = 450;
 const PARENT_TYPE_COLLECTIONS = {
@@ -65,16 +68,8 @@ function mapSnapshotDocs(snapshot) {
   return snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
 }
 
-function toDate(value) {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (typeof value?.toDate === "function") return value.toDate();
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
 function resolvePollDeadline(pollData = {}) {
-  return toDate(pollData?.settings?.deadlineAt || pollData?.deadlineAt || null);
+  return coerceDate(pollData?.settings?.deadlineAt || pollData?.deadlineAt || null);
 }
 
 function isPollDeadlineOpen(pollData = {}) {
@@ -104,30 +99,17 @@ async function callBasicPollServerAction(actionName, payload) {
   }
 }
 
-function normalizeOptionIdList(values = []) {
-  if (!Array.isArray(values)) return [];
-  return values.filter((entry) => typeof entry === "string" && entry.trim());
-}
-
-function hasSubmittedVote(voteType, allowWriteIn, voteDoc) {
-  if (voteType === "RANKED_CHOICE") {
-    return normalizeOptionIdList(voteDoc?.rankings).length > 0;
-  }
-  const hasOptionIds = normalizeOptionIdList(voteDoc?.optionIds).length > 0;
-  const hasWriteIn = allowWriteIn && String(voteDoc?.otherText || "").trim().length > 0;
-  return hasOptionIds || hasWriteIn;
-}
-
 function buildFinalResultsSnapshot(pollData = {}, votes = []) {
   const settings = pollData?.settings || {};
-  const voteType = settings.voteType === "RANKED_CHOICE" ? "RANKED_CHOICE" : "MULTIPLE_CHOICE";
-  const allowWriteIn = voteType === "MULTIPLE_CHOICE" && settings.allowWriteIn === true;
+  const voteType = resolveBasicPollVoteType(settings.voteType);
+  const allowWriteIn =
+    voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && settings.allowWriteIn === true;
   const options = Array.isArray(pollData?.options) ? pollData.options : [];
   const submittedVotes = (votes || []).filter((voteDoc) =>
     hasSubmittedVote(voteType, allowWriteIn, voteDoc)
   );
 
-  if (voteType === "RANKED_CHOICE") {
+  if (voteType === BASIC_POLL_VOTE_TYPES.RANKED_CHOICE) {
     const results = computeInstantRunoffResults({
       optionIds: options.map((option) => option?.id).filter(Boolean),
       votes: submittedVotes,
@@ -212,7 +194,7 @@ export async function createBasicPoll(groupId, pollData = {}, options = {}) {
 
   const created = await addDoc(groupBasicPollsRef(groupId), {
     ...pollData,
-    status: pollData.status ?? "OPEN",
+    status: pollData.status ?? BASIC_POLL_STATUSES.OPEN,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -233,7 +215,7 @@ export async function fetchOpenGroupPollsWithoutVote(groupIds = [], userId) {
   const allResults = await Promise.all(
     normalizedGroupIds.map(async (groupId) => {
       const pollsSnapshot = await getDocs(
-        query(groupBasicPollsRef(groupId), where("status", "==", "OPEN"))
+        query(groupBasicPollsRef(groupId), where("status", "==", BASIC_POLL_STATUSES.OPEN))
       );
       const openPolls = pollsSnapshot.docs.map((pollDoc) => ({
         id: pollDoc.id,
@@ -245,8 +227,9 @@ export async function fetchOpenGroupPollsWithoutVote(groupIds = [], userId) {
           if (!isPollDeadlineOpen(poll)) return null;
 
           const settings = poll?.settings || {};
-          const voteType = settings.voteType === "RANKED_CHOICE" ? "RANKED_CHOICE" : "MULTIPLE_CHOICE";
-          const allowWriteIn = voteType === "MULTIPLE_CHOICE" && settings.allowWriteIn === true;
+          const voteType = resolveBasicPollVoteType(settings.voteType);
+          const allowWriteIn =
+            voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && settings.allowWriteIn === true;
           const voteRef = basicPollVoteRef("group", groupId, poll.id, userId);
           const voteSnap = voteRef ? await getDoc(voteRef) : null;
           const myVote = voteSnap?.exists() ? voteSnap.data() || {} : null;
@@ -271,8 +254,9 @@ export async function fetchOpenGroupPollsWithoutVote(groupIds = [], userId) {
 
 async function buildDashboardPollSummary(parentType, parentId, pollData, userId) {
   const settings = pollData?.settings || {};
-  const voteType = settings.voteType === "RANKED_CHOICE" ? "RANKED_CHOICE" : "MULTIPLE_CHOICE";
-  const allowWriteIn = voteType === "MULTIPLE_CHOICE" && settings.allowWriteIn === true;
+  const voteType = resolveBasicPollVoteType(settings.voteType);
+  const allowWriteIn =
+    voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && settings.allowWriteIn === true;
   const votesSnapshot = await getDocs(basicPollVotesRef(parentType, parentId, pollData.id));
   const voteDocs = mapSnapshotDocs(votesSnapshot);
   const submittedVotes = voteDocs.filter((voteDoc) => hasSubmittedVote(voteType, allowWriteIn, voteDoc));
@@ -339,14 +323,14 @@ export async function finalizeBasicPollForParent(parentType, parentId, pollId) {
     parentId,
     pollId,
   });
-  if (response?.status === "FINALIZED") return;
+  if (response?.status === BASIC_POLL_STATUSES.FINALIZED) return;
 
   const [pollSnap, votesSnap] = await Promise.all([getDoc(pollRef), getDocs(votesRef)]);
   if (!pollSnap.exists()) return;
 
   const finalResults = buildFinalResultsSnapshot(pollSnap.data() || {}, mapSnapshotDocs(votesSnap));
   await updateDoc(pollRef, {
-    status: "FINALIZED",
+    status: BASIC_POLL_STATUSES.FINALIZED,
     finalizedAt: serverTimestamp(),
     finalResults,
     updatedAt: serverTimestamp(),
@@ -363,10 +347,10 @@ export async function reopenBasicPollForParent(parentType, parentId, pollId) {
     parentId,
     pollId,
   });
-  if (response?.status === "OPEN") return;
+  if (response?.status === BASIC_POLL_STATUSES.OPEN) return;
 
   await updateDoc(pollRef, {
-    status: "OPEN",
+    status: BASIC_POLL_STATUSES.OPEN,
     updatedAt: serverTimestamp(),
   });
 }
@@ -499,12 +483,13 @@ export async function fetchRequiredEmbeddedPollsWithoutVote(schedulerIds = [], u
 
       const unvoted = await Promise.all(
         requiredPolls.map(async (poll) => {
-          if (poll?.status && poll.status !== "OPEN") return null;
+          if (poll?.status && poll.status !== BASIC_POLL_STATUSES.OPEN) return null;
           if (!isPollDeadlineOpen(poll)) return null;
 
           const settings = poll?.settings || {};
-          const voteType = settings.voteType === "RANKED_CHOICE" ? "RANKED_CHOICE" : "MULTIPLE_CHOICE";
-          const allowWriteIn = voteType === "MULTIPLE_CHOICE" && settings.allowWriteIn === true;
+          const voteType = resolveBasicPollVoteType(settings.voteType);
+          const allowWriteIn =
+            voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && settings.allowWriteIn === true;
           const voteRef = basicPollVoteRef("scheduler", schedulerId, poll.id, userId);
           const voteSnap = voteRef ? await getDoc(voteRef) : null;
           const myVote = voteSnap?.exists() ? voteSnap.data() || {} : null;
@@ -667,8 +652,9 @@ export async function cloneEmbeddedBasicPolls(
 
   await Promise.all(
     sortedPolls.map(async (poll) => {
-      const voteType = poll?.settings?.voteType === "RANKED_CHOICE" ? "RANKED_CHOICE" : "MULTIPLE_CHOICE";
-      const allowWriteIn = voteType === "MULTIPLE_CHOICE" && poll?.settings?.allowWriteIn === true;
+      const voteType = resolveBasicPollVoteType(poll?.settings?.voteType);
+      const allowWriteIn =
+        voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && poll?.settings?.allowWriteIn === true;
       const sourceVote = votesByPollId[poll.id] || null;
       if (!sourceVote || !hasSubmittedVote(voteType, allowWriteIn, sourceVote)) return;
 

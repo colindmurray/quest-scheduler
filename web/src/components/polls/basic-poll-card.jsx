@@ -1,7 +1,7 @@
-import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { Archive, ArchiveRestore, MoreVertical, Pencil, RotateCcw, Trash2, CheckCircle2 } from "lucide-react";
 import { PollParticipantSummary } from "./poll-participant-summary";
+import { useSafeNavigate } from "../../hooks/useSafeNavigate";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,7 +54,7 @@ export function BasicPollCard({
   canManage = false,
   actionBusy = false,
 }) {
-  const navigate = useNavigate();
+  const safeNavigate = useSafeNavigate();
   const {
     title,
     contextLabel,
@@ -81,12 +81,7 @@ export function BasicPollCard({
       return;
     }
     if (!voteLink) return;
-    navigate(voteLink);
-    setTimeout(() => {
-      if (window.location.pathname !== voteLink) {
-        window.location.assign(voteLink);
-      }
-    }, 50);
+    safeNavigate(voteLink, { compareMode: "pathname+search" });
   };
 
   const handleKeyDown = (event) => {

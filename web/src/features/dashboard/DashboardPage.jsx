@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Check, Plus, Search, X } from "lucide-react";
 import { useAuth } from "../../app/useAuth";
+import { useSafeNavigate } from "../../hooks/useSafeNavigate";
 import { useSchedulersByCreator, useSchedulersByGroupIds, useSchedulersByParticipant } from "../../hooks/useSchedulers";
 import { useUserSettings } from "../../hooks/useUserSettings";
 import { useQuestingGroups } from "../../hooks/useQuestingGroups";
@@ -24,7 +25,7 @@ import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfil
 import { UserIdentity } from "../../components/UserIdentity";
 import { useSchedulerAttendance } from "./hooks/useSchedulerAttendance";
 import { normalizeEmail } from "../../lib/utils";
-import { resolveDisplayTimeZone, shouldShowTimeZone } from "../../lib/time";
+import { coerceDate, resolveDisplayTimeZone, shouldShowTimeZone } from "../../lib/time";
 import { NextSessionCard } from "./components/NextSessionCard";
 import { SessionCard } from "./components/SessionCard";
 import { DashboardCalendar } from "./components/DashboardCalendar";
@@ -46,13 +47,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import { DatePicker } from "../../components/ui/date-picker";
 
-function toDate(value) {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (typeof value?.toDate === "function") return value.toDate();
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
+const toDate = coerceDate;
 
 function resolvePollDeadline(poll = {}) {
   return toDate(poll?.settings?.deadlineAt || poll?.deadlineAt || null);
@@ -212,6 +207,7 @@ export default function DashboardPage({
   initialDateTo = null,
 }) {
   const navigate = useNavigate();
+  const safeNavigate = useSafeNavigate();
   const location = useLocation();
   const { user } = useAuth();
   const {
@@ -1193,14 +1189,9 @@ export default function DashboardPage({
         return;
       }
       if (!poll?.voteLink) return;
-      navigate(poll.voteLink);
-      setTimeout(() => {
-        if (window.location.pathname + window.location.search !== poll.voteLink) {
-          window.location.assign(poll.voteLink);
-        }
-      }, 50);
+      safeNavigate(poll.voteLink, { compareMode: "pathname+search" });
     },
-    [navigate]
+    [safeNavigate]
   );
 
   const handleOpenBasicPoll = useCallback(
@@ -1213,14 +1204,9 @@ export default function DashboardPage({
         });
         return;
       }
-      navigate(poll.voteLink);
-      setTimeout(() => {
-        if (window.location.pathname + window.location.search !== poll.voteLink) {
-          window.location.assign(poll.voteLink);
-        }
-      }, 50);
+      safeNavigate(poll.voteLink, { compareMode: "pathname+search" });
     },
-    [navigate]
+    [safeNavigate]
   );
 
   const handleCreatedGeneralPoll = useCallback(
@@ -1247,12 +1233,7 @@ export default function DashboardPage({
 
   const handleOpenInvite = (inviteId) => {
     const target = `/scheduler/${inviteId}`;
-    navigate(target);
-    setTimeout(() => {
-      if (window.location.pathname !== target) {
-        window.location.assign(target);
-      }
-    }, 50);
+    safeNavigate(target);
   };
 
   const markPendingInviteHandled = (inviteId) => {

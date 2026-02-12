@@ -18,6 +18,8 @@ const {
   deleteChannelMessage,
 } = require("../discord/discord-client");
 const { buildBasicPollCard } = require("../discord/basic-poll-card");
+const { BASIC_POLL_STATUSES } = require("../basic-polls/constants");
+const { hasSubmittedVoteForPoll } = require("../basic-polls/vote-submission");
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -31,27 +33,10 @@ function snapshotExists(snapshot) {
   return snapshot.exists === true;
 }
 
-function normalizeOptionIds(values = []) {
-  return (Array.isArray(values) ? values : [])
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-}
-
-function hasSubmittedVote(pollData, voteData) {
-  const voteType = pollData?.settings?.voteType === "RANKED_CHOICE" ? "RANKED_CHOICE" : "MULTIPLE_CHOICE";
-  if (voteType === "RANKED_CHOICE") {
-    return normalizeOptionIds(voteData?.rankings).length > 0;
-  }
-  const hasOptionIds = normalizeOptionIds(voteData?.optionIds).length > 0;
-  const allowWriteIn = pollData?.settings?.allowWriteIn === true;
-  const hasWriteIn = allowWriteIn && String(voteData?.otherText || "").trim().length > 0;
-  return hasOptionIds || hasWriteIn;
-}
-
 function computeBasicPollSyncHash(pollData, voteCount, totalParticipants) {
   const payload = {
     title: pollData?.title || "",
-    status: pollData?.status || "OPEN",
+    status: pollData?.status || BASIC_POLL_STATUSES.OPEN,
     description: pollData?.description || "",
     settings: pollData?.settings || {},
     options: Array.isArray(pollData?.options)
@@ -81,7 +66,7 @@ async function enqueueBasicPollSync(payload, scheduleDelaySeconds = 2) {
 
 async function countSubmittedVotes(pollRef, pollData) {
   const votesSnap = await pollRef.collection("votes").get();
-  return votesSnap.docs.filter((voteDoc) => hasSubmittedVote(pollData, voteDoc.data() || {})).length;
+  return votesSnap.docs.filter((voteDoc) => hasSubmittedVoteForPoll(pollData, voteDoc.data() || {})).length;
 }
 
 function computeTotalParticipants(groupData) {
@@ -279,7 +264,7 @@ exports.processDiscordBasicPollUpdate = onTaskDispatched(
 );
 
 exports.__test__ = {
-  hasSubmittedVote,
+  hasSubmittedVote: hasSubmittedVoteForPoll,
   computeBasicPollSyncHash,
   computeTotalParticipants,
   upsertDiscordBasicPollCard,
