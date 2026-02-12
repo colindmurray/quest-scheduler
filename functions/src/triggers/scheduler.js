@@ -483,6 +483,24 @@ exports.handleDiscordPollDelete = onDocumentDeleted(
         status: "DELETED",
         description,
       });
+
+      if (data.questingGroupId) {
+        const groupSnap = await db.collection("questingGroups").doc(String(data.questingGroupId)).get();
+        const groupDiscord = groupSnap.exists ? groupSnap.data()?.discord || {} : {};
+        const settings = getDiscordNotificationSettings(groupDiscord);
+        if (settings.finalizationEvents) {
+          const { mention, allowedMentions } = buildFinalizationMention(
+            groupDiscord?.notifyRoleId || "everyone"
+          );
+          await createChannelMessage({
+            channelId: data.discord.channelId,
+            body: {
+              content: `${mention}Poll deleted for **${data.title || "Session Poll"}**.`,
+              allowed_mentions: allowedMentions,
+            },
+          });
+        }
+      }
       logger.info("Updated Discord poll card for deleted scheduler", { schedulerId });
     } catch (err) {
       logger.error("Failed to update Discord poll card on delete", {

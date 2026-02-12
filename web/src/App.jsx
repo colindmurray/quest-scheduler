@@ -1,4 +1,11 @@
-import { Navigate, Route, Routes, useNavigate, useLocation } from "react-router-dom";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+  useLocation,
+  useParams,
+} from "react-router-dom";
 import { useEffect } from "react";
 import { Toaster } from "sonner";
 import LandingPage from "./features/landing/LandingPage";
@@ -12,7 +19,6 @@ import CreateSchedulerPage from "./features/scheduler/CreateSchedulerPage";
 import PrivacyPage from "./features/legal/PrivacyPage";
 import TermsPage from "./features/legal/TermsPage";
 import DiscordBotPage from "./features/discord/DiscordBotPage";
-import GroupPollPage from "./features/basic-polls/GroupPollPage";
 import ProtectedRoute from "./app/ProtectedRoute";
 import { useAuth } from "./app/useAuth";
 import AppLayout from "./app/AppLayout";
@@ -43,6 +49,14 @@ function RedirectWhenSignedIn({ children }) {
   }, [loading, navigate, user]);
 
   return children;
+}
+
+function GroupPollRouteRedirect() {
+  const { groupId, pollId } = useParams();
+  const params = new URLSearchParams();
+  if (groupId) params.set("groupPollGroupId", groupId);
+  if (pollId) params.set("groupPollId", pollId);
+  return <Navigate to={`/dashboard?${params.toString()}`} replace />;
 }
 
 export default function App() {
@@ -119,9 +133,7 @@ export default function App() {
         path="/groups/:groupId/polls/:pollId"
         element={
           <ProtectedRoute>
-            <AppLayout>
-              <GroupPollPage />
-            </AppLayout>
+            <GroupPollRouteRedirect />
           </ProtectedRoute>
         }
       />

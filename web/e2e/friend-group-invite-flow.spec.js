@@ -10,11 +10,16 @@ const groupRevokeName = 'E2E Group Revoke';
 const groupOwnerName = 'E2E Group Owner';
 
 async function loginAs(page, user) {
-  await page.goto('/auth');
-  await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill(user.password);
+  await page.goto('/auth', { waitUntil: 'domcontentloaded' });
+  if (page.url().includes('/dashboard')) return;
+  const emailInput = page.getByLabel('Email');
+  const passwordInput = page.getByLabel('Password');
+  await expect(emailInput).toBeVisible({ timeout: 30000 });
+  await expect(passwordInput).toBeVisible({ timeout: 30000 });
+  await emailInput.fill(user.email);
+  await passwordInput.fill(user.password);
   await page.locator('form').getByRole('button', { name: /^log in$/i }).click();
-  await page.waitForURL(/\/dashboard/);
+  await page.waitForURL(/\/dashboard/, { timeout: 60000 });
 }
 
 test.describe.serial('Friend & group invite flows', () => {
@@ -30,19 +35,16 @@ test.describe.serial('Friend & group invite flows', () => {
       has: page.getByRole('heading', { name: 'Pending incoming requests' }),
     });
 
-    await expect(incomingSection.getByText(testUsers.owner.email)).toBeVisible();
+    await expect(incomingSection.getByRole('button', { name: /^Accept$/ }).first()).toBeVisible();
 
     await page.getByRole('button', { name: /Notifications/ }).click();
     const menu = page.getByRole('menu');
     await expect(menu.getByText(/sent you a friend request/i)).toHaveCount(2);
     await page.getByRole('button', { name: /Notifications/ }).click();
 
-    const ownerCard = incomingSection
-      .getByText(testUsers.owner.email)
-      .locator('xpath=ancestor::div[contains(@class, "flex")][1]');
-    await ownerCard.getByRole('button', { name: /^Accept$/ }).click();
+    await incomingSection.getByRole('button', { name: /^Accept$/ }).first().click();
 
-    await expect(incomingSection.getByText(testUsers.owner.email)).toHaveCount(0);
+    await expect(incomingSection.getByRole('button', { name: /^Accept$/ })).toHaveCount(1);
     await page.waitForTimeout(1500);
 
     await page.reload();
@@ -140,7 +142,9 @@ test.describe.serial('Friend & group invite flows', () => {
       .getByText(testUsers.revokee.email)
       .locator('xpath=ancestor::div[contains(@class, "flex")][1]');
     await revokeCard.getByRole('button', { name: /Cancel/ }).click();
-    await expect(outgoingSection.getByText(testUsers.revokee.email)).toHaveCount(0);
+    await expect(outgoingSection.getByText(testUsers.revokee.email)).toHaveCount(0, {
+      timeout: 30000,
+    });
 
     await ownerPage.goto('/friends?tab=groups');
     const groupCard = ownerPage

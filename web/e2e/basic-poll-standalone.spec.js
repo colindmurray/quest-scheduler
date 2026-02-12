@@ -1,16 +1,26 @@
 import { expect, test } from "@playwright/test";
 import { testUsers } from "./fixtures/test-users";
 
-const basicGroupId = process.env.E2E_BASIC_GROUP_ID || process.env.E2E_GROUP_OWNER_ID || "e2e-group-owner";
-const standalonePollId = process.env.E2E_BASIC_STANDALONE_POLL_ID || "e2e-basic-standalone-poll";
-const deadlinePollId = process.env.E2E_BASIC_DEADLINE_POLL_ID || "e2e-basic-deadline-poll";
-
 async function loginAs(page, user) {
   await page.goto("/auth");
   await page.getByLabel("Email").fill(user.email);
   await page.getByLabel("Password").fill(user.password);
   await page.locator("form").getByRole("button", { name: /^log in$/i }).click();
-  await page.waitForURL(/\/dashboard/);
+  await page.waitForURL(/\/dashboard/, { timeout: 60000 });
+}
+
+async function openGeneralPollModal(page, title, options = {}) {
+  const tab = options.tab || null;
+  await page.goto("/dashboard");
+  if (tab === "closed") {
+    await page.getByRole("button", { name: /^Closed \(/ }).first().click();
+  }
+  const search = page.getByPlaceholder("Search title or description");
+  await expect(search).toBeVisible({ timeout: 15000 });
+  await search.fill(title);
+  const card = page.locator("article[role='button']").filter({ hasText: title }).first();
+  await expect(card).toBeVisible({ timeout: 15000 });
+  await card.click();
 }
 
 test.describe.serial("Basic Poll standalone", () => {
@@ -21,28 +31,34 @@ test.describe.serial("Basic Poll standalone", () => {
   test("can submit and clear a standalone multiple-choice vote", async ({ page }) => {
     test.setTimeout(60000);
     await loginAs(page, testUsers.owner);
+    await openGeneralPollModal(page, "E2E Standalone Basic Poll");
 
-    await page.goto(`/groups/${basicGroupId}/polls/${standalonePollId}`);
-    await expect(page.getByRole("heading", { name: "E2E Standalone Basic Poll" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "E2E Standalone Basic Poll" }).first()).toBeVisible({
+      timeout: 15000,
+    });
 
     const clearVoteButton = page.getByRole("button", { name: "Clear vote" });
     if (await clearVoteButton.isEnabled()) {
       await clearVoteButton.click();
+      await expect(page.getByText("0/1 voted", { exact: true })).toBeVisible({ timeout: 15000 });
     }
 
     await page.getByLabel("Pizza").check();
     await page.getByRole("button", { name: "Submit vote" }).click();
     await expect(clearVoteButton).toBeEnabled({ timeout: 30000 });
+    await expect(page.getByText("1/1 voted", { exact: true })).toBeVisible({ timeout: 15000 });
     await clearVoteButton.click();
-    await expect(page.getByText("No votes yet.")).toBeVisible();
+    await expect(page.getByText("0/1 voted", { exact: true })).toBeVisible({ timeout: 15000 });
   });
 
   test("blocks voting when poll deadline has passed", async ({ page }) => {
     await loginAs(page, testUsers.owner);
+    await openGeneralPollModal(page, "E2E Deadline Closed Poll", { tab: "closed" });
 
-    await page.goto(`/groups/${basicGroupId}/polls/${deadlinePollId}`);
-    await expect(page.getByRole("heading", { name: "E2E Deadline Closed Poll" })).toBeVisible();
-    await expect(page.getByText("Voting is closed for this poll.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Submit vote" })).toBeDisabled();
+    await expect(page.getByRole("heading", { name: "E2E Deadline Closed Poll" }).first()).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByText("Voting is closed because the deadline has passed.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Submit vote" })).toHaveCount(0);
   });
 });

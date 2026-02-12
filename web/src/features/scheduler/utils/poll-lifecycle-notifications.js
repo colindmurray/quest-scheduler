@@ -2,6 +2,7 @@ const FINALIZATION_EVENT_TYPES = new Set([
   "POLL_FINALIZED",
   "POLL_REOPENED",
   "POLL_CANCELLED",
+  "POLL_RESTORED",
   "POLL_DELETED",
 ]);
 
@@ -35,4 +36,3 @@ export function shouldEmitPollLifecycleEvent({
 
   return resolveFinalizationEnabled(questingGroupDiscord);
 }
-

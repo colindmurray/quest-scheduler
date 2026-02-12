@@ -50,6 +50,20 @@ describe("shouldEmitPollLifecycleEvent", () => {
     ).toBe(true);
   });
 
+  test("emits restore lifecycle events for discord-linked groups even with no recipients", () => {
+    expect(
+      shouldEmitPollLifecycleEvent({
+        eventType: "POLL_RESTORED",
+        recipients: { userIds: [], emails: [] },
+        questingGroupDiscord: {
+          channelId: "chan",
+          guildId: "guild",
+          notifications: { finalizationEvents: true },
+        },
+      })
+    ).toBe(true);
+  });
+
   test("does not emit for non-lifecycle event types when no recipients", () => {
     expect(
       shouldEmitPollLifecycleEvent({
@@ -64,4 +78,3 @@ describe("shouldEmitPollLifecycleEvent", () => {
     ).toBe(false);
   });
 });
-

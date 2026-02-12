@@ -119,6 +119,94 @@ describe("basicPolls data layer", () => {
     ]);
   });
 
+  test("fetchDashboardGroupBasicPolls returns vote-state summaries", async () => {
+    firestoreMocks.getDocs
+      .mockResolvedValueOnce({
+        docs: [
+          {
+            id: "poll-1",
+            data: () => ({
+              title: "Need vote",
+              status: "OPEN",
+              settings: { voteType: "MULTIPLE_CHOICE", allowWriteIn: false },
+            }),
+          },
+          {
+            id: "poll-2",
+            data: () => ({
+              title: "Already voted",
+              status: "OPEN",
+              settings: { voteType: "RANKED_CHOICE" },
+            }),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        docs: [{ id: "other-user", data: () => ({ optionIds: ["opt-a"] }) }],
+      })
+      .mockResolvedValueOnce({
+        docs: [{ id: "user-1", data: () => ({ rankings: ["opt-b"] }) }],
+      });
+
+    const polls = await basicPolls.fetchDashboardGroupBasicPolls(["group-1"], "user-1");
+
+    expect(polls).toHaveLength(2);
+    expect(polls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          parentType: "group",
+          parentId: "group-1",
+          pollId: "poll-1",
+          hasVoted: false,
+          votedCount: 1,
+          voterIds: ["other-user"],
+        }),
+        expect.objectContaining({
+          parentType: "group",
+          parentId: "group-1",
+          pollId: "poll-2",
+          hasVoted: true,
+          votedCount: 1,
+          voterIds: ["user-1"],
+        }),
+      ])
+    );
+  });
+
+  test("fetchDashboardEmbeddedBasicPolls returns scheduler poll summaries", async () => {
+    firestoreMocks.getDocs
+      .mockResolvedValueOnce({
+        docs: [
+          {
+            id: "embedded-1",
+            data: () => ({
+              title: "Embedded vote",
+              required: true,
+              status: "OPEN",
+              settings: { voteType: "MULTIPLE_CHOICE", allowWriteIn: true },
+            }),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        docs: [{ id: "user-1", data: () => ({ optionIds: ["opt-a"] }) }],
+      });
+
+    const polls = await basicPolls.fetchDashboardEmbeddedBasicPolls(["sched-1"], "user-1");
+
+    expect(polls).toEqual([
+      expect.objectContaining({
+        parentType: "scheduler",
+        parentId: "sched-1",
+        pollId: "embedded-1",
+        required: true,
+        hasVoted: true,
+        votedCount: 1,
+        voterIds: ["user-1"],
+      }),
+    ]);
+  });
+
   test("finalizeBasicPoll sets FINALIZED status", async () => {
     firestoreMocks.getDoc.mockResolvedValueOnce({
       exists: () => true,

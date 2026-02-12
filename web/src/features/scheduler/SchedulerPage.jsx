@@ -100,6 +100,7 @@ import { LeaveDialog } from "./components/leave-dialog";
 import { RemoveParticipantDialog } from "./components/remove-participant-dialog";
 import { RevokeInviteDialog } from "./components/revoke-invite-dialog";
 import { CalendarToolbar } from "./components/CalendarToolbar";
+import { BasicPollVotingCard } from "../../components/polls/basic-poll-voting-card";
 import { buildEffectiveTallies, buildUserBlockInfo } from "./utils/effective-votes";
 import { canUserCopyVotes } from "./utils/copy-votes-eligibility";
 import { shouldEmitPollLifecycleEvent } from "./utils/poll-lifecycle-notifications";
@@ -433,7 +434,7 @@ export default function SchedulerPage() {
     const note = String(option?.note || "").trim();
     if (!note) return;
     setEmbeddedOptionNoteViewer({
-      pollTitle: String(pollTitle || "Embedded poll"),
+      pollTitle: String(pollTitle || "Add-on poll"),
       optionLabel: String(option?.label || "Option"),
       note,
     });
@@ -1346,7 +1347,7 @@ export default function SchedulerPage() {
     if (!canVoteEmbeddedPoll(poll)) {
       setEmbeddedVoteErrors((previous) => ({
         ...previous,
-        [pollId]: "Voting is closed for this embedded poll.",
+        [pollId]: "Voting is closed for this add-on poll.",
       }));
       return;
     }
@@ -1417,11 +1418,11 @@ export default function SchedulerPage() {
     setEmbeddedLifecycleBusyByPoll((previous) => ({ ...previous, [pollId]: true }));
     try {
       await finalizeEmbeddedBasicPoll(id, pollId);
-      toast.success(`Finalized embedded poll: ${poll?.title || "Untitled poll"}`);
+      toast.success(`Finalized add-on poll: ${poll?.title || "Untitled poll"}`);
       return true;
     } catch (error) {
-      console.error("Failed to finalize embedded poll:", error);
-      toast.error(error?.message || "Failed to finalize embedded poll.");
+      console.error("Failed to finalize add-on poll:", error);
+      toast.error(error?.message || "Failed to finalize add-on poll.");
       return false;
     } finally {
       setEmbeddedLifecycleBusyByPoll((previous) => ({ ...previous, [pollId]: false }));
@@ -1434,11 +1435,11 @@ export default function SchedulerPage() {
     setEmbeddedLifecycleBusyByPoll((previous) => ({ ...previous, [pollId]: true }));
     try {
       await reopenEmbeddedBasicPoll(id, pollId);
-      toast.success(`Re-opened embedded poll: ${poll?.title || "Untitled poll"}`);
+      toast.success(`Re-opened add-on poll: ${poll?.title || "Untitled poll"}`);
       return true;
     } catch (error) {
-      console.error("Failed to re-open embedded poll:", error);
-      toast.error(error?.message || "Failed to re-open embedded poll.");
+      console.error("Failed to re-open add-on poll:", error);
+      toast.error(error?.message || "Failed to re-open add-on poll.");
       return false;
     } finally {
       setEmbeddedLifecycleBusyByPoll((previous) => ({ ...previous, [pollId]: false }));
@@ -1656,8 +1657,8 @@ export default function SchedulerPage() {
         setRequiredFinalizeWarningOpen(true);
       })
       .catch((error) => {
-        console.error("Failed to check required embedded polls before finalizing:", error);
-        toast.error(error?.message || "Failed to check required embedded polls.");
+        console.error("Failed to check required add-on polls before finalizing:", error);
+        toast.error(error?.message || "Failed to check required add-on polls.");
       })
       .finally(() => {
         setRequiredFinalizeChecking(false);
@@ -1802,7 +1803,7 @@ export default function SchedulerPage() {
           const failedCount = results.length - finalizedEmbeddedPollCount;
           if (failedCount > 0) {
             toast.error(
-              `Session finalized, but ${failedCount} embedded poll${failedCount === 1 ? "" : "s"} could not be finalized.`
+              `Session finalized, but ${failedCount} add-on poll${failedCount === 1 ? "" : "s"} could not be finalized.`
             );
           }
         }
@@ -1872,10 +1873,10 @@ export default function SchedulerPage() {
       toast.success(
         shouldCreateEvent
           ? finalizedEmbeddedPollCount > 0
-            ? `Session finalized, calendar event created, and ${finalizedEmbeddedPollCount} embedded poll${finalizedEmbeddedPollCount === 1 ? "" : "s"} finalized`
+            ? `Session finalized, calendar event created, and ${finalizedEmbeddedPollCount} add-on poll${finalizedEmbeddedPollCount === 1 ? "" : "s"} finalized`
             : "Session finalized and calendar event created"
           : finalizedEmbeddedPollCount > 0
-            ? `Session finalized and ${finalizedEmbeddedPollCount} embedded poll${finalizedEmbeddedPollCount === 1 ? "" : "s"} finalized`
+            ? `Session finalized and ${finalizedEmbeddedPollCount} add-on poll${finalizedEmbeddedPollCount === 1 ? "" : "s"} finalized`
             : "Session finalized"
       );
     } catch (err) {
@@ -2183,6 +2184,56 @@ export default function SchedulerPage() {
         status: "CANCELLED",
         updatedAt: serverTimestamp(),
       });
+      const participantIds = Array.from(
+        new Set(
+          [
+            ...(scheduler.data?.participantIds || []),
+            ...questingGroupMemberIds,
+          ].filter(Boolean)
+        )
+      );
+      try {
+        const normalizedCreatorEmail = normalizeEmail(scheduler.data?.creatorEmail) || null;
+        const emails = new Set();
+        if (participantIds.length > 0) {
+          const profilesById = await fetchPublicProfilesByIds(participantIds);
+          Object.values(profilesById).forEach((profile) => {
+            if (!profile?.email) return;
+            const normalized = normalizeEmail(profile.email);
+            emails.add(normalized);
+          });
+        }
+
+        const recipientEmails = Array.from(emails).filter(
+          (email) => email !== normalizedCreatorEmail
+        );
+        const recipientUserIds = participantIds.filter(
+          (participantId) => participantId !== scheduler.data?.creatorId
+        );
+        const recipients = { userIds: recipientUserIds, emails: recipientEmails };
+
+        if (
+          shouldEmitPollLifecycleEvent({
+            eventType: "POLL_CANCELLED",
+            recipients,
+            questingGroupDiscord: questingGroup.data?.discord,
+          })
+        ) {
+          await emitPollEvent({
+            eventType: "POLL_CANCELLED",
+            schedulerId: id,
+            pollTitle: scheduler.data?.title || "Session Poll",
+            actor: buildNotificationActor(user),
+            payload: {
+              pollTitle: scheduler.data?.title || "Session Poll",
+            },
+            recipients,
+            dedupeKey: `poll:${id}:cancelled`,
+          });
+        }
+      } catch (notifyErr) {
+        console.error("Failed to send poll cancellation notification:", notifyErr);
+      }
       toast.success("Session cancelled");
       setCancelOpen(false);
     } catch (err) {
@@ -2202,6 +2253,56 @@ export default function SchedulerPage() {
         status: nextStatus,
         updatedAt: serverTimestamp(),
       });
+      const participantIds = Array.from(
+        new Set(
+          [
+            ...(scheduler.data?.participantIds || []),
+            ...questingGroupMemberIds,
+          ].filter(Boolean)
+        )
+      );
+      try {
+        const normalizedCreatorEmail = normalizeEmail(scheduler.data?.creatorEmail) || null;
+        const emails = new Set();
+        if (participantIds.length > 0) {
+          const profilesById = await fetchPublicProfilesByIds(participantIds);
+          Object.values(profilesById).forEach((profile) => {
+            if (!profile?.email) return;
+            const normalized = normalizeEmail(profile.email);
+            emails.add(normalized);
+          });
+        }
+
+        const recipientEmails = Array.from(emails).filter(
+          (email) => email !== normalizedCreatorEmail
+        );
+        const recipientUserIds = participantIds.filter(
+          (participantId) => participantId !== scheduler.data?.creatorId
+        );
+        const recipients = { userIds: recipientUserIds, emails: recipientEmails };
+
+        if (
+          shouldEmitPollLifecycleEvent({
+            eventType: "POLL_RESTORED",
+            recipients,
+            questingGroupDiscord: questingGroup.data?.discord,
+          })
+        ) {
+          await emitPollEvent({
+            eventType: "POLL_RESTORED",
+            schedulerId: id,
+            pollTitle: scheduler.data?.title || "Session Poll",
+            actor: buildNotificationActor(user),
+            payload: {
+              pollTitle: scheduler.data?.title || "Session Poll",
+            },
+            recipients,
+            dedupeKey: `poll:${id}:restored`,
+          });
+        }
+      } catch (notifyErr) {
+        console.error("Failed to send poll restoration notification:", notifyErr);
+      }
       toast.success("Session restored");
     } catch (err) {
       console.error("Failed to restore session:", err);
@@ -3265,7 +3366,7 @@ export default function SchedulerPage() {
 
           {embeddedPollsLoading ? (
             <div className="mt-10 rounded-3xl border border-slate-200/70 bg-slate-50 p-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400">
-              Loading embedded polls...
+              Loading add-on polls...
             </div>
           ) : null}
           {!embeddedPollsLoading && embeddedPollsSorted.length > 0 ? (
@@ -3273,7 +3374,7 @@ export default function SchedulerPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                    Embedded polls
+                    Add-on polls
                   </h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
                     {embeddedCompletedCount}/{embeddedPollsSorted.length} polls completed
@@ -3281,7 +3382,7 @@ export default function SchedulerPage() {
                 </div>
                 {requiredEmbeddedPendingCount > 0 ? (
                   <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 dark:border-amber-700/70 dark:bg-amber-900/30 dark:text-amber-200">
-                    {requiredEmbeddedPendingCount} required poll
+                    {requiredEmbeddedPendingCount} required add-on poll
                     {requiredEmbeddedPendingCount === 1 ? "" : "s"} pending
                   </span>
                 ) : null}
@@ -3299,456 +3400,63 @@ export default function SchedulerPage() {
                 />
               </div>
 
-              <div className="mt-4 space-y-4">
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
                 {embeddedPollsSorted.map((poll) => {
-                  const voteType = poll?.settings?.voteType || "MULTIPLE_CHOICE";
-                  const isRanked = voteType === "RANKED_CHOICE";
-                  const allowMultiple = poll?.settings?.allowMultiple === true;
-                  const allowWriteIn = poll?.settings?.allowWriteIn === true;
                   const draft = embeddedVoteDrafts[poll.id] || {};
-                  const selectedOptionIds = Array.isArray(draft.optionIds) ? draft.optionIds : [];
-                  const otherText = String(draft.otherText || "");
-                  const rankings = Array.isArray(draft.rankings) ? draft.rankings : [];
-                  const sortedOptions = [...(Array.isArray(poll.options) ? poll.options : [])].sort(
-                    (left, right) => {
-                      const leftOrder = Number.isFinite(left?.order) ? left.order : Number.MAX_SAFE_INTEGER;
-                      const rightOrder = Number.isFinite(right?.order) ? right.order : Number.MAX_SAFE_INTEGER;
-                      return leftOrder - rightOrder;
-                    }
-                  );
-                  const optionsById = new Map(
-                    sortedOptions
-                      .filter((option) => option?.id)
-                      .map((option) => [option.id, option])
-                  );
-                  const rankedOptions = rankings
-                    .map((optionId) => sortedOptions.find((option) => option.id === optionId))
-                    .filter(Boolean);
-                  const unrankedOptions = sortedOptions.filter(
-                    (option) => option?.id && !rankings.includes(option.id)
-                  );
                   const hasSubmitted = hasSubmittedEmbeddedVote(poll, embeddedMyVotes[poll.id]);
                   const myVote = embeddedMyVotes[poll.id] || null;
                   const embeddedFinalResults = poll?.finalResults || null;
-                  const pollStatus = poll?.status || "OPEN";
-                  const isEmbeddedPollFinalized = pollStatus === "FINALIZED";
                   const canVoteEmbedded = canVoteEmbeddedPoll(poll);
                   const lifecycleBusy = embeddedLifecycleBusyByPoll[poll.id] === true;
                   const cardBusy =
                     embeddedSubmittingByPoll[poll.id] ||
                     embeddedClearingByPoll[poll.id] ||
                     lifecycleBusy;
-                  const requiredPending = poll.required && !hasSubmitted;
                   const voteCount =
                     !canVoteEmbedded && Number.isFinite(embeddedFinalResults?.voterCount)
                       ? embeddedFinalResults.voterCount
                       : embeddedPollVoteCounts[poll.id] || 0;
 
                   return (
-                    <div
+                    <BasicPollVotingCard
                       key={poll.id}
-                      id={`embedded-poll-${poll.id}`}
-                      ref={(node) => {
+                      poll={poll}
+                      participantCount={participantCount}
+                      voteCount={voteCount}
+                      hasSubmitted={hasSubmitted}
+                      myVote={myVote}
+                      draft={draft}
+                      canVote={canVoteEmbedded}
+                      cardBusy={cardBusy}
+                      voteError={embeddedVoteErrors[poll.id] || null}
+                      isCreator={isCreator}
+                      lifecycleBusy={lifecycleBusy}
+                      isHighlighted={highlightedEmbeddedPollId === poll.id}
+                      parentCancelled={scheduler.data?.status === "CANCELLED"}
+                      onSetRef={(node) => {
                         if (node) {
                           embeddedPollCardRefs.current[poll.id] = node;
                         } else {
                           delete embeddedPollCardRefs.current[poll.id];
                         }
                       }}
-                      className={`rounded-2xl border bg-white p-4 transition-all dark:bg-slate-900 ${
-                        highlightedEmbeddedPollId === poll.id
-                          ? "border-brand-primary ring-2 ring-brand-primary/30 dark:border-brand-primary"
-                          : "border-slate-200 dark:border-slate-700"
-                      }`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                              {poll.title || "Untitled poll"}
-                            </h4>
-                            <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:border-slate-600 dark:text-slate-300">
-                              {isRanked ? "Ranked choice" : "Multiple choice"}
-                            </span>
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                requiredPending
-                                  ? "border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700/70 dark:bg-amber-900/30 dark:text-amber-200"
-                                  : poll.required
-                                    ? "border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700/70 dark:bg-amber-900/30 dark:text-amber-200"
-                                    : "border border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                              }`}
-                            >
-                              {poll.required ? "Required" : "Optional"}
-                            </span>
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                isEmbeddedPollFinalized
-                                  ? "border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700/70 dark:bg-emerald-900/30 dark:text-emerald-200"
-                                  : "border border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                              }`}
-                            >
-                              {isEmbeddedPollFinalized ? "Finalized" : "Open"}
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                            {voteCount}/{participantCount} voted
-                          </p>
-                          {poll.description ? (
-                            <div className="prose prose-sm prose-slate max-w-none prose-headings:font-display prose-a:text-brand-primary prose-a:underline hover:prose-a:text-brand-primary/80 dark:prose-invert">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {poll.description}
-                              </ReactMarkdown>
-                            </div>
-                          ) : null}
-                        </div>
-                        {isCreator ? (
-                          <div className="flex items-center gap-2">
-                            {isEmbeddedPollFinalized ? (
-                              <button
-                                type="button"
-                                onClick={() => reopenEmbeddedPollIndividually(poll)}
-                                disabled={cardBusy}
-                                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
-                              >
-                                {lifecycleBusy ? "Re-opening..." : "Re-open poll"}
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => finalizeEmbeddedPollIndividually(poll)}
-                                disabled={cardBusy}
-                                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
-                              >
-                                {lifecycleBusy ? "Finalizing..." : "Finalize poll"}
-                              </button>
-                            )}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {canVoteEmbedded ? (
-                        isRanked ? (
-                        <div className="mt-3 grid gap-3 md:grid-cols-2">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                              Ranked
-                            </p>
-                            <div className="mt-2 space-y-2">
-                              {rankedOptions.length === 0 ? (
-                                <p className="text-xs text-slate-400 dark:text-slate-500">
-                                  No rankings yet.
-                                </p>
-                              ) : (
-                                rankedOptions.map((option, index) => (
-                                  <div
-                                    key={option.id}
-                                    className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
-                                  >
-                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                                      {index + 1}.
-                                    </span>
-                                    <span className="min-w-0 flex-1 space-y-1">
-                                      <span className="block truncate text-slate-800 dark:text-slate-200">
-                                        {option.label}
-                                      </span>
-                                      {String(option?.note || "").trim() ? (
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            openEmbeddedOptionNoteViewer(poll.title, option)
-                                          }
-                                          aria-label={`View note for ${option.label}`}
-                                          className="text-xs font-semibold text-slate-500 underline-offset-2 hover:underline dark:text-slate-400"
-                                        >
-                                          View note
-                                        </button>
-                                      ) : null}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => moveEmbeddedRankedOption(poll.id, option.id, "up")}
-                                      disabled={!canVoteEmbedded || cardBusy || index === 0}
-                                      className="rounded-md border border-slate-200 px-2 py-1 text-xs disabled:opacity-40 dark:border-slate-700"
-                                    >
-                                      Up
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        moveEmbeddedRankedOption(poll.id, option.id, "down")
-                                      }
-                                      disabled={!canVoteEmbedded || cardBusy || index === rankedOptions.length - 1}
-                                      className="rounded-md border border-slate-200 px-2 py-1 text-xs disabled:opacity-40 dark:border-slate-700"
-                                    >
-                                      Down
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => removeEmbeddedRankedOption(poll.id, option.id)}
-                                      disabled={!canVoteEmbedded || cardBusy}
-                                      className="rounded-md border border-slate-200 px-2 py-1 text-xs disabled:opacity-40 dark:border-slate-700"
-                                    >
-                                      Remove
-                                    </button>
-                                  </div>
-                                ))
-                              )}
-                            </div>
-                          </div>
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                              Unranked
-                            </p>
-                            <div className="mt-2 space-y-2">
-                              {unrankedOptions.map((option) => (
-                                <div
-                                  key={option.id}
-                                  className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
-                                >
-                                  <span className="min-w-0 flex-1">
-                                    <span className="block truncate text-slate-800 dark:text-slate-200">
-                                      {option.label}
-                                    </span>
-                                    {String(option?.note || "").trim() ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => openEmbeddedOptionNoteViewer(poll.title, option)}
-                                        aria-label={`View note for ${option.label}`}
-                                        className="mt-1 text-xs font-semibold text-slate-500 underline-offset-2 hover:underline dark:text-slate-400"
-                                      >
-                                        View note
-                                      </button>
-                                    ) : null}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => addEmbeddedRankedOption(poll.id, option.id)}
-                                    disabled={!canVoteEmbedded || cardBusy}
-                                    className="rounded-md border border-slate-200 px-2 py-1 text-xs disabled:opacity-40 dark:border-slate-700"
-                                  >
-                                    Rank
-                                  </button>
-                                </div>
-                              ))}
-                              {unrankedOptions.length === 0 ? (
-                                <p className="text-xs text-slate-400 dark:text-slate-500">
-                                  All options ranked.
-                                </p>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="mt-3 space-y-2">
-                          {sortedOptions.map((option) => (
-                            <label
-                              key={option.id}
-                              className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
-                            >
-                              <input
-                                type={allowMultiple ? "checkbox" : "radio"}
-                                name={`embedded-${poll.id}`}
-                                checked={selectedOptionIds.includes(option.id)}
-                                onChange={() => setEmbeddedMultipleChoiceSelection(poll, option.id)}
-                                disabled={!canVoteEmbedded || cardBusy}
-                              />
-                              <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                                <span className="text-slate-800 dark:text-slate-200">{option.label}</span>
-                                {String(option?.note || "").trim() ? (
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.preventDefault();
-                                      event.stopPropagation();
-                                      openEmbeddedOptionNoteViewer(poll.title, option);
-                                    }}
-                                    aria-label={`View note for ${option.label}`}
-                                    className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
-                                  >
-                                    View note
-                                  </button>
-                                ) : null}
-                              </span>
-                            </label>
-                          ))}
-                          {allowWriteIn ? (
-                            <label className="block rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700">
-                              <span className="mb-1 block text-xs font-semibold text-slate-500 dark:text-slate-400">
-                                Other
-                              </span>
-                              <textarea
-                                value={otherText}
-                                onChange={(event) => setEmbeddedOtherText(poll.id, event.target.value)}
-                                rows={2}
-                                disabled={!canVoteEmbedded || cardBusy}
-                                className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                              />
-                            </label>
-                          ) : null}
-                        </div>
-                      )
-                      ) : (
-                        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
-                          <p className="font-semibold">
-                            {isEmbeddedPollFinalized
-                              ? "Voting is closed for this poll."
-                              : scheduler.data?.status === "CANCELLED"
-                                ? "Voting is closed because this session is cancelled."
-                                : "Voting is closed for this poll."}
-                          </p>
-                          {isRanked ? (
-                            embeddedFinalResults?.voteType === "RANKED_CHOICE" ? (
-                              <div className="mt-2 space-y-2">
-                                {Array.isArray(embeddedFinalResults?.tiedIds) &&
-                                embeddedFinalResults.tiedIds.length > 1 ? (
-                                  <p className="font-semibold text-amber-700 dark:text-amber-300">
-                                    Final result: tie
-                                  </p>
-                                ) : Array.isArray(embeddedFinalResults?.winnerIds) &&
-                                  embeddedFinalResults.winnerIds.length > 0 ? (
-                                  <p>
-                                    Winner:{" "}
-                                    <span className="font-semibold text-slate-800 dark:text-slate-100">
-                                      {sortedOptions.find(
-                                        (option) => option.id === embeddedFinalResults.winnerIds[0]
-                                      )?.label || embeddedFinalResults.winnerIds[0]}
-                                    </span>
-                                  </p>
-                                ) : (
-                                  <p>Final result: no winner determined.</p>
-                                )}
-                                {Array.isArray(embeddedFinalResults?.rounds) &&
-                                embeddedFinalResults.rounds.length > 0 ? (
-                                  <div className="space-y-2">
-                                    {embeddedFinalResults.rounds.map((roundData, index) => (
-                                      <div
-                                        key={`${poll.id}-round-${roundData?.round || index + 1}`}
-                                        className="rounded-lg border border-slate-200 bg-white px-2 py-2 dark:border-slate-700 dark:bg-slate-900"
-                                      >
-                                        <p className="font-semibold text-slate-700 dark:text-slate-200">
-                                          Round {roundData?.round || index + 1}
-                                        </p>
-                                        <div className="mt-1 space-y-1">
-                                          {sortedOptions.map((option) => (
-                                            <div
-                                              key={`${poll.id}-round-${roundData?.round || index + 1}-${option.id}`}
-                                              className="flex items-center justify-between gap-3"
-                                            >
-                                              <span className="flex min-w-0 items-center gap-2">
-                                                <span>{option.label}</span>
-                                                {String(option?.note || "").trim() ? (
-                                                  <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                      openEmbeddedOptionNoteViewer(poll.title, option)
-                                                    }
-                                                    aria-label={`View note for ${option.label}`}
-                                                    className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
-                                                  >
-                                                    View note
-                                                  </button>
-                                                ) : null}
-                                              </span>
-                                              <span>{roundData?.counts?.[option.id] ?? 0}</span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                                          Exhausted ballots: {roundData?.exhausted ?? 0}
-                                        </p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <p>Final round data unavailable.</p>
-                                )}
-                              </div>
-                            ) : (
-                              <p className="mt-1">Final results unavailable.</p>
-                            )
-                          ) : embeddedFinalResults?.voteType === "MULTIPLE_CHOICE" &&
-                            Array.isArray(embeddedFinalResults?.rows) ? (
-                            <div className="mt-2 space-y-2">
-                              {embeddedFinalResults.rows.map((row, index) => {
-                                const optionForRow = optionsById.get(row?.key) || null;
-                                const hasNote = String(optionForRow?.note || "").trim().length > 0;
-                                return (
-                                  <div key={`${poll.id}-result-${row?.key || index}`} className="space-y-1">
-                                    <div className="flex items-center justify-between gap-3">
-                                      <span className="flex min-w-0 items-center gap-2 font-medium text-slate-700 dark:text-slate-200">
-                                        <span>{row?.label || `Option ${index + 1}`}</span>
-                                        {hasNote ? (
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              openEmbeddedOptionNoteViewer(poll.title, optionForRow)
-                                            }
-                                            aria-label={`View note for ${row?.label || `Option ${index + 1}`}`}
-                                            className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
-                                          >
-                                            View note
-                                          </button>
-                                        ) : null}
-                                      </span>
-                                      <span className="text-slate-500 dark:text-slate-400">
-                                        {(row?.count ?? 0)} vote{row?.count === 1 ? "" : "s"}
-                                        {Number.isFinite(row?.percentage) ? ` (${row.percentage}%)` : ""}
-                                      </span>
-                                    </div>
-                                    <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700">
-                                      <div
-                                        className="h-1.5 rounded-full bg-slate-600 dark:bg-slate-300"
-                                        style={{
-                                          width: `${Math.max(
-                                            Number.isFinite(row?.percentage) ? row.percentage : 0,
-                                            row?.count > 0 ? 4 : 0
-                                          )}%`,
-                                        }}
-                                      />
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <p className="mt-1">Final results unavailable.</p>
-                          )}
-                          {myVote ? (
-                            <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-                              Your vote is on record.
-                            </p>
-                          ) : null}
-                        </div>
-                      )}
-
-                      {canVoteEmbedded ? (
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => submitEmbeddedPollVote(poll)}
-                            disabled={cardBusy}
-                            className="rounded-full bg-brand-primary px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:opacity-50"
-                          >
-                            {embeddedSubmittingByPoll[poll.id] ? "Saving..." : isRanked ? "Submit ranking" : "Submit vote"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => clearEmbeddedPollVote(poll)}
-                            disabled={cardBusy}
-                            className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
-                          >
-                            {embeddedClearingByPoll[poll.id] ? "Clearing..." : "Clear vote"}
-                          </button>
-                        </div>
-                      ) : null}
-
-                      {embeddedVoteErrors[poll.id] ? (
-                        <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">
-                          {embeddedVoteErrors[poll.id]}
-                        </p>
-                      ) : null}
-                    </div>
+                      onMoveRankedOption={(optionId, direction) =>
+                        moveEmbeddedRankedOption(poll.id, optionId, direction)
+                      }
+                      onAddRankedOption={(optionId) => addEmbeddedRankedOption(poll.id, optionId)}
+                      onRemoveRankedOption={(optionId) =>
+                        removeEmbeddedRankedOption(poll.id, optionId)
+                      }
+                      onSelectOption={(optionId) => setEmbeddedMultipleChoiceSelection(poll, optionId)}
+                      onChangeOtherText={(value) => setEmbeddedOtherText(poll.id, value)}
+                      onSubmitVote={() => submitEmbeddedPollVote(poll)}
+                      onClearVote={() => clearEmbeddedPollVote(poll)}
+                      onFinalizePoll={() => finalizeEmbeddedPollIndividually(poll)}
+                      onReopenPoll={() => reopenEmbeddedPollIndividually(poll)}
+                      onViewOptionNote={(pollTitle, option) =>
+                        openEmbeddedOptionNoteViewer(pollTitle, option)
+                      }
+                    />
                   );
                 })}
               </div>

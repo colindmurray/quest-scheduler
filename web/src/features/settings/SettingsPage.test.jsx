@@ -118,7 +118,7 @@ describe('SettingsPage', () => {
     expect(pollInviteSelect.value).toBe('inApp');
   });
 
-  test('renders advanced basic poll notification preferences', async () => {
+  test('renders advanced general poll notification preferences', async () => {
     fetchUserSettingsMock.mockImplementationOnce(() =>
       Promise.resolve({
         displayName: 'User',
@@ -138,7 +138,7 @@ describe('SettingsPage', () => {
     );
 
     await waitFor(() => expect(fetchUserSettingsMock).toHaveBeenCalled());
-    const basicPollResultsSelect = await screen.findByLabelText('Basic poll results posted');
+    const basicPollResultsSelect = await screen.findByLabelText('General poll results posted');
     expect(basicPollResultsSelect.value).toBe('inApp+Email');
   });
 });

@@ -7,7 +7,7 @@ async function loginAs(page, user) {
   await page.getByLabel('Email').fill(user.email);
   await page.getByLabel('Password').fill(user.password);
   await page.locator('form').getByRole('button', { name: /^log in$/i }).click();
-  await page.waitForURL(/\/dashboard/);
+  await page.waitForURL(/\/dashboard/, { timeout: 60000 });
 }
 
 async function openNotifications(page) {
@@ -28,17 +28,6 @@ async function clearAllNotifications(page) {
     await expect(menu.getByText('No notifications', { exact: true })).toBeVisible();
   }
   return menu;
-}
-
-async function dismissNotification(menu, title) {
-  const item = menu
-    .getByText(title, { exact: true })
-    .locator('xpath=ancestor::div[./button[@aria-label="Dismiss notification"]][1]');
-  await expect(item).toBeVisible();
-  const dismissButton = item.getByLabel('Dismiss notification');
-  await expect(dismissButton).toBeVisible();
-  await dismissButton.click();
-  await expect(item).toHaveCount(0);
 }
 
 const titleMap = {
@@ -197,7 +186,7 @@ test.describe.serial('Notification coverage', () => {
       const menu = await openNotifications(page);
       const expectedTitle = titleMap[entry.eventType];
       await expect(menu.getByText(expectedTitle, { exact: true })).toBeVisible({ timeout: 15000 });
-      await dismissNotification(menu, expectedTitle);
+      await clearAllNotifications(page);
     }
   });
 

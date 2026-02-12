@@ -663,7 +663,7 @@ export default function CreateSchedulerPage() {
             })
           );
         }
-        toast.success("Embedded poll updated");
+        toast.success("Add-on poll updated");
         setEditingEmbeddedPoll(null);
         return;
       }
@@ -689,7 +689,7 @@ export default function CreateSchedulerPage() {
           })
         );
       }
-      toast.success("Embedded poll added");
+      toast.success("Add-on poll added");
       setEditingEmbeddedPoll(null);
     } finally {
       setEmbeddedPollSaveBusy(false);
@@ -712,12 +712,12 @@ export default function CreateSchedulerPage() {
           removeEmbeddedPollDraft(previous, embeddedPollToDelete.id)
         );
       }
-      toast.success("Embedded poll removed");
+      toast.success("Add-on poll removed");
       setDeleteEmbeddedPollOpen(false);
       setEmbeddedPollToDelete(null);
     } catch (error) {
-      console.error("Failed to delete embedded poll:", error);
-      toast.error(error?.message || "Failed to remove embedded poll");
+      console.error("Failed to delete add-on poll:", error);
+      toast.error(error?.message || "Failed to remove add-on poll");
     } finally {
       setEmbeddedPollDeleteBusy(false);
     }
@@ -737,8 +737,8 @@ export default function CreateSchedulerPage() {
           reordered.map((poll) => poll.id)
         );
       } catch (error) {
-        console.error("Failed to reorder embedded polls:", error);
-        toast.error(error?.message || "Failed to reorder embedded polls");
+        console.error("Failed to reorder add-on polls:", error);
+        toast.error(error?.message || "Failed to reorder add-on polls");
       }
       return;
     }
@@ -1064,7 +1064,7 @@ export default function CreateSchedulerPage() {
           );
         } catch (embeddedError) {
           embeddedPollCreateError = embeddedError;
-          console.error("Failed to create one or more embedded polls:", embeddedError);
+          console.error("Failed to create one or more add-on polls:", embeddedError);
         }
       }
 
@@ -1077,10 +1077,30 @@ export default function CreateSchedulerPage() {
         }
       }
 
+      try {
+        const recipientUserIds = participantIds.filter((participantId) => participantId !== user?.uid);
+        await emitPollEvent({
+          eventType: "POLL_CREATED",
+          schedulerId,
+          pollTitle,
+          actor: buildNotificationActor(user),
+          payload: {
+            pollTitle,
+          },
+          recipients: {
+            userIds: recipientUserIds,
+            emails: inviteRecipients,
+          },
+          dedupeKey: `poll:${schedulerId}:created`,
+        });
+      } catch (notifyErr) {
+        console.error("Failed to emit poll created notification:", notifyErr);
+      }
+
       setCreatedId(schedulerId);
       toast.success("Session poll created");
       if (embeddedPollCreateError) {
-        toast.error("Session created, but one or more embedded polls failed to save.");
+        toast.error("Session created, but one or more add-on polls failed to save.");
       }
       navigate(`/scheduler/${schedulerId}`);
     } catch (err) {
@@ -1538,7 +1558,7 @@ export default function CreateSchedulerPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  Embedded polls
+                  Add-on polls
                 </h3>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   {isEditing
@@ -1557,17 +1577,17 @@ export default function CreateSchedulerPage() {
 
             {displayedEmbeddedPolls.length > 5 ? (
               <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-700/70 dark:bg-amber-900/30 dark:text-amber-200">
-                This session has many embedded polls. Consider keeping it to 1-5 to reduce voter fatigue.
+                This session has many add-on polls. Consider keeping it to 1-5 to reduce voter fatigue.
               </p>
             ) : null}
 
             <div className="mt-4 space-y-3">
               {isEditing && embeddedPollsLoading ? (
-                <p className="text-sm text-slate-500 dark:text-slate-400">Loading embedded polls...</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Loading add-on polls...</p>
               ) : null}
               {(!isEditing || !embeddedPollsLoading) && displayedEmbeddedPolls.length === 0 ? (
                 <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                  No embedded polls yet.
+                  No add-on polls yet.
                 </p>
               ) : null}
               {displayedEmbeddedPolls.length > 0 ? (
@@ -1751,9 +1771,9 @@ export default function CreateSchedulerPage() {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Remove embedded poll</DialogTitle>
+            <DialogTitle>Remove add-on poll</DialogTitle>
             <DialogDescription>
-              Remove "{embeddedPollToDelete?.title || "this poll"}"? All embedded poll votes will be deleted.
+              Remove "{embeddedPollToDelete?.title || "this poll"}"? All add-on poll votes will be deleted.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

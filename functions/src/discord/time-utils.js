@@ -9,21 +9,22 @@ function resolveTimeZone(timeZone) {
   return timeZone || DEFAULT_TIME_ZONE;
 }
 
+function getIntlTimeZoneName(date, timeZone, timeZoneName) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName,
+  }).formatToParts(date);
+  return parts.find((part) => part.type === "timeZoneName")?.value || null;
+}
+
 function getTimeZoneAbbr(date, timeZone) {
   const value = toDate(date) || new Date();
   const zone = resolveTimeZone(timeZone);
 
   try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: zone,
-      timeZoneName: "short",
-    }).formatToParts(value);
-    const tzName = parts.find((part) => part.type === "timeZoneName")?.value;
+    const tzName = getIntlTimeZoneName(value, zone, "short");
     if (tzName) {
-      const match = tzName.match(/[A-Z]{3}/);
-      if (match) return match[0];
-      const fallback = tzName.match(/[A-Z]{2,5}/);
-      if (fallback) return fallback[0].slice(0, 3);
+      return tzName.replace(/\s+/g, " ").trim();
     }
   } catch (err) {
     // ignore and fall back

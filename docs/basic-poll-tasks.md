@@ -96,6 +96,11 @@ Extend existing deletion flows:
 
 ## Phase 3: Core Web UI — Standalone Group-Linked Polls
 
+Implementation note (post-phase UX consolidation):
+- Dedicated standalone GroupPollPage has been replaced by dashboard modal UX.
+- Deep links to `/groups/:groupId/polls/:pollId` are retained as compatibility URLs that redirect into dashboard modal state.
+- Create/edit now reuse shared modal components (edit locks questing group).
+
 ### 3.1 — GroupPollPage: routing & shell (P1)
 - Add route `/groups/:groupId/polls/:pollId` to `App.jsx` → new `GroupPollPage` component
 - Auth guard: must be signed in + group member
@@ -587,7 +592,7 @@ Seed: emulator seeded with a group + RC poll (4 options, 3 voters).
 File: extend `web/e2e/scheduler.spec.js` or new `web/e2e/basic-poll-dashboard.spec.js`
 Seed: emulator seeded with 1 open standalone poll + 1 scheduler with required embedded poll, user has not voted on either.
 - Dashboard shows "Polls to vote on" section with both polls
-- Standalone poll card: shows "in [Group Name]", "Vote" link navigates to `/groups/:gId/polls/:pId`
+- Standalone poll card: shows "in [Group Name]", open action navigates/redirects to `/groups/:gId/polls/:pId` and lands in dashboard modal view for that poll
 - Embedded poll card: shows "in [Scheduler Title]", "Required" badge, "Vote" link navigates to `/scheduler/:sId?poll=:pId`
 - After voting on both → "Polls to vote on" section disappears
 **Accept:** `npm --prefix web run test:e2e` passes.

@@ -12,11 +12,16 @@ const pollDeclineTitle = 'E2E Scheduler Poll Decline';
 const pollNotificationTitle = 'E2E Scheduler Poll Notification';
 
 async function loginAs(page, user) {
-  await page.goto('/auth');
-  await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill(user.password);
+  await page.goto('/auth', { waitUntil: 'domcontentloaded' });
+  if (page.url().includes('/dashboard')) return;
+  const emailInput = page.getByLabel('Email');
+  const passwordInput = page.getByLabel('Password');
+  await expect(emailInput).toBeVisible({ timeout: 30000 });
+  await expect(passwordInput).toBeVisible({ timeout: 30000 });
+  await emailInput.fill(user.email);
+  await passwordInput.fill(user.password);
   await page.locator('form').getByRole('button', { name: /^log in$/i }).click();
-  await page.waitForURL(/\/dashboard/);
+  await page.waitForURL(/\/dashboard/, { timeout: 60000 });
 }
 
 test.describe.serial('Poll invite flow', () => {
