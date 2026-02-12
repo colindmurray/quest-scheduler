@@ -53,6 +53,38 @@ changelog:
 
 ## Progress Notes
 
+- 2026-02-12: Started executing `docs/code-health-audit-pt2-tasks.md` on branch `feature/code-health-audit-pt2`.
+  - Completed Phase 1 (dead/orphaned code + dependency hygiene):
+    - Removed orphaned files:
+      - `web/src/features/dashboard/components/pending-invite-dialog.jsx`
+      - `web/src/lib/data/mail.js`
+      - `web/src/lib/emailTemplates.js`
+      - `functions/src/notifications/rules.js`
+    - Removed unused web dependencies:
+      - `@hookform/resolvers`, `@react-oauth/google`, `framer-motion`, `react-hook-form`, `zod`
+      - dev: `@testing-library/jest-dom`, `msw`
+  - Validation:
+    - `npm --prefix web run test` (pass, `327 passed`, exit code `0`)
+    - `npm --prefix functions run test` (pass, `350 passed`, exit code `0`)
+    - `npm --prefix web run test:rules` (pass, `21 passed`, exit code `0`)
+    - `npm --prefix web run test:integration` (pass, `11 passed`, exit code `0`)
+    - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`, exit code `0`)
+    - `npm --prefix web run build` (pass, exit code `0`)
+
+- 2026-02-12: Added execution tracker for Code Health Audit Pt 2:
+  - `docs/code-health-audit-pt2-tasks.md`
+  - Includes phased remediation tasks, acceptance criteria, and validation gates aligned to `docs/code-health-audit-pt2.md`.
+
+- 2026-02-12: Added second-pass repository audit doc:
+  - `docs/code-health-audit-pt2.md`
+  - Covered duplication, dead/orphaned code, reliability/code-smell hotspots, under-tested areas, third-party replacement opportunities, and extensibility/composability risks with file-linked evidence.
+  - Evidence inputs included `jscpd`, `knip` (web/functions), hotspot size scans, and targeted source grep sweeps.
+
+- 2026-02-12: Dashboard general poll card stat-row alignment tweak:
+  - `web/src/components/polls/poll-participant-summary.jsx` now renders `Invitees` on its own row, with `Voted` and `Pending` grouped on the same row for better scanability and visual consistency.
+  - Validation:
+    - `npm --prefix web run test -- src/components/polls/poll-participant-summary.test.jsx src/features/dashboard/DashboardPage.test.jsx` (pass, `12 passed`, exit code `0`).
+
 - 2026-02-12: Added poll unification planning docs:
   - `docs/poll-unification-prettifying-plan.md`
   - `docs/poll-unification-prettifying-task-list.md`

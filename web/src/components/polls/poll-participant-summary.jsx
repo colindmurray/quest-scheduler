@@ -37,33 +37,35 @@ export function PollParticipantSummary({
   const colorMap = buildColorMap(participantEmails);
 
   return (
-    <div className={`flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400 ${className}`.trim()}>
-      <div className="flex items-center gap-1.5">
+    <div className={`flex flex-col gap-1.5 text-xs text-slate-500 dark:text-slate-400 ${className}`.trim()}>
+      <div className="flex flex-wrap items-center gap-1.5">
         <span className="font-medium">
           {effectiveEligibleCount} invitee{effectiveEligibleCount !== 1 ? "s" : ""}:
         </span>
         <AvatarStack users={eligibleUsers} max={10} size={18} colorMap={colorMap} />
       </div>
-      <div className="flex items-center gap-1.5">
-        <span className="font-medium text-emerald-600 dark:text-emerald-400">
-          {effectiveVotedCount}/{effectiveEligibleCount} voted:
-        </span>
-        <VotingAvatarStack users={votedUsers} max={10} size={18} colorMap={colorMap} />
-      </div>
-      {showPending ? (
+      <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5">
-          {pendingCount > 0 ? (
-            <>
-              <span className="font-medium text-amber-600 dark:text-amber-400">
-                {pendingCount}/{effectiveEligibleCount} pending:
-              </span>
-              <VotingAvatarStack users={pendingUsers} max={10} size={18} colorMap={colorMap} />
-            </>
-          ) : (
-            <span className="text-emerald-600 dark:text-emerald-400">All voted!</span>
-          )}
+          <span className="font-medium text-emerald-600 dark:text-emerald-400">
+            {effectiveVotedCount}/{effectiveEligibleCount} voted:
+          </span>
+          <VotingAvatarStack users={votedUsers} max={10} size={18} colorMap={colorMap} />
         </div>
-      ) : null}
+        {showPending ? (
+          <div className="flex items-center gap-1.5">
+            {pendingCount > 0 ? (
+              <>
+                <span className="font-medium text-amber-600 dark:text-amber-400">
+                  {pendingCount}/{effectiveEligibleCount} pending:
+                </span>
+                <VotingAvatarStack users={pendingUsers} max={10} size={18} colorMap={colorMap} />
+              </>
+            ) : (
+              <span className="text-emerald-600 dark:text-emerald-400">All voted!</span>
+            )}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
