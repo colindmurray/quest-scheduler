@@ -29,11 +29,24 @@ Date: 2026-02-12
   - Phase 2.1 additional slice: replaced duplicated embedded poll vote-submission checks in `SchedulerPage` and `CreateSchedulerPage` with shared `hasSubmittedVoteForPoll`.
   - Phase 4.2 kickoff slice: extracted shared vote-draft mutation helpers into `web/src/lib/basic-polls/vote-draft.js` and adopted them in `SchedulerPage` embedded poll vote handlers and `group-basic-poll-modal` vote handlers.
   - Phase 4.2 additional slice: extracted scheduler embedded-poll subscriptions and draft hydration into `web/src/features/scheduler/hooks/useSchedulerEmbeddedPollVotes.js` with direct hook tests.
+  - Phase 4.2 additional slice: extracted create/edit scheduler embedded-poll subscriptions and vote-count tracking into `web/src/features/scheduler/hooks/useSchedulerEditorEmbeddedPolls.js` with direct hook tests.
+  - Phase 4.3: extracted Discord interaction command routing from `functions/src/discord/worker.js` into `functions/src/discord/command-dispatch.js` with dedicated routing tests.
   - Phase 5.1 additional coverage: added direct tests for `DashboardCalendar` and `useCalendarNavigation`.
   - Phase 7.1: documented dependency adopt/reject/defer decisions in `docs/decisions.md` for form/testing/motion packages and additional parsing-library candidates.
 - Remaining high-priority work:
-  - Continue Phase 4 monolith decomposition for `SchedulerPage`, `CreateSchedulerPage`, and Discord worker.
-  - Execute Phase 7 dependency re-evaluation/adopt-reject decisions in `docs/decisions.md`.
+  - None.
+
+## Closeout Status
+- `Phase 1`: Complete.
+- `Phase 2`: Complete.
+- `Phase 3`: Complete.
+- `Phase 4`: Complete (dashboard decomposition slices, scheduler/create-scheduler extraction slices, and Discord worker command dispatch extraction).
+- `Phase 5`: Complete for prioritized hotspots listed in the task tracker.
+- `Phase 6.1`: Complete.
+- `Phase 6.2`: Deferred by decision (`docs/decisions.md`) until a dedicated poll-editor schema/form migration chunk is planned.
+- `Phase 7.1`: Complete.
+- `Phase 7.2-7.5`: Closed by explicit adopt/reject/defer decisions in `docs/decisions.md` (no unplanned dependency reintroduction).
+- `Phase 8`: Complete (full validation gate re-run and tracker synchronization).
 
 ## Findings (Prioritized)
 

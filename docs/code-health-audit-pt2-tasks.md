@@ -4,9 +4,12 @@ lastUpdated: 2026-02-12
 summary: "Execution tracker for remediating findings from docs/code-health-audit-pt2.md."
 category: TASK_TRACKER
 status: CURRENT
-implementationStatus: PLANNED
+implementationStatus: COMPLETED
 note: "Companion audit: docs/code-health-audit-pt2.md"
 changelog:
+  - "2026-02-12: Phase 8 closeout complete: full validation gate rerun (web/functions/rules/integration/e2e/build), docs synchronized, and remaining optional dependency phases closed by explicit decisions."
+  - "2026-02-12: Phase 4.3 complete: extracted Discord interaction routing to `functions/src/discord/command-dispatch.js` with dedicated tests."
+  - "2026-02-12: Phase 4.2 additional slice complete: extracted `useSchedulerEditorEmbeddedPolls` from `CreateSchedulerPage` with direct hook coverage."
   - "2026-02-12: Phase 4.2 additional slice complete: extracted scheduler embedded-poll subscriptions/draft hydration into `useSchedulerEmbeddedPollVotes` with direct hook coverage."
   - "2026-02-12: Phase 2.1 additional slice complete: replaced duplicated embedded vote-submission checks in scheduler create/view flows with shared `hasSubmittedVoteForPoll`."
   - "2026-02-12: Phase 4.2 kickoff slice complete: extracted shared vote-draft helpers and adopted them in scheduler embedded poll and dashboard group poll vote handlers with direct tests."
@@ -17,8 +20,8 @@ changelog:
 # Code Health Audit (Pt 2) — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Phase 4.2 second slice complete (`useSchedulerEmbeddedPollVotes` extracted from `SchedulerPage` for embedded-poll subscriptions/draft hydration) with direct hook and full web coverage.
-- Next Step: Continue Phase 4.2 scheduler page decomposition (`SchedulerPage`/`CreateSchedulerPage` extraction slices + targeted tests).
+- Last Completed: Phase 8 closeout (full validation gate rerun + tracker synchronization) with all active phases closed.
+- Next Step: None.
 - Open Issues: None.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
@@ -32,6 +35,18 @@ changelog:
 - `npm --prefix web run test:integration`
 - `npm --prefix web run test:e2e:emulators`
 - `npm --prefix web run build`
+
+## Phase Status Summary
+- Phase 1: COMPLETE
+- Phase 2: COMPLETE
+- Phase 3: COMPLETE
+- Phase 4: COMPLETE
+- Phase 5: COMPLETE (prioritized hotspots)
+- Phase 6.1: COMPLETE
+- Phase 6.2: DEFERRED (see `docs/decisions.md`)
+- Phase 7.1: COMPLETE
+- Phase 7.2-7.5: CLOSED BY DECISION (see `docs/decisions.md`)
+- Phase 8: COMPLETE
 
 ---
 
@@ -265,6 +280,34 @@ Acceptance:
 ---
 
 ## Progress Notes
+- 2026-02-12: Completed Phase 4.3 Discord worker command-handling decomposition slice.
+  - Added routing module:
+    - `functions/src/discord/command-dispatch.js`
+  - Updated worker entrypoint routing:
+    - `functions/src/discord/worker.js` now delegates interaction dispatch to the routing module.
+  - Added routing coverage:
+    - `functions/src/discord/command-dispatch.test.js`
+  - Validation:
+    - `npm --prefix functions run test -- src/discord/command-dispatch.test.js src/discord/worker.handlers.test.js src/discord/worker.poll-create.test.js src/discord/worker.vote.test.js` (pass, `27 passed`)
+
+- 2026-02-12: Completed additional Phase 4.2 create-scheduler decomposition slice.
+  - Added hook:
+    - `web/src/features/scheduler/hooks/useSchedulerEditorEmbeddedPolls.js`
+  - Refactored:
+    - `web/src/features/scheduler/CreateSchedulerPage.jsx` now consumes hook-owned embedded poll subscriptions and vote-count state.
+  - Added hook coverage:
+    - `web/src/features/scheduler/hooks/useSchedulerEditorEmbeddedPolls.test.js`
+  - Validation:
+    - `npm --prefix web run test -- src/features/scheduler/hooks/useSchedulerEditorEmbeddedPolls.test.js src/features/scheduler/hooks/useSchedulerEmbeddedPollVotes.test.js src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx` (pass, `6 passed`)
+
+- 2026-02-12: Completed Phase 8 closeout full validation gate.
+  - `npm --prefix web run test` (pass, `388 passed`)
+  - `npm --prefix functions run test` (pass, `370 passed`)
+  - `npm --prefix web run test:rules` (pass, `21 passed`)
+  - `npm --prefix web run test:integration` (pass, `11 passed`; known emulator log noise from notification reconciliation persists and is non-fatal)
+  - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`)
+  - `npm --prefix web run build` (pass)
+
 - 2026-02-12: Completed Phase 5.2 stale Firestore error reset hardening.
   - Updated hooks:
     - `web/src/hooks/useFirestoreDoc.js`

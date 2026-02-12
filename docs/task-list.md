@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-12: Code Health Pt2 closed out: extracted Discord command dispatch router + CreateScheduler embedded-poll hook, ran full validation gate (web/functions/rules/integration/e2e/build), and marked phases complete/deferred in trackers."
   - "2026-02-12: Code Health Pt2 progress: extracted `useSchedulerEmbeddedPollVotes` from `SchedulerPage` (embedded-poll subscriptions + draft hydration), added direct hook tests, and revalidated full web test/build."
   - "2026-02-12: Code Health Pt2 progress: extracted shared basic-poll vote-draft mutation helpers, adopted them in scheduler embedded poll voting + dashboard group poll modal, and kicked off Phase 4.2 scheduler decomposition."
   - "2026-02-12: Code Health Pt2 progress: extracted dashboard basic-poll action orchestration into `use-dashboard-basic-poll-actions`, further reduced dashboard complexity, and re-ran full web + e2e emulator validation."
@@ -52,12 +53,29 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Code Health Pt2 Phase 4.2 second slice (`useSchedulerEmbeddedPollVotes` extraction from `SchedulerPage`) with direct hook coverage.
-- Next Step: Continue Code Health Pt2 Phase 4.2 with additional scheduler/create-scheduler hook/component extraction slices.
+- Last Completed: Code Health Pt2 Phase 8 closeout (Discord/router + create-scheduler decomposition slices completed, full validation gate rerun, and tracker sync complete).
+- Next Step: Await next workstream.
 - Open Issues: None in automated test gates.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
 ## Progress Notes
+
+- 2026-02-12: Completed Code Health Pt2 closeout and finalized remaining decomposition slices.
+  - Decomposition:
+    - Added `functions/src/discord/command-dispatch.js` and refactored `functions/src/discord/worker.js` to delegate interaction routing.
+    - Added `web/src/features/scheduler/hooks/useSchedulerEditorEmbeddedPolls.js` and refactored `web/src/features/scheduler/CreateSchedulerPage.jsx` to consume it.
+  - Coverage:
+    - Added `functions/src/discord/command-dispatch.test.js`.
+    - Added `web/src/features/scheduler/hooks/useSchedulerEditorEmbeddedPolls.test.js`.
+  - Validation:
+    - `npm --prefix functions run test -- src/discord/command-dispatch.test.js src/discord/worker.handlers.test.js src/discord/worker.poll-create.test.js src/discord/worker.vote.test.js` (pass, `27 passed`, exit code `0`)
+    - `npm --prefix web run test -- src/features/scheduler/hooks/useSchedulerEditorEmbeddedPolls.test.js src/features/scheduler/hooks/useSchedulerEmbeddedPollVotes.test.js src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx` (pass, `6 passed`, exit code `0`)
+    - `npm --prefix web run test` (pass, `388 passed`, exit code `0`)
+    - `npm --prefix functions run test` (pass, `370 passed`, exit code `0`)
+    - `npm --prefix web run test:rules` (pass, `21 passed`, exit code `0`)
+    - `npm --prefix web run test:integration` (pass, `11 passed`, exit code `0`; known emulator log noise from notification reconciliation persisted)
+    - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`, exit code `0`)
+    - `npm --prefix web run build` (pass, exit code `0`)
 
 - 2026-02-12: Continued Code Health Pt2 Phase 4.2 with scheduler embedded-poll subscription extraction.
   - Decomposition:

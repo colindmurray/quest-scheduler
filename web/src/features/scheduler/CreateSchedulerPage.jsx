@@ -22,14 +22,13 @@ import { useCalendarNavigation } from "../../hooks/useCalendarNavigation";
 import { CalendarJumpControls } from "../../components/ui/calendar-jump-controls";
 import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfiles";
 import { useSchedulerEditorData } from "./hooks/useSchedulerEditorData";
+import { useSchedulerEditorEmbeddedPolls } from "./hooks/useSchedulerEditorEmbeddedPolls";
 import { APP_URL } from "../../lib/config";
 import {
   createEmbeddedBasicPoll,
   deleteEmbeddedBasicPoll,
   notifyEmbeddedBasicPollRequiredChanged,
   reorderEmbeddedBasicPolls,
-  subscribeToBasicPollVotes,
-  subscribeToEmbeddedBasicPolls,
   updateEmbeddedBasicPoll,
 } from "../../lib/data/basicPolls";
 import {
@@ -48,7 +47,6 @@ import { sendPendingPollInvites, revokePollInvite } from "../../lib/data/pollInv
 import { findUserIdsByEmails } from "../../lib/data/users";
 import { buildEmailSet, normalizeEmail, normalizeEmailList } from "../../lib/utils";
 import { formatZonedDateTime, formatZonedTime, shouldShowTimeZone, toDisplayDate } from "../../lib/time";
-import { hasSubmittedVoteForPoll } from "../../lib/basic-polls/vote-submission";
 import { validateInviteCandidate } from "./utils/invite-utils";
 import {
   removeEmbeddedPollDraft,
@@ -205,9 +203,6 @@ export default function CreateSchedulerPage() {
   const [initialSlotTimes, setInitialSlotTimes] = useState({});
   const [calendarUpdateOpen, setCalendarUpdateOpen] = useState(false);
   const [calendarUpdateChecked, setCalendarUpdateChecked] = useState(false);
-  const [embeddedPolls, setEmbeddedPolls] = useState([]);
-  const [embeddedPollsLoading, setEmbeddedPollsLoading] = useState(false);
-  const [embeddedPollVoteCounts, setEmbeddedPollVoteCounts] = useState({});
   const [embeddedPollEditorOpen, setEmbeddedPollEditorOpen] = useState(false);
   const [editingEmbeddedPoll, setEditingEmbeddedPoll] = useState(null);
   const [embeddedPollSaveBusy, setEmbeddedPollSaveBusy] = useState(false);
@@ -219,6 +214,15 @@ export default function CreateSchedulerPage() {
   const { schedulerDocRef, scheduler, slotsSnapshot, votesSnapshot } = useSchedulerEditorData({
     schedulerId: editId,
     isEditing,
+  });
+  const {
+    embeddedPolls,
+    setEmbeddedPolls,
+    embeddedPollsLoading,
+    embeddedPollVoteCounts,
+  } = useSchedulerEditorEmbeddedPolls({
+    isEditing,
+    schedulerId: editId,
   });
 
   const inviteEmails = useMemo(() => invites, [invites]);
@@ -413,56 +417,6 @@ export default function CreateSchedulerPage() {
   }, [selectedGroup, groupMemberSet]);
 
   useEffect(() => {
-    if (!isEditing || !editId) {
-      setEmbeddedPolls([]);
-      setEmbeddedPollsLoading(false);
-      return;
-    }
-    setEmbeddedPollsLoading(true);
-    const unsubscribe = subscribeToEmbeddedBasicPolls(
-      editId,
-      (polls) => {
-        setEmbeddedPolls(polls || []);
-        setEmbeddedPollsLoading(false);
-      },
-      () => {
-        setEmbeddedPolls([]);
-        setEmbeddedPollsLoading(false);
-      }
-    );
-    return () => unsubscribe();
-  }, [editId, isEditing]);
-
-  useEffect(() => {
-    setEmbeddedPollVoteCounts({});
-    if (!isEditing || !editId || embeddedPolls.length === 0) return () => {};
-
-    const unsubscribers = embeddedPolls.map((poll) =>
-      subscribeToBasicPollVotes(
-        "scheduler",
-        editId,
-        poll.id,
-        (voteDocs) => {
-          const count = countSubmittedEmbeddedVotes(poll, voteDocs || []);
-          setEmbeddedPollVoteCounts((previous) => {
-            if (previous[poll.id] === count) return previous;
-            return { ...previous, [poll.id]: count };
-          });
-        },
-        () => {
-          setEmbeddedPollVoteCounts((previous) => ({ ...previous, [poll.id]: 0 }));
-        }
-      )
-    );
-
-    return () => {
-      unsubscribers.forEach((unsubscribe) => {
-        if (typeof unsubscribe === "function") unsubscribe();
-      });
-    };
-  }, [editId, embeddedPolls, isEditing]);
-
-  useEffect(() => {
     if (!isEditing) return;
     const groupId = scheduler.data?.questingGroupId;
     if (!groupId) {
@@ -551,11 +505,6 @@ export default function CreateSchedulerPage() {
     user?.email,
   ]);
   const embeddedPollSensors = useSensors(useSensor(PointerSensor));
-
-  const countSubmittedEmbeddedVotes = (poll, voteDocs = []) => {
-    return voteDocs.filter((voteDoc) => hasSubmittedVoteForPoll(poll, voteDoc)).length;
-  };
-
 
   const removeSlot = (slotId) => {
     setSlots((prev) => prev.filter((slot) => slot.id !== slotId));
