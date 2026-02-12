@@ -7,6 +7,12 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-12: Deployed latest week/day calendar row-layout + compact time-range updates to staging and production hosting."
+  - "2026-02-12: Dashboard week/day calendar events now use three-row layout (attendance row, full-width title row, compact time row) with compact same-meridiem range formatting and multi-day full date ranges."
+  - "2026-02-12: Calendar event rendering now varies by view: month hides titles (attendance + time only), while week/day show attendance-prefixed titles with multiline wrapping."
+  - "2026-02-12: Deployed dashboard calendar attendance/time label polish to staging and production hosting."
+  - "2026-02-12: Dashboard month calendar attendance prefix now uses the shared Users icon style (`3/5`) instead of emoji text to match session poll chips."
+  - "2026-02-12: Dashboard month calendar polish: added finalized-session attendance prefix (`👥confirmed/total`) to month event titles, compacted month time labels (`6 PM` instead of `6:00 PM`), and removed forced event-content ellipsis styling."
   - "2026-02-12: Code Health Pt2 closed out: extracted Discord command dispatch router + CreateScheduler embedded-poll hook, ran full validation gate (web/functions/rules/integration/e2e/build), and marked phases complete/deferred in trackers."
   - "2026-02-12: Code Health Pt2 progress: extracted `useSchedulerEmbeddedPollVotes` from `SchedulerPage` (embedded-poll subscriptions + draft hydration), added direct hook tests, and revalidated full web test/build."
   - "2026-02-12: Code Health Pt2 progress: extracted shared basic-poll vote-draft mutation helpers, adopted them in scheduler embedded poll voting + dashboard group poll modal, and kicked off Phase 4.2 scheduler decomposition."
@@ -59,6 +65,64 @@ changelog:
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
 ## Progress Notes
+
+- 2026-02-12: Released latest dashboard calendar week/day layout iteration.
+  - Deploy:
+    - `DEPLOY_ONLY=hosting ./scripts/deploy-staging.sh` (pass; `https://quest-scheduler-stg.web.app`)
+    - `DEPLOY_ONLY=hosting ./scripts/deploy-prod.sh` (pass; `https://studio-473406021-87ead.web.app`)
+
+- 2026-02-12: Improved week/day calendar event readability in constrained columns.
+  - UI updates:
+    - `web/src/features/dashboard/components/DashboardCalendar.jsx` now uses a three-row week/day event layout: attendance/status row, full-width title row, and time row.
+    - Added compact same-meridiem time range formatting (example: `6 - 10:30 PM`) and preserved full date-time labels for multi-day events.
+    - Month view remains compact (attendance + time, no title) as requested.
+  - Coverage:
+    - Extended `web/src/features/dashboard/components/DashboardCalendar.test.jsx` to validate compact same-meridiem ranges and multi-day full-date ranges.
+  - Validation:
+    - `npm --prefix web run test -- src/features/dashboard/components/DashboardCalendar.test.jsx` (pass, `4 passed`, exit code `0`)
+    - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx` (pass, `10 passed`, exit code `0`)
+    - `npm --prefix web run build` (pass, exit code `0`)
+
+- 2026-02-12: Refined dashboard calendar event content layout by view.
+  - UI updates:
+    - `web/src/features/dashboard/components/DashboardCalendar.jsx` now renders month events as compact `attendance + time` only (no title text) to preserve legibility in constrained monthly cells.
+    - Week/day events now include attendance icon+count as a prefix to the title and use multiline title wrapping rather than truncation.
+    - `web/src/features/scheduler/calendar-styles.css` adds explicit wrapping styles for week/day calendar event titles and time labels.
+  - Coverage:
+    - Updated `web/src/features/dashboard/components/DashboardCalendar.test.jsx` assertions for shared `attendanceLabel` event field.
+  - Validation:
+    - `npm --prefix web run test -- src/features/dashboard/components/DashboardCalendar.test.jsx` (pass, `3 passed`, exit code `0`)
+    - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx` (pass, `10 passed`, exit code `0`)
+    - `npm --prefix web run build` (pass, exit code `0`)
+
+- 2026-02-12: Released dashboard calendar attendance/time label polish.
+  - Deploy:
+    - `DEPLOY_ONLY=hosting ./scripts/deploy-staging.sh` (pass; `https://quest-scheduler-stg.web.app`)
+    - `DEPLOY_ONLY=hosting ./scripts/deploy-prod.sh` (pass; `https://studio-473406021-87ead.web.app`)
+
+- 2026-02-12: Refined dashboard month attendance indicator style for consistency.
+  - UI updates:
+    - `web/src/features/dashboard/components/DashboardCalendar.jsx` now renders month attendance with the shared `Users` icon style + compact `confirmed/total` label (`3/5`) rather than an emoji text prefix in the title.
+    - Kept compact month time formatting and standard week/day rendering unchanged.
+    - Added `.dashboard-calendar-attendance` style in `web/src/features/scheduler/calendar-styles.css`.
+  - Coverage:
+    - Updated `web/src/features/dashboard/components/DashboardCalendar.test.jsx` to assert `monthAttendanceLabel` data.
+  - Validation:
+    - `npm --prefix web run test -- src/features/dashboard/components/DashboardCalendar.test.jsx` (pass, `3 passed`, exit code `0`)
+    - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx` (pass, `10 passed`, exit code `0`)
+    - `npm --prefix web run build` (pass, exit code `0`)
+
+- 2026-02-12: Polished dashboard month calendar event density/readability.
+  - UI updates:
+    - `web/src/features/dashboard/components/DashboardCalendar.jsx` now derives month-only attendance title prefixes for finalized sessions (`👥confirmed/total`) and month-compact time labels (`h a`, dropping `:00` on the hour).
+    - Added month/week/day-specific event render wiring so compact labels are used in month view without changing week/day time range rendering.
+    - `web/src/features/scheduler/calendar-styles.css` no longer forces `text-overflow: ellipsis` on calendar event content; time labels are now non-shrinking (`.dashboard-calendar-event-time`) to avoid trailing PM ellipsis clipping.
+  - Coverage:
+    - Added assertions in `web/src/features/dashboard/components/DashboardCalendar.test.jsx` for month attendance prefix and compact month time label generation.
+  - Validation:
+    - `npm --prefix web run test -- src/features/dashboard/components/DashboardCalendar.test.jsx` (pass, `3 passed`, exit code `0`)
+    - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx` (pass, `10 passed`, exit code `0`)
+    - `npm --prefix web run build` (pass, exit code `0`)
 
 - 2026-02-12: Completed Code Health Pt2 closeout and finalized remaining decomposition slices.
   - Decomposition:

@@ -90,4 +90,58 @@ describe("DashboardCalendar", () => {
       expect(lastCalendarProps?.date?.toISOString()).toContain("2026-04-20")
     );
   });
+
+  test("builds attendance label data and compact month time label", () => {
+    render(
+      <DashboardCalendar
+        sessions={[
+          {
+            id: "sched-finalized",
+            title: "Busy Tavern",
+            status: "FINALIZED",
+            timezone: "UTC",
+            showTimeZone: false,
+            winningSlot: {
+              start: "2026-03-10T18:00:00.000Z",
+              end: "2026-03-10T21:00:00.000Z",
+            },
+            effectiveParticipantIds: ["u1", "u2", "u3", "u4", "u5"],
+            attendanceSummary: {
+              confirmed: ["a@example.com", "b@example.com", "c@example.com"],
+              unavailable: [],
+              unresponded: [],
+            },
+          },
+        ]}
+      />
+    );
+
+    expect(lastCalendarProps?.events?.[0]?.title).toBe("Busy Tavern");
+    expect(lastCalendarProps?.events?.[0]?.attendanceLabel).toBe("3/5");
+    expect(lastCalendarProps?.events?.[0]?.compactTimeLabel).toBe("6 PM");
+    expect(lastCalendarProps?.events?.[0]?.timeLabel).toBe("6 - 9 PM");
+  });
+
+  test("uses full date-time range format for multi-day events", () => {
+    render(
+      <DashboardCalendar
+        sessions={[
+          {
+            id: "sched-multi-day",
+            title: "Overnight Quest",
+            status: "FINALIZED",
+            timezone: "UTC",
+            showTimeZone: false,
+            winningSlot: {
+              start: "2026-03-10T23:00:00.000Z",
+              end: "2026-03-11T01:30:00.000Z",
+            },
+          },
+        ]}
+      />
+    );
+
+    expect(lastCalendarProps?.events?.[0]?.timeLabel).toContain("Mar 10");
+    expect(lastCalendarProps?.events?.[0]?.timeLabel).toContain("Mar 11");
+  });
 });
