@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Active plan execution tracker synchronized with docs/task-list.md."
 changelog:
+  - "2026-02-12: Merged basic-poll dashboard UX branch to `master`, removed deploy-rejected redundant Firestore indexes, and deployed staging + production successfully."
   - "2026-02-12: Stabilized flaky dashboard embedded-poll e2e navigation and completed full validation gate (web/functions/rules/integration/e2e emulators) with all suites passing."
   - "2026-02-12: Applied latest General Poll modal polish (settings button, centered `+ Option | + Other`, simplified ranked help icon), refined calendar nav/caption alignment, and redeployed staging hosting."
   - "2026-02-12: Shifted modal vote setup to multiple/ranked with customization popover chips, added max-selection bounds validation, and centered calendar nav controls."
@@ -33,8 +34,8 @@ changelog:
 - Last Generated: 2026-02-11
 
 ## Execution Checkpoint
-- Last Completed: Stabilized dashboard embedded-poll e2e interactions and completed full validation gate across unit/rules/integration/e2e suites
-- Next Step: Commit verified branch state, merge into `main`, and deploy staging + production
+- Last Completed: Merged validated branch into `master`, removed deploy-rejected redundant indexes, and completed staging + production deploys
+- Next Step: Track post-deploy stability and transition planning toward Phase 12 backlog items
 - Open Issues: None in automated validation gates.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
@@ -120,6 +121,15 @@ changelog:
 - [ ] `P3` `13.8` Inline banner: unvoted required embedded polls (Section: Phase 13: Nice-to-Have Enhancements)
 
 ## Progress Notes
+
+- 2026-02-12: Merge/deploy completion:
+  - Merged `feature/basic-poll-dashboard-ux` into `master`.
+  - Removed redundant indexes from `firestore.indexes.json` to satisfy Firestore deploy API constraints:
+    - dropped `basicPolls(order, __name__)`
+    - dropped `votes(updatedAt, __name__)`
+  - Deploys:
+    - `./scripts/deploy-staging.sh` → pass (`https://quest-scheduler-stg.web.app`).
+    - `./scripts/deploy-prod.sh` → pass (`https://studio-473406021-87ead.web.app`).
 
 - 2026-02-12: Validation hardening + full gate run:
   - `web/e2e/basic-poll-dashboard-embedded.spec.js`:

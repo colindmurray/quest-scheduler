@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-12: Removed redundant Firestore indexes rejected by deploy API (`basicPolls.order`, `votes.updatedAt`) and completed staging + production deploys from merged `master`."
   - "2026-02-12: Stabilized flaky dashboard embedded-poll e2e card click/login timing and re-ran full validation gate (web/functions/rules/integration/e2e emulators) with all suites passing."
   - "2026-02-12: Finalized General Poll modal polish pass (settings button, inline `+ Option | + Other`, ranked help icon simplification), reworked calendar nav alignment/centering, and redeployed hosting to staging."
   - "2026-02-12: Updated poll modal voting setup to multiple/ranked + customization popover chips (allow multiple, max selections), enforced max-selection bounds, and centered calendar nav controls within date picker."
@@ -41,12 +42,21 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Stabilized remaining flaky dashboard embedded-poll e2e flow and completed full validation gate across web/functions/rules/integration/e2e emulators (all passing)
-- Next Step: Commit validated changes, merge `feature/basic-poll-dashboard-ux` to `main`, and deploy to staging + production
+- Last Completed: Merged `feature/basic-poll-dashboard-ux` into `master`, removed deploy-rejected redundant Firestore indexes, and deployed successfully to staging + production
+- Next Step: Monitor production/staging behavior and begin planning/prioritizing Phase 12+ follow-on work
 - Open Issues: None in automated test gates.
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
 ## Progress Notes
+
+- 2026-02-12: Merge/deploy completion + Firestore index cleanup:
+  - Merged `feature/basic-poll-dashboard-ux` into `master`.
+  - Resolved deploy-time Firestore index API rejections by removing unnecessary composite indexes from `firestore.indexes.json`:
+    - removed `basicPolls(order, __name__)`
+    - removed `votes(updatedAt, __name__)`
+  - Deploy results:
+    - `./scripts/deploy-staging.sh` → pass (`https://quest-scheduler-stg.web.app`).
+    - `./scripts/deploy-prod.sh` → pass (`https://studio-473406021-87ead.web.app`).
 
 - 2026-02-12: Full validation sweep + e2e stability hardening:
   - `web/e2e/basic-poll-dashboard-embedded.spec.js`:
