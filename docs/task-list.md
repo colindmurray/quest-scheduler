@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-12: Updated Discord basic/general poll card formatting to include a clickable `View on web` embed field link (instead of non-clickable footer URL text), with tests and prod/staging function deploys."
   - "2026-02-12: Migrated Discord `/poll-create` to subcommands (`multiple`, `ranked`), updated worker parsing for subcommand payloads, re-registered commands (global + two guilds), and deployed Discord worker to prod/staging."
   - "2026-02-12: Fixed Discord ranked basic-poll voting failure by removing invalid collection-group documentId lookup in `processDiscordInteraction`, added regression coverage, and deployed worker to production/staging."
   - "2026-02-12: Removed redundant Firestore indexes rejected by deploy API (`basicPolls.order`, `votes.updatedAt`) and completed staging + production deploys from merged `master`."
@@ -50,6 +51,17 @@ changelog:
 - Last Updated (YYYY-MM-DD): 2026-02-12
 
 ## Progress Notes
+
+- 2026-02-12: Discord basic poll card link UX fix:
+  - `functions/src/discord/basic-poll-card.js`:
+    - Added embed field `View on web` with markdown link: `[Open poll](<url>)` for clickable navigation in Discord embeds.
+    - Replaced footer URL text with neutral footer text (`Quest Scheduler`) to avoid non-clickable URL confusion.
+  - `functions/src/discord/basic-poll-card.test.js`:
+    - Added assertions verifying `View on web` field link output for open and finalized cards.
+  - Validation/deploy:
+    - `npm --prefix functions run test -- src/discord/basic-poll-card.test.js src/discord/worker.basic-poll.test.js src/discord/worker.poll-create.test.js` (pass, `17 passed`, exit code `0`).
+    - `firebase deploy --project default --only functions:processDiscordInteraction,functions:processDiscordBasicPollUpdate` (pass).
+    - `firebase deploy --project staging --only functions:processDiscordInteraction,functions:processDiscordBasicPollUpdate` (pass).
 
 - 2026-02-12: Discord `/poll-create` subcommand migration:
   - `functions/scripts/register-discord-commands.js`:

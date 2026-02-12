@@ -37,6 +37,9 @@ describe('buildBasicPollCard', () => {
     expect(card.embeds[0].fields.find((field) => field.name === 'Type')?.value).toBe('Multiple Choice');
     expect(card.embeds[0].fields.find((field) => field.name === 'Votes')?.value).toBe('2/5 voted (3 pending)');
     expect(card.embeds[0].fields.find((field) => field.name === 'Options')?.value).toContain('2. Subs ℹ️');
+    expect(card.embeds[0].fields.find((field) => field.name === 'View on web')?.value).toBe(
+      '[Open poll](https://app.example.com/groups/g1/polls/p1)'
+    );
     expect(card.components[0].components[0]).toEqual(
       expect.objectContaining({ custom_id: 'bp_vote:p1', label: 'Vote', style: 1 })
     );
@@ -70,6 +73,9 @@ describe('buildBasicPollCard', () => {
     expect(card.embeds[0].color).toBe(CARD_COLORS.FINALIZED);
     expect(card.embeds[0].fields.find((field) => field.name === 'Status')?.value).toBe('Finalized');
     expect(card.embeds[0].fields.find((field) => field.name === 'Results')?.value).toContain('Winner: **c1** (2 rounds).');
+    expect(card.embeds[0].fields.find((field) => field.name === 'View on web')?.value).toBe(
+      '[Open poll](https://app.example.com/groups/g1/polls/p1)'
+    );
     expect(card.components[0].components[0]).toEqual(
       expect.objectContaining({ label: 'Voting Closed', disabled: true })
     );

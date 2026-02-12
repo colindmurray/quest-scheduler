@@ -140,6 +140,10 @@ function buildBasicPollCard({ groupId, pollId, poll, voteCount, totalParticipant
       value: unixDeadline ? `<t:${unixDeadline}:R>` : "None",
       inline: true,
     },
+    {
+      name: "View on web",
+      value: `[Open poll](${pollUrl})`,
+    },
   ];
 
   if (status === "FINALIZED") {
@@ -199,7 +203,7 @@ function buildBasicPollCard({ groupId, pollId, poll, voteCount, totalParticipant
         description: poll?.description || undefined,
         fields,
         footer: {
-          text: `View details on web: ${pollUrl}`,
+          text: "Quest Scheduler",
         },
       },
     ],
