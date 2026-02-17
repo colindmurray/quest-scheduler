@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-17: Deployed latest calendar-voting and Discord repost refresh updates to staging and production (`hosting,functions`) after unit/integration/e2e validation pass."
   - "2026-02-17: Added Discord repost submitted-vote-count regression coverage (`votes: {}` treated as pending) and re-ran unit + integration + e2e validation gates across calendar voting and repost features."
   - "2026-02-17: Added Discord poll repost recovery coverage and creator-only poll-options visibility checks (new seeded e2e scenario + callable fallback test) to support manual panel refresh workflows."
   - "2026-02-17: Added month-calendar inline voting controls (compact durations, feasible/preferred buttons, multi-slot cycle control), calendar-view no-times toggle parity, and +more day modal flow with new unit/e2e coverage."
@@ -78,8 +79,8 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Closed remaining coverage gap for Discord repost totals by adding a regression test that asserts empty vote docs are excluded from submitted vote counts in reposted Discord card summaries; revalidated unit/integration/e2e gates for calendar voting + repost features.
-- Next Step: Deploy latest scheduler/Discord updates to staging and production.
+- Last Completed: Deployed latest calendar inline voting + Discord repost refresh updates to staging and production after full targeted unit/integration/e2e validation.
+- Next Step: Manually sanity-check the poll-options repost action and month-calendar inline voting in production against a live Discord-linked poll.
 - Open Issues: Integration suite still emits expected noisy notification trigger errors under emulators (`notificationEvents` NOT_FOUND); test command exits are passing.
 - Last Updated (YYYY-MM-DD): 2026-02-17
 
@@ -118,6 +119,11 @@ changelog:
     - `bash -lc 'set -euo pipefail; ROOT_DIR="$(pwd)"; ENV_FILE="$ROOT_DIR/web/.env.e2e.local"; if [[ -f "$ENV_FILE" ]]; then set -a; source "$ENV_FILE"; set +a; fi; NODE_OPTIONS="${NODE_OPTIONS:-}"; if [[ "$NODE_OPTIONS" != *"--no-deprecation"* ]]; then export NODE_OPTIONS="${NODE_OPTIONS} --no-deprecation"; fi; export NODE_NO_WARNINGS=1; firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT "node $ROOT_DIR/functions/scripts/seed-e2e-scheduler.js && npm --prefix $ROOT_DIR/web run test:e2e -- e2e/scheduler-month-calendar-vote-controls.spec.js e2e/scheduler-discord-repost-controls.spec.js --project=chromium"'` (pass, `3 passed`, exit code `0`)
     - `npm --prefix functions run test -- --coverage src/discord/repost.test.js` (pass; `repost.js` lines covered `90.62%`)
     - `npm --prefix web run test:coverage -- src/features/scheduler/utils/calendar-month-vote-controls.test.js` (pass; `calendar-month-vote-controls.js` lines covered `100%`)
+
+- 2026-02-17: Staging + production deploy after coverage confirmation.
+  - Deploy:
+    - `DEPLOY_ONLY=hosting,functions ./scripts/deploy-staging.sh` (pass; `https://quest-scheduler-stg.web.app`)
+    - `DEPLOY_ONLY=hosting,functions ./scripts/deploy-prod.sh` (pass; `https://studio-473406021-87ead.web.app`)
 
 - 2026-02-17: Scheduler month-calendar inline voting UX improvements.
   - Web behavior updates:
