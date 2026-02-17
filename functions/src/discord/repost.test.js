@@ -226,4 +226,69 @@ describe('discord repost poll', () => {
       messageUrl: 'https://discord.com/channels/guild1/chan1/msg-new',
     });
   });
+
+  test('counts only submitted votes when rendering reposted card totals', async () => {
+    schedulerGetMock.mockResolvedValueOnce(
+      buildDocSnap({
+        creatorId: 'user1',
+        questingGroupId: 'group1',
+        participantIds: ['user1', 'user2'],
+        status: 'OPEN',
+        discord: { messageId: 'old-msg', channelId: 'old-chan' },
+      })
+    );
+    groupGetMock.mockResolvedValueOnce(
+      buildDocSnap({
+        memberIds: ['user1', 'user2', 'user3'],
+        discord: { channelId: 'chan1', guildId: 'guild1' },
+      })
+    );
+    slotsGetMock.mockResolvedValueOnce({
+      docs: [
+        {
+          id: 'slot1',
+          data: () => ({ start: '2024-01-01T10:00:00Z', end: '2024-01-01T11:00:00Z' }),
+        },
+      ],
+    });
+    votesGetMock.mockResolvedValueOnce({
+      docs: [
+        {
+          id: 'user1',
+          data: () => ({ noTimesWork: false, votes: { slot1: 'FEASIBLE' } }),
+        },
+        {
+          id: 'user2',
+          data: () => ({ noTimesWork: false, votes: {} }),
+        },
+        {
+          id: 'user3',
+          data: () => ({ noTimesWork: true, votes: {} }),
+        },
+      ],
+    });
+
+    await repost.discordRepostPollCard.run({
+      auth: { uid: 'user1' },
+      data: { schedulerId: 'sched1' },
+    });
+
+    expect(createChannelMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: 'chan1',
+        body: expect.objectContaining({
+          embeds: [
+            expect.objectContaining({
+              fields: expect.arrayContaining([
+                expect.objectContaining({
+                  name: 'Votes',
+                  value: '2/3 voted (1 pending)',
+                }),
+              ]),
+            }),
+          ],
+        }),
+      })
+    );
+  });
 });

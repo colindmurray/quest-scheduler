@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-17: Added Discord repost submitted-vote-count regression coverage (`votes: {}` treated as pending) and re-ran unit + integration + e2e validation gates across calendar voting and repost features."
   - "2026-02-17: Added Discord poll repost recovery coverage and creator-only poll-options visibility checks (new seeded e2e scenario + callable fallback test) to support manual panel refresh workflows."
   - "2026-02-17: Added month-calendar inline voting controls (compact durations, feasible/preferred buttons, multi-slot cycle control), calendar-view no-times toggle parity, and +more day modal flow with new unit/e2e coverage."
   - "2026-02-17: Deployed scheduler empty-vote vote-count fix to staging and production (hosting/functions/firestore/storage) after confirming Discord poll-card vote counts now use submitted-vote semantics."
@@ -77,8 +78,8 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Added Discord poll repost refresh coverage with creator-only scheduler poll-options visibility e2e checks, callable delete-failure fallback test coverage, and Discord-link gating hardening for the repost menu action.
-- Next Step: Push the repost refresh updates to staging and sanity-check the poll-options menu on a live Discord-linked scheduler before production deploy.
+- Last Completed: Closed remaining coverage gap for Discord repost totals by adding a regression test that asserts empty vote docs are excluded from submitted vote counts in reposted Discord card summaries; revalidated unit/integration/e2e gates for calendar voting + repost features.
+- Next Step: Deploy latest scheduler/Discord updates to staging and production.
 - Open Issues: Integration suite still emits expected noisy notification trigger errors under emulators (`notificationEvents` NOT_FOUND); test command exits are passing.
 - Last Updated (YYYY-MM-DD): 2026-02-17
 
@@ -105,6 +106,18 @@ changelog:
     - `npm --prefix functions run test -- src/discord/repost.test.js` (pass, `4 passed`, exit code `0`)
     - `bash -lc 'set -euo pipefail; ROOT_DIR="$(pwd)"; ENV_FILE="$ROOT_DIR/web/.env.e2e.local"; if [[ -f "$ENV_FILE" ]]; then set -a; source "$ENV_FILE"; set +a; fi; NODE_OPTIONS="${NODE_OPTIONS:-}"; if [[ "$NODE_OPTIONS" != *"--no-deprecation"* ]]; then export NODE_OPTIONS="${NODE_OPTIONS} --no-deprecation"; fi; export NODE_NO_WARNINGS=1; firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT "node $ROOT_DIR/functions/scripts/seed-e2e-scheduler.js && npm --prefix $ROOT_DIR/web run test:e2e -- e2e/scheduler-discord-repost-controls.spec.js --project=chromium"'` (pass, `2 passed`, exit code `0`)
     - `npm --prefix web run test:integration` (pass, `13 passed`, exit code `0`; expected emulator/function log noise persisted)
+
+- 2026-02-17: Added final repost vote-count regression coverage and reran all relevant gates.
+  - Coverage addition:
+    - `functions/src/discord/repost.test.js`
+      - Added test ensuring reposted Discord card uses submitted-vote semantics (`votes: {}` + `noTimesWork: false` remains pending and does not inflate the `Votes` field).
+  - Validation:
+    - `npm --prefix functions run test -- src/discord/repost.test.js` (pass, `5 passed`, exit code `0`)
+    - `npm --prefix web run test -- src/features/scheduler/utils/calendar-month-vote-controls.test.js` (pass, `7 passed`, exit code `0`)
+    - `npm --prefix web run test:integration` (pass, `13 passed`, exit code `0`; expected emulator/function log noise persisted)
+    - `bash -lc 'set -euo pipefail; ROOT_DIR="$(pwd)"; ENV_FILE="$ROOT_DIR/web/.env.e2e.local"; if [[ -f "$ENV_FILE" ]]; then set -a; source "$ENV_FILE"; set +a; fi; NODE_OPTIONS="${NODE_OPTIONS:-}"; if [[ "$NODE_OPTIONS" != *"--no-deprecation"* ]]; then export NODE_OPTIONS="${NODE_OPTIONS} --no-deprecation"; fi; export NODE_NO_WARNINGS=1; firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT "node $ROOT_DIR/functions/scripts/seed-e2e-scheduler.js && npm --prefix $ROOT_DIR/web run test:e2e -- e2e/scheduler-month-calendar-vote-controls.spec.js e2e/scheduler-discord-repost-controls.spec.js --project=chromium"'` (pass, `3 passed`, exit code `0`)
+    - `npm --prefix functions run test -- --coverage src/discord/repost.test.js` (pass; `repost.js` lines covered `90.62%`)
+    - `npm --prefix web run test:coverage -- src/features/scheduler/utils/calendar-month-vote-controls.test.js` (pass; `calendar-month-vote-controls.js` lines covered `100%`)
 
 - 2026-02-17: Scheduler month-calendar inline voting UX improvements.
   - Web behavior updates:
