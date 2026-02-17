@@ -16,6 +16,7 @@ import {
   Trash2,
   RotateCcw,
   RefreshCw,
+  Star,
   X,
 } from "lucide-react";
 import { useAuth } from "../../app/useAuth";
@@ -28,6 +29,7 @@ import { useSchedulerEmbeddedPollVotes } from "./hooks/useSchedulerEmbeddedPollV
 import { useNotifications } from "../../hooks/useNotifications";
 import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfiles";
 import {
+  deleteSchedulerVote,
   deleteSchedulerWithRelatedData,
   fetchSchedulersByIds,
   setScheduler,
@@ -60,6 +62,7 @@ import {
 import { fetchPublicProfilesByIds, findUserIdByEmail, findUserIdsByEmails } from "../../lib/data/users";
 import { acceptPollInvite, declinePollInvite, removeParticipantFromPoll, revokePollInvite } from "../../lib/data/pollInvites";
 import {
+  breakBasicPollTieForParent,
   cloneEmbeddedBasicPolls,
   deleteBasicPollVote,
   finalizeEmbeddedBasicPoll,
@@ -113,6 +116,11 @@ import { buildEffectiveTallies, buildUserBlockInfo } from "./utils/effective-vot
 import { canUserCopyVotes } from "./utils/copy-votes-eligibility";
 import { shouldEmitPollLifecycleEvent } from "./utils/poll-lifecycle-notifications";
 import { parseEmbeddedPollIdFromSearch } from "./utils/embedded-poll-deep-link";
+import {
+  formatCompactDuration,
+  getNextCycleVoteValue,
+} from "./utils/calendar-month-vote-controls";
+import { hasSubmittedSchedulerVote, isAttendingVote } from "../../lib/vote-utils";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "./calendar-styles.css";
 
@@ -587,9 +595,13 @@ export default function SchedulerPage() {
     () => enrichPendingInviteUsers(pendingInviteEmails),
     [enrichPendingInviteUsers, pendingInviteEmails]
   );
-  const voterEmails = useMemo(
-    () => allVotes.data.map((voteDoc) => voteDoc.userEmail).filter(Boolean),
+  const submittedVoteDocs = useMemo(
+    () => allVotes.data.filter((voteDoc) => hasSubmittedSchedulerVote(voteDoc)),
     [allVotes.data]
+  );
+  const voterEmails = useMemo(
+    () => submittedVoteDocs.map((voteDoc) => voteDoc.userEmail).filter(Boolean),
+    [submittedVoteDocs]
   );
   const uniqueEmails = useMemo(() => {
     const set = new Set([...(participantEmails || []), ...(voterEmails || [])]);
@@ -600,6 +612,10 @@ export default function SchedulerPage() {
     () => new Map(allVotes.data.map((voteDoc) => [voteDoc.id, voteDoc])),
     [allVotes.data]
   );
+  const submittedVoteMapById = useMemo(
+    () => new Map(submittedVoteDocs.map((voteDoc) => [voteDoc.id, voteDoc])),
+    [submittedVoteDocs]
+  );
   const voteMapByEmail = useMemo(
     () =>
       new Map(
@@ -608,6 +624,24 @@ export default function SchedulerPage() {
           .map((voteDoc) => [normalizeEmail(voteDoc.userEmail), voteDoc])
       ),
     [allVotes.data]
+  );
+  const submittedVoteMapByEmail = useMemo(
+    () =>
+      new Map(
+        submittedVoteDocs
+          .filter((voteDoc) => voteDoc.userEmail)
+          .map((voteDoc) => [normalizeEmail(voteDoc.userEmail), voteDoc])
+      ),
+    [submittedVoteDocs]
+  );
+  const submittedVoteIdSet = useMemo(
+    () =>
+      new Set(
+        submittedVoteDocs
+          .map((voteDoc) => String(voteDoc?.id || "").trim())
+          .filter(Boolean)
+      ),
+    [submittedVoteDocs]
   );
   const participants = useMemo(() => {
     const combined = new Map();
@@ -623,12 +657,15 @@ export default function SchedulerPage() {
       const vote =
         voteMapById.get(profile.id) ||
         (profile.email ? voteMapByEmail.get(normalizeEmail(profile.email)) : null);
+      const submittedVote =
+        submittedVoteMapById.get(profile.id) ||
+        (profile.email ? submittedVoteMapByEmail.get(normalizeEmail(profile.email)) : null);
       const email = profile.email ? normalizeEmail(profile.email) : vote?.userEmail || null;
       return {
         ...profile,
         email,
         avatar: vote?.userAvatar || profile.photoURL || null,
-        hasVoted: Boolean(vote),
+        hasVoted: Boolean(submittedVote),
         isGroupMember: questingGroupMemberSet.has(profile.id),
         isPendingInvite: email ? pendingInviteEmailSet.has(normalizeEmail(email)) : false,
       };
@@ -640,6 +677,8 @@ export default function SchedulerPage() {
     questingGroupMemberProfiles,
     voteMapById,
     voteMapByEmail,
+    submittedVoteMapById,
+    submittedVoteMapByEmail,
     questingGroupMemberSet,
     pendingInviteEmailSet,
   ]);
@@ -734,14 +773,17 @@ export default function SchedulerPage() {
         const vote =
           (member.id && voteMapById.get(member.id)) ||
           (member.email ? voteMapByEmail.get(normalizeEmail(member.email)) : null);
+        const submittedVote =
+          (member.id && submittedVoteMapById.get(member.id)) ||
+          (member.email ? submittedVoteMapByEmail.get(normalizeEmail(member.email)) : null);
         return {
           ...member,
           email: member.email ? normalizeEmail(member.email) : member.email,
           avatar: vote?.userAvatar || member.avatar || member.photoURL || null,
-          hasVoted: Boolean(vote),
+          hasVoted: Boolean(submittedVote),
         };
       }),
-    [groupUsers, voteMapById, voteMapByEmail]
+    [groupUsers, voteMapById, voteMapByEmail, submittedVoteMapById, submittedVoteMapByEmail]
   );
   const participantIdSet = useMemo(
     () =>
@@ -764,9 +806,9 @@ export default function SchedulerPage() {
   const sessionPollMissingNudgeUserIds = useMemo(
     () =>
       nudgeEligibleParticipantIds.filter(
-        (participantId) => !voteMapById.has(String(participantId))
+        (participantId) => !submittedVoteIdSet.has(String(participantId))
       ),
-    [nudgeEligibleParticipantIds, voteMapById]
+    [nudgeEligibleParticipantIds, submittedVoteIdSet]
   );
   const hasRequiredEmbeddedNudgeTargets = useMemo(() => {
     if (nudgeEligibleParticipantIds.length === 0) return false;
@@ -794,7 +836,7 @@ export default function SchedulerPage() {
     });
   }, [embeddedPolls, embeddedVotesByPoll, nudgeEligibleParticipantIds]);
   const participantCount = participantIdSet.size;
-  const voteCount = allVotes.data.length;
+  const voteCount = submittedVoteDocs.length;
   const allVotesIn = useMemo(() => {
     if (scheduler.data?.status !== "OPEN") return false;
     if (!participantCount) return false;
@@ -894,6 +936,14 @@ export default function SchedulerPage() {
       };
     });
   }, [slots.data, tallies, slotVoters, displayTimeZone]);
+
+  const calendarEventCountByDay = useMemo(() => {
+    return calendarEvents.reduce((counts, event) => {
+      const dayKey = format(event.start, "yyyy-MM-dd");
+      counts[dayKey] = (counts[dayKey] || 0) + 1;
+      return counts;
+    }, {});
+  }, [calendarEvents]);
 
   const {
     scrollToTime,
@@ -1087,18 +1137,130 @@ export default function SchedulerPage() {
   const EventCell = ({ event }) => {
     const preferredCount = event.preferredCount ?? 0;
     const feasibleCount = event.feasibleCount ?? 0;
-    const durationMinutes = event.end && event.start ? Math.max(0, Math.round((event.end - event.start) / 60000)) : 0;
+    const durationMinutes =
+      event.end && event.start ? Math.max(0, Math.round((event.end - event.start) / 60000)) : 0;
+    const compactDurationLabel = formatCompactDuration(durationMinutes);
     const rangeLabel = event.rangeLabel || event.timeLabel;
 
     if (calendarView === "month") {
+      const vote = draftVotes[event.id] || null;
+      const isPast = pastSlotIds.has(event.id);
+      const dayKey = format(event.start, "yyyy-MM-dd");
+      const hasMultipleSlots = (calendarEventCountByDay[dayKey] || 0) > 1;
+      const canInteract = canVote && !isLocked && !isPast && !noTimesWork;
+      const voteState = noTimesWork ? "unavailable" : vote ? vote.toLowerCase() : "none";
+
+      const preventCalendarSelect = (callback) => (clickEvent) => {
+        clickEvent.preventDefault();
+        clickEvent.stopPropagation();
+        callback();
+      };
+
+      const setFeasible = () => {
+        if (!canInteract || vote === "PREFERRED") return;
+        setVote(event.id, vote === "FEASIBLE" ? null : "FEASIBLE");
+      };
+
+      const setPreferred = () => {
+        if (!canInteract) return;
+        setVote(event.id, vote === "PREFERRED" ? null : "PREFERRED");
+      };
+
+      const cycleVote = () => {
+        if (!canInteract) return;
+        setVote(event.id, getNextCycleVoteValue(vote));
+      };
+
       return (
-        <div className="space-y-1">
-          <div className="text-xs font-semibold">{event.timeLabel}</div>
+        <div
+          className="space-y-1"
+          data-testid={`month-slot-${event.id}`}
+          data-slot-id={event.id}
+          data-vote-state={voteState}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 space-y-0.5">
+              <div className="truncate text-xs font-semibold">{event.timeLabel}</div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-white/70">
+                {compactDurationLabel}
+              </div>
+            </div>
+            {!noTimesWork && (
+              <div className="flex items-center gap-1">
+                {hasMultipleSlots ? (
+                  <button
+                    type="button"
+                    data-testid={`month-slot-cycle-${event.id}`}
+                    aria-label={`Cycle vote for ${event.timeLabel}`}
+                    aria-pressed={vote === "FEASIBLE" || vote === "PREFERRED"}
+                    disabled={!canInteract}
+                    onMouseDown={(clickEvent) => clickEvent.stopPropagation()}
+                    onClick={preventCalendarSelect(cycleVote)}
+                    className={`inline-flex h-5 min-w-[2.15rem] items-center justify-center rounded-full border px-1.5 text-[10px] font-semibold transition ${
+                      vote === "PREFERRED"
+                        ? "border-amber-200 bg-amber-100 text-amber-800"
+                        : vote === "FEASIBLE"
+                          ? "border-emerald-200 bg-emerald-100 text-emerald-800"
+                          : "border-white/40 bg-white/15 text-white"
+                    } disabled:cursor-not-allowed disabled:opacity-40`}
+                  >
+                    {vote === "PREFERRED" ? (
+                      <Star size={10} className="fill-current" />
+                    ) : vote === "FEASIBLE" ? (
+                      <Check size={10} />
+                    ) : (
+                      "○"
+                    )}
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      data-testid={`month-slot-feasible-${event.id}`}
+                      aria-label={`Toggle feasible vote for ${event.timeLabel}`}
+                      aria-pressed={vote === "FEASIBLE" || vote === "PREFERRED"}
+                      disabled={!canInteract || vote === "PREFERRED"}
+                      onMouseDown={(clickEvent) => clickEvent.stopPropagation()}
+                      onClick={preventCalendarSelect(setFeasible)}
+                      className={`inline-flex h-5 w-5 items-center justify-center rounded-full border text-[10px] transition ${
+                        vote === "FEASIBLE" || vote === "PREFERRED"
+                          ? "border-emerald-200 bg-emerald-100 text-emerald-800"
+                          : "border-white/40 bg-white/15 text-white"
+                      } disabled:cursor-not-allowed disabled:opacity-40`}
+                    >
+                      <Check size={10} />
+                    </button>
+                    <button
+                      type="button"
+                      data-testid={`month-slot-preferred-${event.id}`}
+                      aria-label={`Toggle preferred vote for ${event.timeLabel}`}
+                      aria-pressed={vote === "PREFERRED"}
+                      disabled={!canInteract}
+                      onMouseDown={(clickEvent) => clickEvent.stopPropagation()}
+                      onClick={preventCalendarSelect(setPreferred)}
+                      className={`inline-flex h-5 w-5 items-center justify-center rounded-full border text-[10px] transition ${
+                        vote === "PREFERRED"
+                          ? "border-amber-200 bg-amber-100 text-amber-800"
+                          : "border-white/40 bg-white/15 text-white"
+                      } disabled:cursor-not-allowed disabled:opacity-40`}
+                    >
+                      <Star size={10} className={vote === "PREFERRED" ? "fill-current" : ""} />
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-1 text-[10px] text-white/90">
             <span>★ {preferredCount}</span>
             <span className="text-white/70">·</span>
             <span>✓ {feasibleCount}</span>
           </div>
+          {noTimesWork && (
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">
+              Unavailable
+            </div>
+          )}
         </div>
       );
     }
@@ -1374,6 +1536,27 @@ export default function SchedulerPage() {
     }
   };
 
+  const breakEmbeddedPollTieIndividually = async (poll, method) => {
+    const pollId = poll?.id;
+    if (!pollId || !id || !isCreator) return false;
+    setEmbeddedLifecycleBusyByPoll((previous) => ({ ...previous, [pollId]: true }));
+    setEmbeddedVoteErrors((previous) => ({ ...previous, [pollId]: null }));
+    try {
+      await breakBasicPollTieForParent("scheduler", id, pollId, method);
+      toast.success(`Tie-break applied: ${poll?.title || "Untitled poll"}`);
+      return true;
+    } catch (error) {
+      console.error("Failed to break embedded poll tie:", error);
+      setEmbeddedVoteErrors((previous) => ({
+        ...previous,
+        [pollId]: error?.message || "Failed to break tie.",
+      }));
+      return false;
+    } finally {
+      setEmbeddedLifecycleBusyByPoll((previous) => ({ ...previous, [pollId]: false }));
+    }
+  };
+
   const addCloneInvite = async (input) => {
     const raw = String(input || "").trim();
     if (!raw) return;
@@ -1410,10 +1593,17 @@ export default function SchedulerPage() {
       toast.error("Accept the invite to vote on this poll.");
       return false;
     }
+    const hasAttendingVote = Object.values(draftVotes || {}).some((value) =>
+      isAttendingVote(value)
+    );
+    const willSubmitVote = Boolean(noTimesWork || hasAttendingVote);
     const wasAllVotesIn = allVotesIn;
-    const hadVote = Boolean(userVote.data);
-    const nextVoteCount = hadVote ? voteCount : voteCount + 1;
+    const hadVote = hasSubmittedSchedulerVote(userVote.data);
+    const nextVoteCount = hadVote
+      ? (willSubmitVote ? voteCount : Math.max(voteCount - 1, 0))
+      : (willSubmitVote ? voteCount + 1 : voteCount);
     const shouldNotifyAllVotesIn =
+      willSubmitVote &&
       !wasAllVotesIn &&
       scheduler.data?.status === "OPEN" &&
       participantCount > 0 &&
@@ -1421,41 +1611,46 @@ export default function SchedulerPage() {
     setSaving(true);
     let success = false;
     try {
-      await upsertSchedulerVote(id, user.uid, {
-        voterId: user.uid,
-        userEmail: user.email,
-        userAvatar: user.photoURL,
-        votes: noTimesWork ? {} : draftVotes,
-        noTimesWork,
-        updatedAt: serverTimestamp(),
-      });
+      if (willSubmitVote) {
+        await upsertSchedulerVote(id, user.uid, {
+          voterId: user.uid,
+          userEmail: user.email,
+          userAvatar: user.photoURL,
+          votes: noTimesWork ? {} : draftVotes,
+          noTimesWork,
+          updatedAt: serverTimestamp(),
+        });
 
-      const recipient = normalizeEmail(scheduler.data?.creatorEmail);
-      if (recipient && normalizeEmail(user.email) !== recipient) {
-        const recipients = {
-          userIds: scheduler.data?.creatorId ? [scheduler.data.creatorId] : [],
-          emails: recipient ? [recipient] : [],
-        };
-        if (recipients.userIds.length || recipients.emails.length) {
-          try {
-            await emitPollEvent({
-              eventType: "VOTE_SUBMITTED",
-              schedulerId: id,
-              pollTitle: scheduler.data?.title || "Session Poll",
-              actor: buildNotificationActor(user),
-              payload: {
+        const recipient = normalizeEmail(scheduler.data?.creatorEmail);
+        if (recipient && normalizeEmail(user.email) !== recipient) {
+          const recipients = {
+            userIds: scheduler.data?.creatorId ? [scheduler.data.creatorId] : [],
+            emails: recipient ? [recipient] : [],
+          };
+          if (recipients.userIds.length || recipients.emails.length) {
+            try {
+              await emitPollEvent({
+                eventType: "VOTE_SUBMITTED",
+                schedulerId: id,
                 pollTitle: scheduler.data?.title || "Session Poll",
-                voterEmail: normalizeEmail(user.email) || user.email,
-                voterUserId: user.uid,
-              },
-              recipients,
-              dedupeKey: `poll:${id}:vote:${user.uid}`,
-            });
-          } catch (notifyErr) {
-            console.error("Failed to notify creator about vote:", notifyErr);
+                actor: buildNotificationActor(user),
+                payload: {
+                  pollTitle: scheduler.data?.title || "Session Poll",
+                  voterEmail: normalizeEmail(user.email) || user.email,
+                  voterUserId: user.uid,
+                },
+                recipients,
+                dedupeKey: `poll:${id}:vote:${user.uid}`,
+              });
+            } catch (notifyErr) {
+              console.error("Failed to notify creator about vote:", notifyErr);
+            }
           }
         }
+      } else if (userVote.data) {
+        await deleteSchedulerVote(id, user.uid);
       }
+
       if (shouldNotifyAllVotesIn) {
         try {
           const normalizedCreatorEmail = normalizeEmail(scheduler.data?.creatorEmail) || null;
@@ -1510,7 +1705,7 @@ export default function SchedulerPage() {
           console.error("Failed to notify all votes in:", notifyErr);
         }
       }
-      toast.success("Votes saved successfully");
+      toast.success(willSubmitVote ? "Votes saved successfully" : "Votes cleared");
       success = true;
     } catch (err) {
       console.error("Failed to save votes:", err);
@@ -1642,13 +1837,7 @@ export default function SchedulerPage() {
     if (!pendingFinalizeSlotId || !userVoteRef) return;
     setPendingFinalizeBusy(true);
     try {
-      await upsertSchedulerVote(id, user.uid, {
-        voterId: user.uid,
-        userEmail: user.email,
-        userAvatar: user.photoURL,
-        votes: {},
-        updatedAt: serverTimestamp(),
-      });
+      await deleteSchedulerVote(id, user.uid);
       setDraftVotes({});
       setPendingVotesOpen(false);
       requestFinalize(pendingFinalizeSlotId);
@@ -2722,7 +2911,18 @@ export default function SchedulerPage() {
 
           {view === "calendar" && (
             <div className="mt-6 rounded-3xl border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
-              <div className="mb-3 flex justify-end">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div
+                  data-testid="calendar-no-times-work-toggle"
+                  className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200/70 bg-white px-4 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                >
+                  <span>No times work for me</span>
+                  <Switch
+                    checked={noTimesWork}
+                    disabled={isLocked}
+                    onCheckedChange={toggleNoTimesWork}
+                  />
+                </div>
                 <CalendarJumpControls
                   hasEvents={hasEvents}
                   hasEventsInView={hasEventsInView}
@@ -2747,10 +2947,21 @@ export default function SchedulerPage() {
                 views={["month", "week", "day"]}
                 view={calendarView}
                 onView={(nextView) => setCalendarView(nextView)}
-                onSelectSlot={(slotInfo) => setModalDate(slotInfo.start)}
+                onSelectSlot={(slotInfo) => {
+                  if (calendarView === "month") return;
+                  setModalDate(slotInfo.start);
+                }}
                 onSelectEvent={(event) => {
                   setSelectedEventId(event.id);
+                  if (calendarView === "month") return;
                   setModalDate(event.start);
+                }}
+                doShowMoreDrillDown={false}
+                onShowMore={(events, date) => {
+                  if (Array.isArray(events) && events.length > 0) {
+                    setSelectedEventId(events[0]?.id || null);
+                  }
+                  setModalDate(date);
                 }}
                 dayPropGetter={(date) => {
                   if (isBefore(date, startOfDay(new Date()))) {
@@ -2774,6 +2985,8 @@ export default function SchedulerPage() {
                   const isFinalized =
                     scheduler.data?.status === "FINALIZED" && Boolean(winningSlotId);
                   const isWinner = winningSlotId === event.id;
+                  const myVote = draftVotes[event.id] || null;
+                  let baseGlow = "";
 
                   if (isFinalized) {
                     style.backgroundColor = isWinner ? "#22c55e" : "#e2e8f0";
@@ -2781,11 +2994,28 @@ export default function SchedulerPage() {
                     style.color = isWinner ? "#ffffff" : "#475569";
                     style.opacity = isWinner ? 0.95 : 0.8;
                     style.fontWeight = isWinner ? 600 : 500;
+                  } else if (noTimesWork) {
+                    style.backgroundColor = "#64748b";
+                    style.borderColor = "#475569";
+                    style.color = "#e2e8f0";
+                    style.opacity = 0.45;
+                  } else if (calendarView === "month" && myVote === "PREFERRED") {
+                    style.backgroundColor = "#ca8a04";
+                    style.borderColor = "#eab308";
+                    style.color = "#ffffff";
+                    baseGlow = "0 0 0 1px rgba(250,204,21,0.45), 0 0 12px rgba(250,204,21,0.35)";
+                  } else if (calendarView === "month" && myVote === "FEASIBLE") {
+                    style.backgroundColor = "#16a34a";
+                    style.borderColor = "#22c55e";
+                    style.color = "#ffffff";
                   }
 
                   if (selectedEventId === event.id) {
-                    style.boxShadow =
+                    const selectionGlow =
                       "0 0 0 2px rgba(59, 130, 246, 0.7), 0 0 12px rgba(59, 130, 246, 0.35)";
+                    style.boxShadow = baseGlow ? `${baseGlow}, ${selectionGlow}` : selectionGlow;
+                  } else if (baseGlow) {
+                    style.boxShadow = baseGlow;
                   }
 
                   return Object.keys(style).length ? { style } : {};
@@ -3348,6 +3578,9 @@ export default function SchedulerPage() {
                       voteError={embeddedVoteErrors[poll.id] || null}
                       isCreator={isCreator}
                       lifecycleBusy={lifecycleBusy}
+                      submittedVotes={pollSubmittedVotes}
+                      canBreakTie={isCreator}
+                      tieBreakBusy={lifecycleBusy}
                       isHighlighted={highlightedEmbeddedPollId === poll.id}
                       parentCancelled={scheduler.data?.status === "CANCELLED"}
                       onSetRef={(node) => {
@@ -3373,6 +3606,7 @@ export default function SchedulerPage() {
                       pendingUsers={pendingUsers}
                       onFinalizePoll={() => finalizeEmbeddedPollIndividually(poll)}
                       onReopenPoll={() => reopenEmbeddedPollIndividually(poll)}
+                      onBreakTie={(method) => breakEmbeddedPollTieIndividually(poll, method)}
                       onViewOptionNote={(pollTitle, option) =>
                         openEmbeddedOptionNoteViewer(pollTitle, option)
                       }
@@ -3556,7 +3790,7 @@ export default function SchedulerPage() {
         title={scheduler.data?.title || "Untitled poll"}
         participantCount={participantCount}
         slotCount={slots.data?.length || 0}
-        voteCount={allVotes.data?.length || 0}
+        voteCount={voteCount}
         hasExistingEvent={Boolean(scheduler.data?.googleEventId)}
         updateCalendar={deleteUpdateCalendar}
         onToggleUpdateCalendar={setDeleteUpdateCalendar}

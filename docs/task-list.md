@@ -1,12 +1,29 @@
 ---
 created: 2026-01-06
-lastUpdated: 2026-02-12
+lastUpdated: 2026-02-17
 summary: "Primary global execution tracker for current long-running work, checkpoints, and validation notes."
 category: TASK_TRACKER
 status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-17: Added month-calendar inline voting controls (compact durations, feasible/preferred buttons, multi-slot cycle control), calendar-view no-times toggle parity, and +more day modal flow with new unit/e2e coverage."
+  - "2026-02-17: Deployed scheduler empty-vote vote-count fix to staging and production (hosting/functions/firestore/storage) after confirming Discord poll-card vote counts now use submitted-vote semantics."
+  - "2026-02-17: Completed targeted validation pass for scheduler empty-vote semantics with unit coverage, full integration suite, and seeded Chromium e2e spec."
+  - "2026-02-17: Fixed scheduler vote-submission semantics so empty vote docs (`votes: {}` + `noTimesWork: false`) are treated as pending across scheduler UI, dashboard summaries, and Discord/server vote counting; added slot-removal pruning to delete now-empty votes."
+  - "2026-02-13: Aligned Discord ephemeral ranked recap ordering with web: tie-break rounds first, then ranked rounds newest-to-oldest, then user vote grid."
+  - "2026-02-13: Updated ranked recap UX to show tie-break first, reverse ranked-round order, add Borda-all-options explanation matrix, and add deterministic random tie-break reveal animation."
+  - "2026-02-13: Removed duplicate Discord general-poll finalization posts, routed to single notification message with dual links (web + poll card inspector), and simplified ranked final recap card to emphasize intermediate rounds."
+  - "2026-02-13: Fixed Discord `bp_results` ingress ack to defer ephemerally so View Results opens the private inspector card flow; added regression coverage."
+  - "2026-02-13: Expanded ranked tie-break coverage with integration and e2e tests; hardened ranked poll e2e login/navigation reliability."
+  - "2026-02-12: Added ranked-choice tie-break workflow (Borda/random), creator-only `Break Tie` controls in web poll UIs, and Discord finalized-results inspector support for tie-break recap pages."
+  - "2026-02-12: Deployed Discord/basic-poll production functions for finalized-results rendering and interaction handling (`processDiscordInteraction`, `processDiscordBasicPollUpdate`, `finalizeBasicPoll`, `processNotificationEvent`)."
+  - "2026-02-12: Deployed the General Poll modal finalize UX update to production hosting after full validation gate pass."
+  - "2026-02-12: Re-ran full unit/integration/e2e validation gate and deployed the General Poll modal finalize UX update to staging hosting."
+  - "2026-02-12: Added Discord finalized-results inspector UI (final summary + ranked round navigation + per-user vote matrix with 50-cell cap fallback to web) and expanded interaction/card tests."
+  - "2026-02-12: Adopted `chartscii` for Discord multiple-choice finalized-result histograms and added emulator integration coverage validating posted winner/result content."
+  - "2026-02-12: Promoted General Poll modal finalize action to a prominent header button and added immediate finalized-state refresh in-modal."
+  - "2026-02-12: Fixed Discord nudge duplicate mentions and upgraded basic-poll finalization Discord messages with winner/vote summaries, markdown links, and ASCII histogram output."
   - "2026-02-12: Deployed latest week/day calendar row-layout + compact time-range updates to staging and production hosting."
   - "2026-02-12: Dashboard week/day calendar events now use three-row layout (attendance row, full-width title row, compact time row) with compact same-meridiem range formatting and multi-day full date ranges."
   - "2026-02-12: Calendar event rendering now varies by view: month hides titles (attendance + time only), while week/day show attendance-prefixed titles with multiline wrapping."
@@ -59,12 +76,224 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Code Health Pt2 Phase 8 closeout (Discord/router + create-scheduler decomposition slices completed, full validation gate rerun, and tracker sync complete).
-- Next Step: Await next workstream.
-- Open Issues: None in automated test gates.
-- Last Updated (YYYY-MM-DD): 2026-02-12
+- Last Completed: Implemented month calendar inline slot voting UX (compact duration labels, inline feasible/preferred controls, multi-slot cycle control, calendar no-times toggle, and +more modal vote flow) with unit/integration/e2e validation.
+- Next Step: Validate this month-calendar voting UX manually in production and tune visual density if any month-cell clipping appears for edge-case timezones.
+- Open Issues: Integration suite still emits expected noisy notification trigger errors under emulators (`notificationEvents` NOT_FOUND); test command exits are passing.
+- Last Updated (YYYY-MM-DD): 2026-02-17
 
 ## Progress Notes
+
+- 2026-02-17: Scheduler month-calendar inline voting UX improvements.
+  - Web behavior updates:
+    - `web/src/features/scheduler/SchedulerPage.jsx`
+      - Month view event cards now show compact duration labels (`0m`, `45m`, `2h`, `1h30m`).
+      - Added inline month voting controls:
+        - single-slot day: separate feasible + preferred icon toggles.
+        - multi-slot day: compact cycle button (`none -> feasible -> preferred -> none`).
+      - Added `No times work for me` toggle in calendar view (parity with list view), with month inline controls hidden while enabled.
+      - Event coloring now reflects draft vote state in month view (`FEASIBLE` green, `PREFERRED` gold glow) and greys calendar events when `noTimesWork` is enabled.
+      - Month `+N more` now opens the day voting modal directly (`doShowMoreDrillDown={false}` + `onShowMore`), preserving quick voting for overflow days.
+  - Added scheduler month-calendar utility + tests:
+    - `web/src/features/scheduler/utils/calendar-month-vote-controls.js`
+    - `web/src/features/scheduler/utils/calendar-month-vote-controls.test.js`
+  - Added seeded e2e scenario and spec:
+    - `functions/scripts/seed-e2e-scheduler.js` seeds `E2E_MONTH_VOTE_SCHEDULER_ID` (`e2e-month-calendar-votes`) with multi-slot same-day + single-slot day coverage.
+    - `web/e2e/scheduler-month-calendar-vote-controls.spec.js` validates inline controls, cycle behavior, `+more` modal, and calendar no-times toggle behavior.
+  - Validation:
+    - `npm --prefix web run test -- src/features/scheduler/utils/calendar-month-vote-controls.test.js` (pass, `7 passed`, exit code `0`)
+    - `npm --prefix web run test:integration` (pass, `13 passed`, exit code `0`; expected emulator log noise persisted)
+    - `bash -lc 'set -euo pipefail; ROOT_DIR="$(pwd)"; ENV_FILE="$ROOT_DIR/web/.env.e2e.local"; if [[ -f "$ENV_FILE" ]]; then set -a; source "$ENV_FILE"; set +a; fi; NODE_OPTIONS="${NODE_OPTIONS:-}"; if [[ "$NODE_OPTIONS" != *"--no-deprecation"* ]]; then export NODE_OPTIONS="${NODE_OPTIONS} --no-deprecation"; fi; export NODE_NO_WARNINGS=1; firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT "node $ROOT_DIR/functions/scripts/seed-e2e-scheduler.js && npm --prefix $ROOT_DIR/web run test:e2e -- e2e/scheduler-month-calendar-vote-controls.spec.js --project=chromium"'` (pass, `1 passed`, exit code `0`)
+    - `npm --prefix web run build` (pass, exit code `0`; non-blocking chunk-size warning)
+
+- 2026-02-17: Scheduler empty-vote pending-state fix (web + functions).
+  - Root-cause alignment:
+    - Added shared scheduler vote-submission predicate in both runtimes:
+      - `web/src/lib/vote-utils.js`
+      - `functions/src/utils/vote-utils.js`
+    - New rule: submitted only when `noTimesWork === true` or at least one attending slot vote exists; `votes: {}` with `noTimesWork: false` is pending.
+  - Web behavior updates:
+    - `web/src/features/scheduler/SchedulerPage.jsx` now computes participant vote state, vote counts, nudge-missing lists, `allVotesIn`, and save/finalize transitions from submitted votes only.
+    - Save flow now deletes the current user vote doc when no submission remains (instead of persisting empty vote docs).
+    - `web/src/features/scheduler/CreateSchedulerPage.jsx` now deletes vote docs that become empty after slot removal during poll edits.
+    - `web/src/features/dashboard/hooks/useSchedulerAttendance.js` now filters to submitted scheduler votes, fixing dashboard `All voted` and `Needs vote` states.
+  - Functions/Discord behavior updates:
+    - `functions/src/triggers/scheduler.js`, `functions/src/discord/repost.js`, and `functions/src/discord/nudge.js` now count only submitted scheduler votes.
+  - Added/updated tests:
+    - `web/src/lib/vote-utils.test.js`
+    - `functions/src/utils/vote-utils.test.js`
+    - Updated scheduler nudge fixtures in `functions/src/discord/nudge.test.js` to use valid attending vote values.
+  - Validation:
+    - `npm --prefix web run test -- src/lib/vote-utils.test.js src/features/dashboard/DashboardPage.test.jsx` (pass, `14 passed`, exit code `0`)
+    - `npm --prefix web run test -- src/features/scheduler/utils/effective-votes.test.js` (pass, `6 passed`, exit code `0`)
+    - `npm --prefix functions run test -- src/utils/vote-utils.test.js src/discord/nudge.test.js src/discord/repost.test.js src/triggers/scheduler.test.js` (pass, `31 passed`, exit code `0`)
+    - `npm --prefix web run test:coverage -- src/lib/vote-utils.test.js src/features/dashboard/hooks/useSchedulerAttendance.test.js src/features/dashboard/DashboardPage.test.jsx src/features/scheduler/utils/effective-votes.test.js` (pass, `21 passed`, exit code `0`)
+    - `npm --prefix functions run test -- --coverage src/utils/vote-utils.test.js src/discord/nudge.test.js src/discord/repost.test.js src/triggers/scheduler.test.js` (pass, `31 passed`, exit code `0`)
+    - `npm --prefix web run test:integration` (pass, `13 passed`, exit code `0`; expected emulator/function log noise persisted)
+    - `cd web && firebase emulators:exec 'npx vitest run --config vitest.integration.config.js src/__tests__/integration/scheduler-vote-submission.integration.test.js'` (pass, `1 passed`, exit code `0`)
+    - `bash -lc 'set -euo pipefail; ROOT_DIR="$(pwd)"; ENV_FILE="$ROOT_DIR/web/.env.e2e.local"; if [[ -f "$ENV_FILE" ]]; then set -a; source "$ENV_FILE"; set +a; fi; NODE_OPTIONS="${NODE_OPTIONS:-}"; if [[ "$NODE_OPTIONS" != *"--no-deprecation"* ]]; then export NODE_OPTIONS="${NODE_OPTIONS} --no-deprecation"; fi; export NODE_NO_WARNINGS=1; firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT "node $ROOT_DIR/functions/scripts/seed-e2e-scheduler.js && npm --prefix $ROOT_DIR/web run test:e2e -- e2e/scheduler-empty-vote-state.spec.js --project=chromium"'` (pass, `1 passed`, exit code `0`)
+  - Deploy:
+    - `DEPLOY_ONLY=hosting,functions,firestore,storage ./scripts/deploy-staging.sh` (pass; `https://quest-scheduler-stg.web.app`)
+    - `DEPLOY_ONLY=hosting,functions,firestore,storage ./scripts/deploy-prod.sh` (pass; `https://studio-473406021-87ead.web.app`)
+
+- 2026-02-13: Discord ephemeral ranked recap order alignment.
+  - `functions/src/discord/worker.js` now orders ranked recap pages as:
+    - tie-break rounds (newest to oldest),
+    - ranked rounds (final to first),
+    - player vote grid.
+  - Updated tie-break page resolver to include the final tie-break round (not just prior rounds).
+  - Validation:
+    - `npm --prefix functions run test -- src/discord/worker.basic-poll.test.js src/discord/command-dispatch.test.js src/discord/ingress.test.js` (pass, `28 passed`, exit code `0`)
+    - `npm --prefix functions run test -- src/discord/worker.integration.test.js` (pass, `2 passed`, exit code `0`)
+
+- 2026-02-13: Ranked tie-break recap UX refinement.
+  - Web updates (`web/src/components/polls/basic-poll-voting-card.jsx`):
+    - Recap page order now prioritizes tie-break context: final tie-break round first (if present), then ranked rounds in reverse order (latest to earliest), then player matrix.
+    - Added explicit Borda copy clarifying points are computed across all options, not only tied finalists.
+    - Added Borda point-contribution table by player and option.
+    - Added deterministic random tie-break reveal animation that always ends on the persisted winner.
+  - Validation:
+    - `npm --prefix web run test -- src/components/polls/basic-poll-voting-card.test.jsx src/lib/basic-polls/ranked-choice-tie-break.test.js` (pass, `9 passed`, exit code `0`)
+    - `npm --prefix functions run test -- src/basic-polls/ranked-choice-tie-break.test.js` (pass, `4 passed`, exit code `0`)
+
+- 2026-02-13: Refined Discord general-poll finalization messaging and recap UX after live validation feedback.
+  - Duplicate finalize post fix:
+    - Removed direct finalized-results channel post from `functions/src/discord/worker.js` finalize handler.
+    - Kept notification event emission (`BASIC_POLL_FINALIZED` + `BASIC_POLL_RESULTS`) so Discord posting goes through one path only.
+  - Dual-link finalized message:
+    - Added `discordPollCardUrl` payload propagation in `functions/src/basic-polls/callables.js` and Discord finalize worker payload emission.
+    - Updated `functions/src/notifications/discord.js` finalized message formatting to include:
+      - web results link (`View full poll results`)
+      - Discord poll card jump link (`Open Discord poll card (View Results)`) when available.
+    - Added DB fallback lookup for poll card URL in notification routing when payload omits it.
+  - Ranked recap/chart tuning:
+    - Web ranked final recap card (`web/src/components/polls/basic-poll-voting-card.jsx`) now omits final-only histogram and points users to recap arrows for intermediate/tie-break rounds.
+    - Discord ephemeral results inspector now includes both `Open in Quest Scheduler` and `Open Poll Card` URL buttons.
+  - Validation:
+    - `npm --prefix functions run test -- src/discord/worker.basic-poll.test.js src/discord/worker.integration.test.js src/notifications/discord.test.js src/basic-polls/callables.test.js` (pass, `47 passed`, exit code `0`)
+    - `npm --prefix web run test -- src/components/polls/basic-poll-voting-card.test.jsx` (pass, `4 passed`, exit code `0`)
+
+- 2026-02-13: Fixed Discord `View Results` ephemeral linkage for basic polls.
+  - Backend:
+    - `functions/src/discord/ingress.js` now treats `bp_results:*` open interactions as ephemeral defers (`type: 5`, `flags: 64`) so the results inspector opens as an ephemeral card flow instead of editing the channel card.
+  - Coverage:
+    - `functions/src/discord/ingress.test.js` adds regression coverage for `bp_results:poll1` ephemeral defer behavior.
+  - Validation:
+    - `npm --prefix functions run test -- src/discord/ingress.test.js` (pass, `9 passed`, exit code `0`)
+    - `npm --prefix functions run test -- src/discord/command-dispatch.test.js` (pass, `5 passed`, exit code `0`)
+    - `npm --prefix functions run test -- src/discord/worker.basic-poll.test.js` (pass, `14 passed`, exit code `0`)
+
+- 2026-02-13: Added explicit unit/integration/e2e coverage for ranked tie-break flow.
+  - Tests added/updated:
+    - Integration:
+      - `web/src/__tests__/integration/basic-polls.integration.test.js`
+        - added ranked tie-break persistence scenario (`BORDA` then `RANDOM`) validating stored `tieBreakerRounds` and winner resolution.
+    - E2E:
+      - `web/e2e/basic-poll-ranked.spec.js`
+        - added creator flow: finalize tied ranked poll, run Borda tie-break, run random winner selection, and validate recap arrow navigation through round progression.
+        - hardened login helper to match existing resilient e2e auth pattern.
+  - Validation:
+    - `npm --prefix web run test -- src/lib/basic-polls/ranked-choice-tie-break.test.js src/components/polls/basic-poll-voting-card.test.jsx src/lib/data/basicPolls.test.js` (pass, `35 passed`, exit code `0`)
+    - `npm --prefix functions run test -- src/basic-polls/ranked-choice-tie-break.test.js src/basic-polls/callables.test.js` (pass, `25 passed`, exit code `0`)
+    - `firebase emulators:exec "npm --prefix web run test -- --config vitest.integration.config.js src/__tests__/integration/basic-polls.integration.test.js"` (pass, `9 passed`, exit code `0`; emulator log noise from notification side-effects persisted)
+    - `set -a; source web/.env.e2e.local; set +a; export NODE_OPTIONS="${NODE_OPTIONS:-} --no-deprecation"; export NODE_NO_WARNINGS=1; firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT "node functions/scripts/seed-e2e-scheduler.js && npm --prefix web run test:e2e -- web/e2e/basic-poll-ranked.spec.js"` (pass, `2 passed`, `6 skipped`, exit code `0`)
+
+- 2026-02-12: Added ranked-choice tie-break actions + recap progression support.
+  - Backend:
+    - Added shared tie-break utility for ranked polls (`BORDA` and `RANDOM`) in:
+      - `functions/src/basic-polls/ranked-choice-tie-break.js`
+      - `web/src/lib/basic-polls/ranked-choice-tie-break.js`
+    - Added callable `breakBasicPollTie` with manager/creator auth gates and `BASIC_POLL_RESULTS` emission in `functions/src/basic-polls/callables.js`.
+    - Updated Discord finalized-results inspector (`functions/src/discord/worker.js`) to include tie-break recap pages in order: final round, prior tie-break rounds, ranked rounds, player matrix.
+  - Web:
+    - Added creator tie-break controls (`Break Tie` + method chooser, or `Select random winner` after Borda tie) and round recap navigation with arrow paging in `web/src/components/polls/basic-poll-voting-card.jsx`.
+    - Wired tie-break actions into:
+      - `web/src/features/dashboard/components/group-basic-poll-modal.jsx`
+      - `web/src/features/scheduler/SchedulerPage.jsx`
+    - Added `breakBasicPollTieForParent` to data layer (`web/src/lib/data/basicPolls.js`).
+    - Added `recharts` histograms for ranked recap views in web poll results.
+  - Validation:
+    - `npm --prefix web run test -- src/lib/basic-polls/ranked-choice-tie-break.test.js src/components/polls/basic-poll-voting-card.test.jsx src/features/dashboard/components/group-basic-poll-modal.test.jsx src/lib/data/basicPolls.test.js` (pass, `37 passed`, exit code `0`)
+    - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx` (pass, `10 passed`, exit code `0`)
+    - `npm --prefix functions run test -- src/basic-polls/ranked-choice-tie-break.test.js src/basic-polls/callables.test.js src/discord/worker.basic-poll.test.js src/discord/basic-poll-card.test.js` (pass, `43 passed`, exit code `0`)
+    - `npm --prefix functions run test -- src/discord/command-dispatch.test.js src/discord/worker.integration.test.js` (pass, `7 passed`, exit code `0`)
+    - `npm --prefix web run build` (pass, exit code `0`; non-blocking chunk-size warning)
+
+- 2026-02-12: Production functions deploy for Discord finalized-results logic.
+  - Deploy:
+    - `firebase deploy --project default --only functions:processDiscordInteraction,functions:processDiscordBasicPollUpdate,functions:finalizeBasicPoll,functions:processNotificationEvent` (pass)
+
+- 2026-02-12: Production deploy for General Poll finalize UX update.
+  - Deploy:
+    - `DEPLOY_ONLY=hosting ./scripts/deploy-prod.sh` (pass; `https://studio-473406021-87ead.web.app`)
+
+- 2026-02-12: Validation gate + staging deploy for General Poll finalize UX update.
+  - Validation:
+    - `npm --prefix web run test` (pass, `391 passed`, exit code `0`)
+    - `npm --prefix functions run test` (pass, `377 passed`, exit code `0`)
+    - `npm --prefix web run test:rules` (pass, `21 passed`, exit code `0`)
+    - `npm --prefix web run test:integration` (pass, exit code `0`; expected emulator log noise persisted)
+    - `npm --prefix web run test:e2e:emulators` (pass, `49 passed`, `75 skipped`, exit code `0`)
+  - Deploy:
+    - `DEPLOY_ONLY=hosting ./scripts/deploy-staging.sh` (pass; `https://quest-scheduler-stg.web.app`)
+
+- 2026-02-12: Implemented Discord finalized-results inspector flow for basic polls.
+  - Backend updates:
+    - `functions/src/discord/basic-poll-card.js` finalized cards now include `View Results` (interactive) plus `Open on Web`.
+    - `functions/src/discord/command-dispatch.js` adds dedicated routes for `bp_results`, `bp_results_prev`, `bp_results_next`, and `bp_results_select`.
+    - `functions/src/discord/worker.js` adds:
+      - shared final results page for both poll types
+      - multiple-choice histogram rendering (`chartscii`)
+      - ranked-choice round-by-round pages with elimination notes
+      - per-user vote matrix page for both poll types
+      - hard cap fallback (`> 50` cells) to Quest Scheduler web results.
+  - Coverage:
+    - `functions/src/discord/basic-poll-card.test.js`
+    - `functions/src/discord/command-dispatch.test.js`
+    - `functions/src/discord/worker.basic-poll.test.js`
+  - Validation:
+    - `npm --prefix functions run test -- src/discord/nudge.test.js src/notifications/discord.test.js src/basic-polls/callables.test.js src/discord/basic-poll-card.test.js src/discord/command-dispatch.test.js src/discord/worker.basic-poll.test.js src/discord/worker.integration.test.js` (pass, `61 passed`, exit code `0`)
+
+- 2026-02-12: Extended Discord finalized-results coverage with `chartscii` and emulator integration assertions.
+  - Backend updates:
+    - Added `chartscii` dependency in `functions/package.json` for richer text-based histogram rendering in Discord finalized basic-poll notifications.
+    - `functions/src/notifications/discord.js` now uses `chartscii` output for multiple-choice `Results histogram` blocks (manual fallback retained for robustness).
+    - `functions/src/discord/worker.integration.test.js` now validates that Discord finalize flow posts a results message containing winning option and vote details.
+  - Coverage:
+    - `functions/src/notifications/discord.test.js` now asserts chart output includes percentage-formatted rows (example `Pizza (80.00%)`).
+    - `functions/src/discord/worker.integration.test.js` adds an emulator-backed finalization assertion for posted winner/result content and poll link.
+  - Validation:
+    - `npm --prefix functions run test -- src/discord/nudge.test.js src/notifications/discord.test.js src/basic-polls/callables.test.js src/discord/worker.basic-poll.test.js src/discord/worker.integration.test.js` (pass, `48 passed`, exit code `0`)
+
+- 2026-02-12: Updated General Poll modal finalize UX for creators.
+  - UI updates:
+    - `web/src/features/dashboard/components/group-basic-poll-modal.jsx` now renders `Finalize` as a high-visibility header button (removed from kebab menu).
+    - Finalize success path now applies an optimistic modal-state update to `FINALIZED` with locally computed final results so the finalized page appears immediately.
+  - Coverage:
+    - `web/src/features/dashboard/components/group-basic-poll-modal.test.jsx` adds a regression test asserting:
+      - finalize action is a top-level button
+      - finalize is not present in the dropdown menu
+      - modal flips to finalized view right after finalize action
+  - Validation:
+    - `npm --prefix web run test -- src/features/dashboard/components/group-basic-poll-modal.test.jsx` (pass, `2 passed`, exit code `0`)
+    - `npm --prefix web run test -- src/features/dashboard/DashboardPage.test.jsx` (pass, `10 passed`, exit code `0`)
+
+- 2026-02-12: Polished Discord nudge/finalization messaging for session + basic polls.
+  - Backend updates:
+    - `functions/src/discord/nudge.js` removed the redundant mention-only line from scheduler nudge content so the single `Hey! ...` mention block is the only user ping section.
+    - `functions/src/basic-polls/callables.js` and `functions/src/discord/worker.js` now attach `payload.discordResults` on `BASIC_POLL_FINALIZED`/`BASIC_POLL_RESULTS` events for richer downstream Discord rendering.
+    - `functions/src/notifications/discord.js` now formats basic-poll finalization notifications with:
+      - explicit winner/tie summary including vote counts
+      - total votes cast line
+      - markdown link style (`[View full poll results](<url>)`)
+      - ASCII histogram block (` ```text ... ``` `) for option distribution
+  - Coverage:
+    - `functions/src/discord/nudge.test.js` now asserts each mentioned user appears only once in the scheduler nudge payload.
+    - Added finalized-summary assertions in:
+      - `functions/src/notifications/discord.test.js`
+      - `functions/src/basic-polls/callables.test.js`
+      - `functions/src/discord/worker.basic-poll.test.js`
+  - Validation:
+    - `npm --prefix functions run test -- src/discord/nudge.test.js src/notifications/discord.test.js src/basic-polls/callables.test.js src/discord/worker.basic-poll.test.js` (pass, `46 passed`, exit code `0`)
 
 - 2026-02-12: Released latest dashboard calendar week/day layout iteration.
   - Deploy:

@@ -19,6 +19,10 @@ async function seed() {
     process.env.E2E_SCHEDULER_DECLINE_ID || "e2e-scheduler-decline";
   const schedulerNotificationId =
     process.env.E2E_SCHEDULER_NOTIFICATION_ID || "e2e-scheduler-notification";
+  const emptyVoteSchedulerId =
+    process.env.E2E_EMPTY_VOTE_SCHEDULER_ID || "e2e-empty-vote-pending";
+  const monthVoteSchedulerId =
+    process.env.E2E_MONTH_VOTE_SCHEDULER_ID || "e2e-month-calendar-votes";
   const friendAcceptId = process.env.E2E_FRIEND_ACCEPT_ID || "e2e-friend-accept";
   const friendDeclineId = process.env.E2E_FRIEND_DECLINE_ID || "e2e-friend-decline";
   const friendRevokeId = process.env.E2E_FRIEND_REVOKE_ID || "e2e-friend-revoke";
@@ -131,6 +135,17 @@ async function seed() {
   const slotEnd = new Date(slotStart.getTime() + 2 * 60 * 60 * 1000);
   const slotStartTwo = new Date(slotStart.getTime() + 24 * 60 * 60 * 1000);
   const slotEndTwo = new Date(slotStartTwo.getTime() + 2 * 60 * 60 * 1000);
+  const monthVoteDay = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000);
+  monthVoteDay.setUTCHours(0, 0, 0, 0);
+  const monthSlotStartOne = new Date(monthVoteDay.getTime() + (13 * 60 + 30) * 60 * 1000);
+  const monthSlotEndOne = new Date(monthVoteDay.getTime() + 16 * 60 * 60 * 1000);
+  const monthSlotStartTwo = new Date(monthVoteDay.getTime() + 17 * 60 * 60 * 1000);
+  const monthSlotEndTwo = new Date(monthVoteDay.getTime() + (19 * 60 + 30) * 60 * 1000);
+  const monthSlotStartThree = new Date(monthVoteDay.getTime() + 20 * 60 * 60 * 1000);
+  const monthSlotEndThree = new Date(monthVoteDay.getTime() + 22 * 60 * 60 * 1000);
+  const monthSingleDay = new Date(monthVoteDay.getTime() + 24 * 60 * 60 * 1000);
+  const monthSlotStartSingle = new Date(monthSingleDay.getTime() + 18 * 60 * 60 * 1000);
+  const monthSlotEndSingle = new Date(monthSingleDay.getTime() + (20 * 60 + 30) * 60 * 1000);
 
   await db.doc(`usersPublic/${participantId}`).set(
     {
@@ -455,6 +470,55 @@ async function seed() {
   await seedScheduler({ id: schedulerId, title: "E2E Scheduler Poll" });
   await seedScheduler({ id: schedulerDeclineId, title: "E2E Scheduler Poll Decline" });
   await seedScheduler({ id: schedulerNotificationId, title: "E2E Scheduler Poll Notification" });
+  await seedScheduler({
+    id: emptyVoteSchedulerId,
+    title: "E2E Empty Vote Pending Poll",
+    pendingEmails: [],
+    participantIds: [participantId, inviteeId],
+  });
+  await db.doc(`schedulers/${emptyVoteSchedulerId}/votes/${participantId}`).set({
+    voterId: participantId,
+    userEmail: participantEmail,
+    userAvatar: null,
+    noTimesWork: false,
+    votes: { "slot-1": "FEASIBLE" },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  await db.doc(`schedulers/${emptyVoteSchedulerId}/votes/${inviteeId}`).set({
+    voterId: inviteeId,
+    userEmail: inviteeEmail,
+    userAvatar: null,
+    noTimesWork: false,
+    votes: {},
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  await seedScheduler({
+    id: monthVoteSchedulerId,
+    title: "E2E Month Calendar Vote Poll",
+    pendingEmails: [],
+    participantIds: [participantId],
+    seedDefaultSlots: false,
+  });
+  await db.doc(`schedulers/${monthVoteSchedulerId}/slots/month-slot-1`).set({
+    start: monthSlotStartOne.toISOString(),
+    end: monthSlotEndOne.toISOString(),
+    stats: { feasible: 0, preferred: 0 },
+  });
+  await db.doc(`schedulers/${monthVoteSchedulerId}/slots/month-slot-2`).set({
+    start: monthSlotStartTwo.toISOString(),
+    end: monthSlotEndTwo.toISOString(),
+    stats: { feasible: 0, preferred: 0 },
+  });
+  await db.doc(`schedulers/${monthVoteSchedulerId}/slots/month-slot-3`).set({
+    start: monthSlotStartThree.toISOString(),
+    end: monthSlotEndThree.toISOString(),
+    stats: { feasible: 0, preferred: 0 },
+  });
+  await db.doc(`schedulers/${monthVoteSchedulerId}/slots/month-slot-single`).set({
+    start: monthSlotStartSingle.toISOString(),
+    end: monthSlotEndSingle.toISOString(),
+    stats: { feasible: 0, preferred: 0 },
+  });
   await seedScheduler({
     id: embeddedEditorSchedulerId,
     title: "E2E Embedded Editor Scheduler",
