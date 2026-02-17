@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-17: Added Discord poll repost recovery coverage and creator-only poll-options visibility checks (new seeded e2e scenario + callable fallback test) to support manual panel refresh workflows."
   - "2026-02-17: Added month-calendar inline voting controls (compact durations, feasible/preferred buttons, multi-slot cycle control), calendar-view no-times toggle parity, and +more day modal flow with new unit/e2e coverage."
   - "2026-02-17: Deployed scheduler empty-vote vote-count fix to staging and production (hosting/functions/firestore/storage) after confirming Discord poll-card vote counts now use submitted-vote semantics."
   - "2026-02-17: Completed targeted validation pass for scheduler empty-vote semantics with unit coverage, full integration suite, and seeded Chromium e2e spec."
@@ -76,12 +77,34 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Implemented month calendar inline slot voting UX (compact duration labels, inline feasible/preferred controls, multi-slot cycle control, calendar no-times toggle, and +more modal vote flow) with unit/integration/e2e validation.
-- Next Step: Validate this month-calendar voting UX manually in production and tune visual density if any month-cell clipping appears for edge-case timezones.
+- Last Completed: Added Discord poll repost refresh coverage with creator-only scheduler poll-options visibility e2e checks, callable delete-failure fallback test coverage, and Discord-link gating hardening for the repost menu action.
+- Next Step: Push the repost refresh updates to staging and sanity-check the poll-options menu on a live Discord-linked scheduler before production deploy.
 - Open Issues: Integration suite still emits expected noisy notification trigger errors under emulators (`notificationEvents` NOT_FOUND); test command exits are passing.
 - Last Updated (YYYY-MM-DD): 2026-02-17
 
 ## Progress Notes
+
+- 2026-02-17: Discord poll repost refresh workflow validation + coverage.
+  - Existing implementation confirmation:
+    - Creator-facing poll-options action already exists in `web/src/features/scheduler/SchedulerPage.jsx` and calls `repostDiscordPollCard`.
+    - Backend callable `functions/src/discord/repost.js` already deletes previous card (best-effort) and posts a new Discord poll card, then stores the new `discord.messageId`/`messageUrl`.
+  - Web behavior update:
+    - `web/src/features/scheduler/SchedulerPage.jsx`
+      - Tightened repost-menu eligibility to require both linked Discord `channelId` and `guildId`, matching callable preconditions.
+  - Coverage additions:
+    - `functions/src/discord/repost.test.js`
+      - Added regression test proving repost still succeeds when deleting the previous Discord message fails (stale/deleted-card recovery path).
+    - `functions/scripts/seed-e2e-scheduler.js`
+      - Added seeded Discord-linked scheduler/group fixture:
+        - `E2E_DISCORD_REPOST_SCHEDULER_ID` (default `e2e-discord-repost-poll`)
+        - `E2E_DISCORD_REPOST_GROUP_ID` (default `e2e-discord-repost-group`)
+    - `web/e2e/scheduler-discord-repost-controls.spec.js` (new)
+      - Validates creator sees `Repost Discord poll` in poll options.
+      - Validates non-creator participant does not see the repost action.
+  - Validation:
+    - `npm --prefix functions run test -- src/discord/repost.test.js` (pass, `4 passed`, exit code `0`)
+    - `bash -lc 'set -euo pipefail; ROOT_DIR="$(pwd)"; ENV_FILE="$ROOT_DIR/web/.env.e2e.local"; if [[ -f "$ENV_FILE" ]]; then set -a; source "$ENV_FILE"; set +a; fi; NODE_OPTIONS="${NODE_OPTIONS:-}"; if [[ "$NODE_OPTIONS" != *"--no-deprecation"* ]]; then export NODE_OPTIONS="${NODE_OPTIONS} --no-deprecation"; fi; export NODE_NO_WARNINGS=1; firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT "node $ROOT_DIR/functions/scripts/seed-e2e-scheduler.js && npm --prefix $ROOT_DIR/web run test:e2e -- e2e/scheduler-discord-repost-controls.spec.js --project=chromium"'` (pass, `2 passed`, exit code `0`)
+    - `npm --prefix web run test:integration` (pass, `13 passed`, exit code `0`; expected emulator/function log noise persisted)
 
 - 2026-02-17: Scheduler month-calendar inline voting UX improvements.
   - Web behavior updates:

@@ -2560,7 +2560,8 @@ export default function SchedulerPage() {
   const canRepostDiscordPoll = Boolean(
     isCreator &&
       scheduler.data?.questingGroupId &&
-      questingGroup.data?.discord?.channelId
+      questingGroup.data?.discord?.channelId &&
+      questingGroup.data?.discord?.guildId
   );
   if (!canAccess) {
     return (

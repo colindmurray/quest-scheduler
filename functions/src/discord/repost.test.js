@@ -9,6 +9,7 @@ let schedulerSetMock;
 let groupGetMock;
 let slotsGetMock;
 let votesGetMock;
+let loggerWarnMock;
 
 const buildDocSnap = (data, exists = true) => ({
   exists,
@@ -27,6 +28,7 @@ describe('discord repost poll', () => {
     groupGetMock = vi.fn();
     slotsGetMock = vi.fn();
     votesGetMock = vi.fn();
+    loggerWarnMock = vi.fn();
 
     const schedulerRef = {
       get: schedulerGetMock,
@@ -82,7 +84,7 @@ describe('discord repost poll', () => {
       },
     };
     require.cache[require.resolve('firebase-functions')] = {
-      exports: { logger: { warn: vi.fn() } },
+      exports: { logger: { warn: loggerWarnMock } },
     };
     require.cache[require.resolve('./config')] = {
       exports: {
@@ -172,6 +174,52 @@ describe('discord repost poll', () => {
         }),
       }),
       { merge: true }
+    );
+    expect(result).toEqual({
+      messageId: 'msg-new',
+      messageUrl: 'https://discord.com/channels/guild1/chan1/msg-new',
+    });
+  });
+
+  test('reposts even when deleting previous message fails', async () => {
+    deleteChannelMessageMock.mockRejectedValueOnce(new Error('unknown message'));
+    schedulerGetMock.mockResolvedValueOnce(
+      buildDocSnap({
+        creatorId: 'user1',
+        questingGroupId: 'group1',
+        participantIds: ['user1'],
+        status: 'OPEN',
+        discord: { messageId: 'old-msg', channelId: 'old-chan' },
+      })
+    );
+    groupGetMock.mockResolvedValueOnce(
+      buildDocSnap({
+        memberIds: ['user1'],
+        discord: { channelId: 'chan1', guildId: 'guild1' },
+      })
+    );
+    slotsGetMock.mockResolvedValueOnce({
+      docs: [
+        {
+          id: 'slot1',
+          data: () => ({ start: '2024-01-01T10:00:00Z', end: '2024-01-01T11:00:00Z' }),
+        },
+      ],
+    });
+    votesGetMock.mockResolvedValueOnce({ size: 0, docs: [] });
+
+    const result = await repost.discordRepostPollCard.run({
+      auth: { uid: 'user1' },
+      data: { schedulerId: 'sched1' },
+    });
+
+    expect(deleteChannelMessageMock).toHaveBeenCalledWith({
+      channelId: 'old-chan',
+      messageId: 'old-msg',
+    });
+    expect(loggerWarnMock).toHaveBeenCalled();
+    expect(createChannelMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'chan1' })
     );
     expect(result).toEqual({
       messageId: 'msg-new',

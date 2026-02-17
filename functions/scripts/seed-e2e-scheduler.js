@@ -23,6 +23,10 @@ async function seed() {
     process.env.E2E_EMPTY_VOTE_SCHEDULER_ID || "e2e-empty-vote-pending";
   const monthVoteSchedulerId =
     process.env.E2E_MONTH_VOTE_SCHEDULER_ID || "e2e-month-calendar-votes";
+  const discordRepostSchedulerId =
+    process.env.E2E_DISCORD_REPOST_SCHEDULER_ID || "e2e-discord-repost-poll";
+  const discordRepostGroupId =
+    process.env.E2E_DISCORD_REPOST_GROUP_ID || "e2e-discord-repost-group";
   const friendAcceptId = process.env.E2E_FRIEND_ACCEPT_ID || "e2e-friend-accept";
   const friendDeclineId = process.env.E2E_FRIEND_DECLINE_ID || "e2e-friend-decline";
   const friendRevokeId = process.env.E2E_FRIEND_REVOKE_ID || "e2e-friend-revoke";
@@ -290,6 +294,8 @@ async function seed() {
     finalizedAtMs = null,
     finalizedSlotPriorityAtMs = null,
     seedDefaultSlots = true,
+    questingGroupId = null,
+    questingGroupName = null,
   }) => {
     const pendingInviteMeta = {};
     pendingEmails.forEach((email) => {
@@ -315,8 +321,8 @@ async function seed() {
       ...(finalizedAtMs ? { finalizedAtMs } : {}),
       ...(finalizedSlotPriorityAtMs ? { finalizedSlotPriorityAtMs } : {}),
       googleEventId: null,
-      questingGroupId: null,
-      questingGroupName: null,
+      questingGroupId,
+      questingGroupName,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
@@ -408,14 +414,20 @@ async function seed() {
       });
   };
 
-  const seedGroup = async ({ id, name, pendingEmail }) => {
+  const seedGroup = async ({
+    id,
+    name,
+    pendingEmail,
+    memberIds = [participantId],
+    discord = null,
+  }) => {
     const pendingInvite = pendingEmail ? pendingEmail.toLowerCase() : null;
     await db.doc(`questingGroups/${id}`).set({
       name,
       creatorId: participantId,
       creatorEmail: ownerEmailLower,
       memberManaged: false,
-      memberIds: [participantId],
+      memberIds,
       pendingInvites: pendingInvite ? [pendingInvite] : [],
       pendingInviteMeta: pendingInvite
         ? {
@@ -426,6 +438,7 @@ async function seed() {
             },
           }
         : {},
+      ...(discord ? { discord } : {}),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -518,6 +531,14 @@ async function seed() {
     start: monthSlotStartSingle.toISOString(),
     end: monthSlotEndSingle.toISOString(),
     stats: { feasible: 0, preferred: 0 },
+  });
+  await seedScheduler({
+    id: discordRepostSchedulerId,
+    title: "E2E Discord Repost Poll",
+    pendingEmails: [],
+    participantIds: [participantId, inviteeId],
+    questingGroupId: discordRepostGroupId,
+    questingGroupName: "E2E Discord Repost Group",
   });
   await seedScheduler({
     id: embeddedEditorSchedulerId,
@@ -796,6 +817,16 @@ async function seed() {
     pendingEmail: revokeeEmail,
   });
   await seedGroup({ id: groupOwnerId, name: groupOwnerName, pendingEmail: null });
+  await seedGroup({
+    id: discordRepostGroupId,
+    name: "E2E Discord Repost Group",
+    pendingEmail: null,
+    memberIds: [participantId, inviteeId],
+    discord: {
+      guildId: "e2e-guild-repost",
+      channelId: "e2e-channel-repost",
+    },
+  });
   await seedGroup({
     id: "auto-group-accepted",
     name: "Auto Group Accepted",
