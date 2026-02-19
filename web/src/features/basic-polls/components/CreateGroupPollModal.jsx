@@ -795,51 +795,32 @@ export function CreateGroupPollModal({
               </p>
               {advancedSettingsExpanded ? (
                 <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2.5 dark:border-slate-700 dark:bg-slate-800/60">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="flex min-w-0 flex-1 items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={state.hideVoterIdentities}
-                        disabled={hideVoterIdentitiesLocked}
-                        onChange={(event) =>
-                          setState((previous) => ({
-                            ...previous,
-                            hideVoterIdentities: event.target.checked,
-                          }))
-                        }
-                        className="disabled:cursor-not-allowed"
-                      />
-                      <span className="font-semibold text-slate-700 dark:text-slate-200">
-                        Hide who has/hasn't voted
-                      </span>
-                    </label>
-                    <div className="w-full shrink-0 sm:w-64">
-                      <Select
-                        value={state.voteVisibility}
-                        onValueChange={(value) => {
-                          const nextVisibility = resolveVoteVisibility(value);
-                          setState((previous) => ({
-                            ...previous,
-                            voteVisibility: nextVisibility,
-                            hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
-                              previous.hideVoterIdentities,
-                              nextVisibility
-                            ),
-                          }));
-                        }}
-                      >
-                        <SelectTrigger className="h-9 rounded-lg border-slate-300 bg-white px-3 text-xs dark:border-slate-600 dark:bg-slate-900">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {VOTE_VISIBILITY_OPTIONS.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div className="w-full sm:w-64">
+                    <Select
+                      value={state.voteVisibility}
+                      onValueChange={(value) => {
+                        const nextVisibility = resolveVoteVisibility(value);
+                        setState((previous) => ({
+                          ...previous,
+                          voteVisibility: nextVisibility,
+                          hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
+                            previous.hideVoterIdentities,
+                            nextVisibility
+                          ),
+                        }));
+                      }}
+                    >
+                      <SelectTrigger className="h-9 rounded-lg border-slate-300 bg-white px-3 text-xs dark:border-slate-600 dark:bg-slate-900">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {VOTE_VISIBILITY_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     {
@@ -848,11 +829,28 @@ export function CreateGroupPollModal({
                       )?.description
                     }
                   </p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    {hideVoterIdentitiesLocked
-                      ? "Hide who has/hasn't voted is unavailable for Full visibility."
-                      : "When enabled, only show vote counts without revealing who voted."}
-                  </p>
+                  {!hideVoterIdentitiesLocked ? (
+                    <>
+                      <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={state.hideVoterIdentities}
+                          onChange={(event) =>
+                            setState((previous) => ({
+                              ...previous,
+                              hideVoterIdentities: event.target.checked,
+                            }))
+                          }
+                        />
+                        <span className="font-semibold text-slate-700 dark:text-slate-200">
+                          Hide who has/hasn't voted
+                        </span>
+                      </label>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        When enabled, only show vote counts without revealing who voted.
+                      </p>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
             </div>

@@ -490,45 +490,28 @@ export function EmbeddedPollEditorModal({
               </p>
               {advancedSettingsExpanded ? (
                 <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2.5 dark:border-slate-700 dark:bg-slate-900/60">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={draft.hideVoterIdentities}
-                        disabled={hideVoterIdentitiesLocked}
-                        onChange={(event) =>
-                          setDraft((previous) => ({
-                            ...previous,
-                            hideVoterIdentities: event.target.checked,
-                          }))
-                        }
-                        className="disabled:cursor-not-allowed"
-                      />
-                      <span className="font-medium">Hide who has/hasn't voted</span>
-                    </label>
-                    <div className="w-full shrink-0 sm:w-64">
-                      <select
-                        value={draft.voteVisibility}
-                        onChange={(event) => {
-                          const nextVisibility = resolveVoteVisibility(event.target.value);
-                          setDraft((previous) => ({
-                            ...previous,
-                            voteVisibility: nextVisibility,
-                            hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
-                              previous.hideVoterIdentities,
-                              nextVisibility
-                            ),
-                          }));
-                        }}
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                      >
-                        {VOTE_VISIBILITY_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                  <div className="w-full sm:w-64">
+                    <select
+                      value={draft.voteVisibility}
+                      onChange={(event) => {
+                        const nextVisibility = resolveVoteVisibility(event.target.value);
+                        setDraft((previous) => ({
+                          ...previous,
+                          voteVisibility: nextVisibility,
+                          hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
+                            previous.hideVoterIdentities,
+                            nextVisibility
+                          ),
+                        }));
+                      }}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    >
+                      {VOTE_VISIBILITY_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     {
@@ -537,11 +520,26 @@ export function EmbeddedPollEditorModal({
                       )?.description
                     }
                   </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {hideVoterIdentitiesLocked
-                      ? "Hide who has/hasn't voted is unavailable for Full visibility."
-                      : "When enabled, only show vote counts without revealing who voted."}
-                  </p>
+                  {!hideVoterIdentitiesLocked ? (
+                    <>
+                      <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={draft.hideVoterIdentities}
+                          onChange={(event) =>
+                            setDraft((previous) => ({
+                              ...previous,
+                              hideVoterIdentities: event.target.checked,
+                            }))
+                          }
+                        />
+                        <span className="font-medium">Hide who has/hasn't voted</span>
+                      </label>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        When enabled, only show vote counts without revealing who voted.
+                      </p>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
             </div>

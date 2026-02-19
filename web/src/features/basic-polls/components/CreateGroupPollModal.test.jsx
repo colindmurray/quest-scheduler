@@ -201,7 +201,7 @@ describe("CreateGroupPollModal", () => {
     });
   });
 
-  test("disables identity toggle when vote visibility is full", () => {
+  test("hides identity toggle when vote visibility is full", () => {
     render(
       <CreateGroupPollModal
         open
@@ -229,8 +229,7 @@ describe("CreateGroupPollModal", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Advanced settings/i }));
-    const checkbox = screen.getByRole("checkbox", { name: /Hide who has\/hasn't voted/i });
-    expect(checkbox.disabled).toBe(true);
-    expect(checkbox.checked).toBe(false);
+    const checkbox = screen.queryByRole("checkbox", { name: /Hide who has\/hasn't voted/i });
+    expect(checkbox).toBeNull();
   });
 });

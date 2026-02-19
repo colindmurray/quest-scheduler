@@ -78,7 +78,7 @@ describe("EmbeddedPollEditorModal", () => {
     expect(screen.getByRole("button", { name: "Save poll" })).toBeTruthy();
   });
 
-  test("disables hide voter identities toggle under full visibility", () => {
+  test("hides hide voter identities toggle under full visibility", () => {
     render(
       <EmbeddedPollEditorModal
         open
@@ -99,8 +99,7 @@ describe("EmbeddedPollEditorModal", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Advanced settings/i }));
-    const checkbox = screen.getByRole("checkbox", { name: /Hide who has\/hasn't voted/i });
-    expect(checkbox.disabled).toBe(true);
-    expect(checkbox.checked).toBe(false);
+    const checkbox = screen.queryByRole("checkbox", { name: /Hide who has\/hasn't voted/i });
+    expect(checkbox).toBeNull();
   });
 });

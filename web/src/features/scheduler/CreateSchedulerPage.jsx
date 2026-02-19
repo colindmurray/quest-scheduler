@@ -1633,49 +1633,47 @@ export default function CreateSchedulerPage() {
             </p>
             {advancedSettingsExpanded ? (
               <div className="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/60">
-                <div className="flex flex-wrap items-center gap-3">
-                  <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-                    <input
-                      type="checkbox"
-                      checked={hideVoterIdentities}
-                      disabled={hideVoterIdentitiesLocked}
-                      onChange={(event) => setHideVoterIdentities(event.target.checked)}
-                      className="disabled:cursor-not-allowed"
-                    />
-                    <span className="font-semibold">Hide who has/hasn't voted</span>
-                  </label>
-                  <div className="w-full shrink-0 sm:w-72">
-                    <Select
-                      value={voteVisibility}
-                      onValueChange={(value) => {
-                        const nextVisibility = resolveVoteVisibility(value);
-                        setVoteVisibility(nextVisibility);
-                        setHideVoterIdentities((previous) =>
-                          resolveHideVoterIdentitiesForVisibility(previous, nextVisibility)
-                        );
-                      }}
-                    >
-                      <SelectTrigger className="h-10 rounded-xl px-3">
-                        <SelectValue placeholder="Select vote visibility" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {VOTE_VISIBILITY_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="w-full sm:w-72">
+                  <Select
+                    value={voteVisibility}
+                    onValueChange={(value) => {
+                      const nextVisibility = resolveVoteVisibility(value);
+                      setVoteVisibility(nextVisibility);
+                      setHideVoterIdentities((previous) =>
+                        resolveHideVoterIdentitiesForVisibility(previous, nextVisibility)
+                      );
+                    }}
+                  >
+                    <SelectTrigger className="h-10 rounded-xl px-3">
+                      <SelectValue placeholder="Select vote visibility" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VOTE_VISIBILITY_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   {voteVisibilityOption?.description}
                 </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {hideVoterIdentitiesLocked
-                    ? "Hide who has/hasn't voted is unavailable for Full visibility."
-                    : "When enabled, only show vote counts without revealing who voted."}
-                </p>
+                {!hideVoterIdentitiesLocked ? (
+                  <>
+                    <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                      <input
+                        type="checkbox"
+                        checked={hideVoterIdentities}
+                        onChange={(event) => setHideVoterIdentities(event.target.checked)}
+                      />
+                      <span className="font-semibold">Hide who has/hasn't voted</span>
+                    </label>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      When enabled, only show vote counts without revealing who voted.
+                    </p>
+                  </>
+                ) : null}
               </div>
             ) : null}
           </div>
