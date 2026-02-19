@@ -1,3 +1,4 @@
+import { CircleHelp } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -14,6 +15,9 @@ import {
   resolveVoteAnonymization,
   resolveVoteVisibility,
 } from "../../lib/vote-visibility";
+
+const HIDE_VOTE_LIST_TOOLTIP =
+  "Participants still see vote totals. This hides the participant list showing who has or has not voted. Organizer visibility is unchanged.";
 
 export function VotePrivacySettings({
   expanded = false,
@@ -86,8 +90,15 @@ export function VotePrivacySettings({
                   checked={hideVoterIdentities}
                   onChange={(event) => onHideVoterIdentitiesChange?.(event.target.checked)}
                 />
-                <span className="font-semibold text-slate-700 dark:text-slate-200">
-                  Hide voter names from participants
+                <span className="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-200">
+                  Hide list of participants who have already voted
+                  <span
+                    className="inline-flex cursor-help items-center text-slate-500 dark:text-slate-400"
+                    title={HIDE_VOTE_LIST_TOOLTIP}
+                    aria-label={HIDE_VOTE_LIST_TOOLTIP}
+                  >
+                    <CircleHelp className="h-3.5 w-3.5" />
+                  </span>
                 </span>
               </label>
             ) : null}
@@ -97,7 +108,8 @@ export function VotePrivacySettings({
           </p>
           {!hideVoterIdentitiesLocked ? (
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              When enabled, participants see vote totals without seeing who has or has not voted.
+              When enabled, participants see vote totals without the participant list of who has
+              or has not voted.
             </p>
           ) : null}
           <div className="w-full sm:max-w-xs">

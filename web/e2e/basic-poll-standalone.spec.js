@@ -95,7 +95,7 @@ test.describe.serial("Basic Poll standalone", () => {
     await openPrivacySettings(createPrivacyPanel);
     await setSelectValue(createPrivacyPanel, 0, "Visible after everyone votes", page);
     await createPrivacyPanel
-      .getByRole("checkbox", { name: "Hide voter names from participants" })
+      .getByRole("checkbox", { name: "Hide list of participants who have already voted" })
       .check();
     await setSelectValue(createPrivacyPanel, 1, "Anonymous for everyone", page);
 
@@ -125,12 +125,12 @@ test.describe.serial("Basic Poll standalone", () => {
 
     await openPrivacySettings(editPrivacyPanel);
     await expect(
-      editPrivacyPanel.getByRole("checkbox", { name: "Hide voter names from participants" })
+      editPrivacyPanel.getByRole("checkbox", { name: "Hide list of participants who have already voted" })
     ).toBeChecked();
 
     await setSelectValue(editPrivacyPanel, 0, "Visible to participants immediately", page);
     await expect(
-      editPrivacyPanel.getByRole("checkbox", { name: "Hide voter names from participants" })
+      editPrivacyPanel.getByRole("checkbox", { name: "Hide list of participants who have already voted" })
     ).toHaveCount(0);
   });
 });

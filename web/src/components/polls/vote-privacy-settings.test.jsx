@@ -15,7 +15,7 @@ describe("VotePrivacySettings", () => {
 
     expect(screen.getByText(/Vote privacy: Visible after finalization/i)).toBeTruthy();
     expect(screen.getByText(/Identity labels: Anonymous for participants/i)).toBeTruthy();
-    expect(screen.queryByRole("checkbox", { name: /Hide voter names from participants/i })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: /Hide list of participants who have already voted/i })).toBeNull();
   });
 
   test("shows hide voter identities checkbox for non-full visibility", () => {
@@ -30,8 +30,11 @@ describe("VotePrivacySettings", () => {
       />
     );
 
-    const checkbox = screen.getByRole("checkbox", { name: /Hide voter names from participants/i });
+    const checkbox = screen.getByRole("checkbox", { name: /Hide list of participants who have already voted/i });
     expect(checkbox.checked).toBe(false);
+    expect(
+      screen.getByTitle(/Participants still see vote totals\./i)
+    ).toBeTruthy();
     fireEvent.click(checkbox);
     expect(onHideVoterIdentitiesChange).toHaveBeenCalledWith(true);
   });
@@ -46,7 +49,7 @@ describe("VotePrivacySettings", () => {
       />
     );
 
-    expect(screen.queryByRole("checkbox", { name: /Hide voter names from participants/i })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: /Hide list of participants who have already voted/i })).toBeNull();
     expect(screen.getByText(/Identity labels: Anonymous for everyone/i)).toBeTruthy();
   });
 });
