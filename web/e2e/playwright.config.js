@@ -54,7 +54,9 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
+    // Reuse can accidentally bind tests to a stale server without emulator env.
+    // Keep deterministic by default; opt-in via PW_REUSE_SERVER=true.
+    reuseExistingServer: process.env.PW_REUSE_SERVER === 'true',
     env: {
       ...process.env,
       VITE_USE_EMULATORS: 'true',

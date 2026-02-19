@@ -18,7 +18,7 @@
     "test:e2e:emulators": "../scripts/run-e2e.sh",
     "test:rules": "firebase emulators:exec --only firestore,storage 'vitest run --config vitest.rules.config.js'",
     "test:integration": "firebase emulators:exec 'vitest run --config vitest.integration.config.js'",
-    "test:all": "npm run test && npm run test:rules && npm run test:e2e",
+    "test:all": "npm run test && npm run test:rules && npm run test:e2e:emulators",
     "emulators": "firebase emulators:start",
     "emulators:test": "firebase emulators:start --only firestore,auth,storage",
     "preview": "vite preview"
