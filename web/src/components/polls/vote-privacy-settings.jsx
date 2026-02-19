@@ -57,25 +57,94 @@ export function VotePrivacySettings({
           {expanded ? "Hide" : "Show"}
         </span>
       </button>
-      <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-        Vote privacy: {voteVisibilityOption?.label || "Vote visibility"}
-        {!hideVoterIdentitiesLocked && hideVoterIdentities ? " + voter list hidden" : ""}
-        {" · "}
-        Identity labels: {voteAnonymizationOption?.label || "No anonymization"}
-      </p>
+      <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 dark:border-slate-700 dark:bg-slate-800">
+          Vote privacy: {voteVisibilityOption?.label || "Vote visibility"}
+        </span>
+        {!hideVoterIdentitiesLocked && hideVoterIdentities ? (
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 dark:border-slate-700 dark:bg-slate-800">
+            Participant vote list hidden
+          </span>
+        ) : null}
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 dark:border-slate-700 dark:bg-slate-800">
+          Identity labels: {voteAnonymizationOption?.label || "No anonymization"}
+        </span>
+      </div>
       {expanded ? (
-        <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2.5 dark:border-slate-700 dark:bg-slate-800/60">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="mt-2 space-y-2 rounded-lg border border-slate-200/80 bg-slate-50/70 p-2.5 dark:border-slate-700 dark:bg-slate-800/60">
+          <div className="grid gap-2.5 rounded-md border border-slate-200/70 bg-white/80 p-2.5 dark:border-slate-700 dark:bg-slate-900/70 sm:grid-cols-[minmax(0,13.5rem)_minmax(0,1fr)]">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Vote privacy</p>
+              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                {voteVisibilityOption?.description}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-3">
+                <div className="w-full lg:max-w-xs">
+                  <Select
+                    value={normalizedVoteVisibility}
+                    onValueChange={(value) => onVoteVisibilityChange?.(resolveVoteVisibility(value))}
+                  >
+                    <SelectTrigger className="h-9 rounded-lg border-slate-300 bg-white px-3 text-xs dark:border-slate-600 dark:bg-slate-900">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VOTE_VISIBILITY_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {!hideVoterIdentitiesLocked ? (
+                  <label className="flex min-w-0 items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
+                    <input
+                      className="mt-0.5"
+                      type="checkbox"
+                      checked={hideVoterIdentities}
+                      onChange={(event) => onHideVoterIdentitiesChange?.(event.target.checked)}
+                    />
+                    <span className="inline-flex min-w-0 items-start gap-1 font-semibold leading-snug text-slate-700 dark:text-slate-200">
+                      <span>Hide list of participants who have already voted</span>
+                      <span
+                        className="inline-flex shrink-0 cursor-help items-center text-slate-500 dark:text-slate-400"
+                        title={HIDE_VOTE_LIST_TOOLTIP}
+                        aria-label={HIDE_VOTE_LIST_TOOLTIP}
+                      >
+                        <CircleHelp className="h-3.5 w-3.5" />
+                      </span>
+                    </span>
+                  </label>
+                ) : null}
+              </div>
+              {!hideVoterIdentitiesLocked && hideVoterIdentities ? (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Participants still see vote totals, but not who has or has not voted.
+                </p>
+              ) : null}
+            </div>
+          </div>
+          <div className="grid gap-2.5 rounded-md border border-slate-200/70 bg-white/80 p-2.5 dark:border-slate-700 dark:bg-slate-900/70 sm:grid-cols-[minmax(0,13.5rem)_minmax(0,1fr)]">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                Identity labels
+              </p>
+              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                {voteAnonymizationOption?.description}
+              </p>
+            </div>
             <div className="w-full sm:max-w-xs">
               <Select
-                value={normalizedVoteVisibility}
-                onValueChange={(value) => onVoteVisibilityChange?.(resolveVoteVisibility(value))}
+                value={normalizedVoteAnonymization}
+                onValueChange={(value) => onVoteAnonymizationChange?.(resolveVoteAnonymization(value))}
               >
                 <SelectTrigger className="h-9 rounded-lg border-slate-300 bg-white px-3 text-xs dark:border-slate-600 dark:bg-slate-900">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {VOTE_VISIBILITY_OPTIONS.map((option) => (
+                  {VOTE_ANONYMIZATION_OPTIONS.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>
@@ -83,57 +152,7 @@ export function VotePrivacySettings({
                 </SelectContent>
               </Select>
             </div>
-            {!hideVoterIdentitiesLocked ? (
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={hideVoterIdentities}
-                  onChange={(event) => onHideVoterIdentitiesChange?.(event.target.checked)}
-                />
-                <span className="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-200">
-                  Hide list of participants who have already voted
-                  <span
-                    className="inline-flex cursor-help items-center text-slate-500 dark:text-slate-400"
-                    title={HIDE_VOTE_LIST_TOOLTIP}
-                    aria-label={HIDE_VOTE_LIST_TOOLTIP}
-                  >
-                    <CircleHelp className="h-3.5 w-3.5" />
-                  </span>
-                </span>
-              </label>
-            ) : null}
           </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">
-            {voteVisibilityOption?.description}
-          </p>
-          {!hideVoterIdentitiesLocked ? (
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              When enabled, participants see vote totals without the participant list of who has
-              or has not voted.
-            </p>
-          ) : null}
-          <div className="w-full sm:max-w-xs">
-            <Select
-              value={normalizedVoteAnonymization}
-              onValueChange={(value) =>
-                onVoteAnonymizationChange?.(resolveVoteAnonymization(value))
-              }
-            >
-              <SelectTrigger className="h-9 rounded-lg border-slate-300 bg-white px-3 text-xs dark:border-slate-600 dark:bg-slate-900">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {VOTE_ANONYMIZATION_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">
-            {voteAnonymizationOption?.description}
-          </p>
         </div>
       ) : null}
     </div>
