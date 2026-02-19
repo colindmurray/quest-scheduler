@@ -11,7 +11,10 @@ const { computeInstantRunoffResults } = require("./basic-polls/irv");
 const { computeMultipleChoiceTallies } = require("./basic-polls/multiple-choice");
 const { computeSchedulerRequiredEmbeddedPollSummary } = require("./basic-polls/required-summary");
 const { hasSubmittedVote: hasSubmittedBasicPollVote } = require("./basic-polls/vote-submission");
-const { resolveVoteVisibility } = require("./utils/vote-visibility");
+const {
+  resolveVoteAnonymization,
+  resolveVoteVisibility,
+} = require("./utils/vote-visibility");
 const {
   DISCORD_USERNAME_REGEX,
   LEGACY_DISCORD_TAG_REGEX,
@@ -930,6 +933,7 @@ exports.cloneSchedulerPoll = functions.https.onCall(async (data, context) => {
     timezone: scheduler.timezone || null,
     timezoneMode: scheduler.timezoneMode || null,
     voteVisibility: resolveVoteVisibility(scheduler.voteVisibility),
+    voteAnonymization: resolveVoteAnonymization(scheduler.voteAnonymization),
     hideVoterIdentities: scheduler.hideVoterIdentities === true,
     votesAllSubmitted: false,
     winningSlotId: null,

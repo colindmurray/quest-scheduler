@@ -1,11 +1,15 @@
 import { describe, expect, test } from "vitest";
 import {
+  DEFAULT_VOTE_ANONYMIZATION,
   DEFAULT_HIDE_VOTER_IDENTITIES,
   DEFAULT_VOTE_VISIBILITY,
+  VOTE_ANONYMIZATION,
   VOTE_VISIBILITY,
   canViewVoterIdentities,
   canViewOtherVotesForUser,
   canViewOtherVotesPublicly,
+  getVoteIdentityDisplayMode,
+  resolveVoteAnonymization,
   resolveHideVoterIdentities,
   resolveHideVoterIdentitiesForVisibility,
   resolveVoteVisibility,
@@ -23,6 +27,13 @@ describe("vote visibility helpers", () => {
     expect(resolveHideVoterIdentities(false)).toBe(false);
     expect(resolveHideVoterIdentities(undefined)).toBe(false);
     expect(resolveHideVoterIdentities("true")).toBe(false);
+  });
+
+  test("resolveVoteAnonymization defaults unknown values", () => {
+    expect(resolveVoteAnonymization("unknown_mode")).toBe(DEFAULT_VOTE_ANONYMIZATION);
+    expect(resolveVoteAnonymization(VOTE_ANONYMIZATION.ALL_PARTICIPANTS)).toBe(
+      VOTE_ANONYMIZATION.ALL_PARTICIPANTS
+    );
   });
 
   test("hide voter identities is forced off for full visibility", () => {
@@ -106,5 +117,31 @@ describe("vote visibility helpers", () => {
         isFinalized: true,
       })
     ).toBe(false);
+  });
+
+  test("vote identity display mode resolves hidden, anonymous, and named states", () => {
+    expect(
+      getVoteIdentityDisplayMode({
+        isCreator: false,
+        hideVoterIdentities: true,
+        voteAnonymization: VOTE_ANONYMIZATION.ALL_PARTICIPANTS,
+      })
+    ).toBe("hidden");
+
+    expect(
+      getVoteIdentityDisplayMode({
+        isCreator: false,
+        hideVoterIdentities: false,
+        voteAnonymization: VOTE_ANONYMIZATION.CREATOR_EXCLUDED,
+      })
+    ).toBe("anonymous");
+
+    expect(
+      getVoteIdentityDisplayMode({
+        isCreator: true,
+        hideVoterIdentities: false,
+        voteAnonymization: VOTE_ANONYMIZATION.CREATOR_EXCLUDED,
+      })
+    ).toBe("named");
   });
 });

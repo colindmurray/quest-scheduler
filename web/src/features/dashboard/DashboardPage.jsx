@@ -17,7 +17,11 @@ import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfil
 import { useSchedulerAttendance } from "./hooks/useSchedulerAttendance";
 import { normalizeEmail } from "../../lib/utils";
 import { coerceDate, resolveDisplayTimeZone, shouldShowTimeZone } from "../../lib/time";
-import { canViewVoterIdentities } from "../../lib/vote-visibility";
+import { getVoteIdentityDisplayMode } from "../../lib/vote-visibility";
+import {
+  anonymizeUsers,
+  buildAnonymousIdentityMap,
+} from "../../lib/anonymous-voter-identities";
 import { useDashboardBasicPollSource } from "./hooks/use-dashboard-basic-poll-source";
 import { useDashboardBasicPollActions } from "./hooks/use-dashboard-basic-poll-actions";
 import { useDashboardGeneralPollModals } from "./hooks/use-dashboard-general-poll-modals";
@@ -846,16 +850,40 @@ export default function DashboardPage({
   );
   const visibleBasicPolls = useMemo(
     () =>
-      (basicPollBuckets[basicPollTab] || []).map((poll) => ({
-        ...poll,
-        eligibleUsers: buildUsersFromIds(poll.eligibleIds, pollCardProfilesById),
-        votedUsers: buildUsersFromIds(poll.voterIds, pollCardProfilesById),
-        pendingUsers: buildUsersFromIds(poll.pendingIds, pollCardProfilesById),
-        showVoterIdentities: canViewVoterIdentities({
+      (basicPollBuckets[basicPollTab] || []).map((poll) => {
+        const voteIdentityDisplayMode = getVoteIdentityDisplayMode({
           isCreator: String(poll?.creatorId || "").trim() === String(user?.uid || "").trim(),
           hideVoterIdentities: poll?.hideVoterIdentities,
-        }),
-      })),
+          voteAnonymization: poll?.voteAnonymization,
+        });
+        const eligibleUsers = buildUsersFromIds(poll.eligibleIds, pollCardProfilesById);
+        const votedUsers = buildUsersFromIds(poll.voterIds, pollCardProfilesById);
+        const pendingUsers = buildUsersFromIds(poll.pendingIds, pollCardProfilesById);
+        const anonymousIdentityMap =
+          voteIdentityDisplayMode === "anonymous"
+            ? buildAnonymousIdentityMap(
+                [...eligibleUsers, ...votedUsers, ...pendingUsers],
+                { scopeKey: `dashboard:${poll.parentType}:${poll.parentId}:${poll.pollId}` }
+              )
+            : null;
+        return {
+          ...poll,
+          eligibleUsers:
+            voteIdentityDisplayMode === "anonymous"
+              ? anonymizeUsers(eligibleUsers, anonymousIdentityMap, { keyPrefix: "eligible" })
+              : eligibleUsers,
+          votedUsers:
+            voteIdentityDisplayMode === "anonymous"
+              ? anonymizeUsers(votedUsers, anonymousIdentityMap, { keyPrefix: "voted" })
+              : votedUsers,
+          pendingUsers:
+            voteIdentityDisplayMode === "anonymous"
+              ? anonymizeUsers(pendingUsers, anonymousIdentityMap, { keyPrefix: "pending" })
+              : pendingUsers,
+          showVoterIdentities: voteIdentityDisplayMode !== "hidden",
+          voteIdentityDisplayMode,
+        };
+      }),
     [basicPollBuckets, basicPollTab, pollCardProfilesById, user?.uid]
   );
 
@@ -1031,11 +1059,12 @@ export default function DashboardPage({
                         }
                       participants={scheduler.effectiveParticipants || []}
                       voters={scheduler.voters || []}
-                      showVoterIdentities={canViewVoterIdentities({
+                      voteIdentityDisplayMode={getVoteIdentityDisplayMode({
                         isCreator:
                           String(scheduler?.creatorId || "").trim() ===
                           String(user?.uid || "").trim(),
                         hideVoterIdentities: scheduler?.hideVoterIdentities,
+                        voteAnonymization: scheduler?.voteAnonymization,
                       })}
                       questingGroup={
                         scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null
@@ -1069,11 +1098,12 @@ export default function DashboardPage({
                       participants={scheduler.effectiveParticipants || []}
                       voters={scheduler.voters || []}
                       votedCount={scheduler.votedCount}
-                      showVoterIdentities={canViewVoterIdentities({
+                      voteIdentityDisplayMode={getVoteIdentityDisplayMode({
                         isCreator:
                           String(scheduler?.creatorId || "").trim() ===
                           String(user?.uid || "").trim(),
                         hideVoterIdentities: scheduler?.hideVoterIdentities,
+                        voteAnonymization: scheduler?.voteAnonymization,
                       })}
                       questingGroup={
                         scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null
@@ -1162,11 +1192,12 @@ export default function DashboardPage({
                     attendanceSummary={enriched?.attendanceSummary}
                     participants={enriched?.effectiveParticipants || []}
                     voters={enriched?.voters || []}
-                    showVoterIdentities={canViewVoterIdentities({
+                    voteIdentityDisplayMode={getVoteIdentityDisplayMode({
                       isCreator:
                         String(scheduler?.creatorId || "").trim() ===
                         String(user?.uid || "").trim(),
                       hideVoterIdentities: scheduler?.hideVoterIdentities,
+                      voteAnonymization: scheduler?.voteAnonymization,
                     })}
                     questingGroup={scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null}
                   />

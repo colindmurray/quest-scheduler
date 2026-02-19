@@ -283,6 +283,7 @@ describe('basic-poll callables', () => {
         title: 'Snack vote',
         status: 'OPEN',
         voteVisibility: 'hidden_while_voting',
+        voteAnonymization: 'none',
         hideVoterIdentities: false,
         createdAt: 'server-time',
       })
@@ -331,6 +332,28 @@ describe('basic-poll callables', () => {
     expect(createdPollSetMock).toHaveBeenCalledWith(
       expect.objectContaining({
         voteVisibility: 'full_visibility',
+      })
+    );
+  });
+
+  test('createBasicPoll defaults invalid vote anonymization to none', async () => {
+    await callables.createBasicPoll.run(
+      {
+        parentType: 'group',
+        parentId: 'g1',
+        pollData: {
+          title: 'Fallback vote anonymization',
+          options: pollData.options,
+          settings: pollData.settings,
+          voteAnonymization: 'not-a-mode',
+        },
+      },
+      buildContext('owner-1')
+    );
+
+    expect(createdPollSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voteAnonymization: 'none',
       })
     );
   });

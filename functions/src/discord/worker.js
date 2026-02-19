@@ -12,6 +12,7 @@ const {
 } = require("./config");
 const { normalizeEmail } = require("../utils/email");
 const {
+  DEFAULT_VOTE_ANONYMIZATION,
   DEFAULT_VOTE_VISIBILITY,
   canViewOtherVotesPublicly,
   resolveVoteVisibility,
@@ -1009,6 +1010,7 @@ async function handlePollCreate(interaction) {
       deadlineAt: deadlineResult.deadlineAt,
     },
     voteVisibility: pollVoteVisibility,
+    voteAnonymization: DEFAULT_VOTE_ANONYMIZATION,
     hideVoterIdentities: false,
     votesAllSubmitted: false,
     source: "discord",

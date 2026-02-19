@@ -78,12 +78,13 @@ import { buildColorMap, uniqueUsers } from "../../components/ui/voter-avatar-uti
 import { DatePicker } from "../../components/ui/date-picker";
 import { Switch } from "../../components/ui/switch";
 import {
+  DEFAULT_VOTE_ANONYMIZATION,
   DEFAULT_VOTE_VISIBILITY,
-  VOTE_VISIBILITY,
-  VOTE_VISIBILITY_OPTIONS,
+  resolveVoteAnonymization,
   resolveHideVoterIdentitiesForVisibility,
   resolveVoteVisibility,
 } from "../../lib/vote-visibility";
+import { VotePrivacySettings } from "../../components/polls/vote-privacy-settings";
 import { hasSubmittedSchedulerVote } from "../../lib/vote-utils";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "./calendar-styles.css";
@@ -203,6 +204,7 @@ export default function CreateSchedulerPage() {
   const [draftDuration, setDraftDuration] = useState(240);
   const [allowLinkSharing, setAllowLinkSharing] = useState(false);
   const [voteVisibility, setVoteVisibility] = useState(DEFAULT_VOTE_VISIBILITY);
+  const [voteAnonymization, setVoteAnonymization] = useState(DEFAULT_VOTE_ANONYMIZATION);
   const [hideVoterIdentities, setHideVoterIdentities] = useState(false);
   const [advancedSettingsExpanded, setAdvancedSettingsExpanded] = useState(false);
   const [selectedTimezone, setSelectedTimezone] = useState(
@@ -380,6 +382,7 @@ export default function CreateSchedulerPage() {
     setAllowLinkSharing(Boolean(scheduler.data.allowLinkSharing));
     const schedulerVoteVisibility = resolveVoteVisibility(scheduler.data.voteVisibility);
     setVoteVisibility(schedulerVoteVisibility);
+    setVoteAnonymization(resolveVoteAnonymization(scheduler.data.voteAnonymization));
     setHideVoterIdentities(
       resolveHideVoterIdentitiesForVisibility(
         scheduler.data.hideVoterIdentities === true,
@@ -761,6 +764,7 @@ export default function CreateSchedulerPage() {
       pollDescription,
       timezoneModeForScheduler,
       voteVisibility: nextVoteVisibility,
+      voteAnonymization: resolveVoteAnonymization(voteAnonymization),
       hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
         hideVoterIdentities === true,
         nextVoteVisibility
@@ -788,6 +792,7 @@ export default function CreateSchedulerPage() {
         pollDescription,
         timezoneModeForScheduler,
         voteVisibility: nextVoteVisibility,
+        voteAnonymization: nextVoteAnonymization,
         hideVoterIdentities: nextHideVoterIdentities,
       } = getPollInputs();
       const inviteRecipients = Array.from(
@@ -848,6 +853,7 @@ export default function CreateSchedulerPage() {
         questingGroupId: selectedGroup?.id || null,
         questingGroupName: selectedGroup?.name || null,
         voteVisibility: nextVoteVisibility,
+        voteAnonymization: nextVoteAnonymization,
         hideVoterIdentities: nextHideVoterIdentities,
         votesAllSubmitted,
         participants: deleteField(),
@@ -986,6 +992,7 @@ export default function CreateSchedulerPage() {
         pollDescription,
         timezoneModeForScheduler,
         voteVisibility: nextVoteVisibility,
+        voteAnonymization: nextVoteAnonymization,
         hideVoterIdentities: nextHideVoterIdentities,
       } = getPollInputs();
       const inviteRecipients = Array.from(
@@ -1022,6 +1029,7 @@ export default function CreateSchedulerPage() {
         winningSlotId: null,
         googleEventId: null,
         voteVisibility: nextVoteVisibility,
+        voteAnonymization: nextVoteAnonymization,
         hideVoterIdentities: nextHideVoterIdentities,
         votesAllSubmitted: false,
         questingGroupId: selectedGroup?.id || null,
@@ -1229,12 +1237,6 @@ export default function CreateSchedulerPage() {
       </div>
     );
   }
-
-  const normalizedVoteVisibility = resolveVoteVisibility(voteVisibility);
-  const voteVisibilityOption = VOTE_VISIBILITY_OPTIONS.find(
-    (option) => option.value === normalizedVoteVisibility
-  );
-  const hideVoterIdentitiesLocked = normalizedVoteVisibility === VOTE_VISIBILITY.FULL;
 
   return (
     <>
@@ -1614,68 +1616,21 @@ export default function CreateSchedulerPage() {
           </div>
 
           <div className="mt-6 rounded-2xl border border-slate-200/70 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/60">
-            <button
-              type="button"
-              onClick={() => setAdvancedSettingsExpanded((previous) => !previous)}
-              aria-expanded={advancedSettingsExpanded}
-              className="flex w-full items-center justify-between rounded-xl border border-slate-200/80 px-3 py-2 text-left transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-            >
-              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                Advanced settings
-              </span>
-              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                {advancedSettingsExpanded ? "Hide" : "Show"}
-              </span>
-            </button>
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Vote privacy: {voteVisibilityOption?.label || "Vote visibility"}
-              {hideVoterIdentities ? " + identities hidden" : ""}
-            </p>
-            {advancedSettingsExpanded ? (
-              <div className="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/60">
-                <div className="w-full sm:w-72">
-                  <Select
-                    value={voteVisibility}
-                    onValueChange={(value) => {
-                      const nextVisibility = resolveVoteVisibility(value);
-                      setVoteVisibility(nextVisibility);
-                      setHideVoterIdentities((previous) =>
-                        resolveHideVoterIdentitiesForVisibility(previous, nextVisibility)
-                      );
-                    }}
-                  >
-                    <SelectTrigger className="h-10 rounded-xl px-3">
-                      <SelectValue placeholder="Select vote visibility" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {VOTE_VISIBILITY_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {voteVisibilityOption?.description}
-                </p>
-                {!hideVoterIdentitiesLocked ? (
-                  <>
-                    <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-                      <input
-                        type="checkbox"
-                        checked={hideVoterIdentities}
-                        onChange={(event) => setHideVoterIdentities(event.target.checked)}
-                      />
-                      <span className="font-semibold">Hide who has/hasn't voted</span>
-                    </label>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      When enabled, only show vote counts without revealing who voted.
-                    </p>
-                  </>
-                ) : null}
-              </div>
-            ) : null}
+            <VotePrivacySettings
+              expanded={advancedSettingsExpanded}
+              onExpandedChange={setAdvancedSettingsExpanded}
+              voteVisibility={voteVisibility}
+              onVoteVisibilityChange={(nextVisibility) => {
+                setVoteVisibility(nextVisibility);
+                setHideVoterIdentities((previous) =>
+                  resolveHideVoterIdentitiesForVisibility(previous, nextVisibility)
+                );
+              }}
+              hideVoterIdentities={hideVoterIdentities}
+              onHideVoterIdentitiesChange={setHideVoterIdentities}
+              voteAnonymization={voteAnonymization}
+              onVoteAnonymizationChange={setVoteAnonymization}
+            />
           </div>
 
           {hasInvalidSlots && (

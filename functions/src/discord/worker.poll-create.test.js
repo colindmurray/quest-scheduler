@@ -263,6 +263,7 @@ describe("discord worker poll-create", () => {
         source: "discord",
         creatorId: "qs-user-1",
         voteVisibility: "full_visibility",
+        voteAnonymization: "none",
         hideVoterIdentities: false,
         votesAllSubmitted: false,
         options: expect.arrayContaining([

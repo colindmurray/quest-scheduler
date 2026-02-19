@@ -6,6 +6,10 @@ import { useUserProfiles } from "../../../hooks/useUserProfiles";
 import { useSafeNavigate } from "../../../hooks/useSafeNavigate";
 import { normalizeEmail } from "../../../lib/utils";
 import { PollStatusMeta } from "../../../components/poll-status-meta";
+import {
+  anonymizeUsers,
+  buildAnonymousIdentityMap,
+} from "../../../lib/anonymous-voter-identities";
 
 export function SessionCard({
   scheduler,
@@ -21,9 +25,12 @@ export function SessionCard({
   questingGroup = null,
   displayTimeZone = null,
   showTimeZone = true,
+  voteIdentityDisplayMode = "named",
   showVoterIdentities = true,
 }) {
   const safeNavigate = useSafeNavigate();
+  const effectiveVoteIdentityDisplayMode = voteIdentityDisplayMode || (showVoterIdentities ? "named" : "hidden");
+  const shouldShowVoteIdentities = effectiveVoteIdentityDisplayMode !== "hidden";
   const participantEmails = participants.map((p) => (typeof p === "string" ? p : p.email));
   const voterEmails = voters.map((v) => normalizeEmail(v.email)).filter(Boolean);
   const colorMap = buildColorMap(participantEmails);
@@ -41,11 +48,45 @@ export function SessionCard({
     () => enrichUsers(attendanceSummary?.unresponded || []),
     [attendanceSummary?.unresponded, enrichUsers]
   );
+  const anonymousIdentityMap = useMemo(() => {
+    if (effectiveVoteIdentityDisplayMode !== "anonymous") return null;
+    return buildAnonymousIdentityMap(
+      [...participantUsers, ...confirmedUsers, ...unavailableUsers, ...unrespondedUsers],
+      { scopeKey: `dashboard:scheduler:${scheduler.id}` }
+    );
+  }, [
+    confirmedUsers,
+    effectiveVoteIdentityDisplayMode,
+    participantUsers,
+    scheduler.id,
+    unavailableUsers,
+    unrespondedUsers,
+  ]);
+  const participantUsersForDisplay = useMemo(() => {
+    if (effectiveVoteIdentityDisplayMode !== "anonymous") return participantUsers;
+    return anonymizeUsers(participantUsers, anonymousIdentityMap, { keyPrefix: "participants" });
+  }, [anonymousIdentityMap, effectiveVoteIdentityDisplayMode, participantUsers]);
+  const confirmedUsersForDisplay = useMemo(() => {
+    if (effectiveVoteIdentityDisplayMode !== "anonymous") return confirmedUsers;
+    return anonymizeUsers(confirmedUsers, anonymousIdentityMap, { keyPrefix: "confirmed" });
+  }, [anonymousIdentityMap, confirmedUsers, effectiveVoteIdentityDisplayMode]);
+  const unavailableUsersForDisplay = useMemo(() => {
+    if (effectiveVoteIdentityDisplayMode !== "anonymous") return unavailableUsers;
+    return anonymizeUsers(unavailableUsers, anonymousIdentityMap, { keyPrefix: "unavailable" });
+  }, [anonymousIdentityMap, effectiveVoteIdentityDisplayMode, unavailableUsers]);
+  const unrespondedUsersForDisplay = useMemo(() => {
+    if (effectiveVoteIdentityDisplayMode !== "anonymous") return unrespondedUsers;
+    return anonymizeUsers(unrespondedUsers, anonymousIdentityMap, { keyPrefix: "unresponded" });
+  }, [anonymousIdentityMap, effectiveVoteIdentityDisplayMode, unrespondedUsers]);
   // Calculate who has voted and who hasn't
   const voterEmailSet = new Set(voterEmails);
   const pendingVoters = participantUsers.filter(
     (p) => !voterEmailSet.has(normalizeEmail(p.email))
   );
+  const pendingVotersForDisplay = useMemo(() => {
+    if (effectiveVoteIdentityDisplayMode !== "anonymous") return pendingVoters;
+    return anonymizeUsers(pendingVoters, anonymousIdentityMap, { keyPrefix: "pending" });
+  }, [anonymousIdentityMap, effectiveVoteIdentityDisplayMode, pendingVoters]);
 
   // Determine guests (participants not in questing group)
   const groupMemberSet = new Set(
@@ -134,9 +175,9 @@ export function SessionCard({
             {/* Invitees section */}
             <div className="flex items-center gap-1.5">
               <span className="font-medium">{participantUsers.length} invitee{participantUsers.length !== 1 ? "s" : ""}:</span>
-              {showVoterIdentities ? (
+              {shouldShowVoteIdentities ? (
                 <AvatarStack
-                  users={participantUsers}
+                  users={participantUsersForDisplay}
                   max={10}
                   size={18}
                   colorMap={colorMap}
@@ -152,8 +193,8 @@ export function SessionCard({
                     <span className="font-medium text-amber-600 dark:text-amber-400">
                       {pendingVoters.length}/{totalParticipants} pending:
                     </span>
-                    {showVoterIdentities ? (
-                      <VotingAvatarStack users={pendingVoters} size={18} colorMap={colorMap} />
+                    {shouldShowVoteIdentities ? (
+                      <VotingAvatarStack users={pendingVotersForDisplay} size={18} colorMap={colorMap} />
                     ) : null}
                   </>
                 ) : (
@@ -170,7 +211,9 @@ export function SessionCard({
               <span className="font-semibold text-emerald-600 dark:text-emerald-300">
                 Confirmed
               </span>
-              <VotingAvatarStack users={confirmedUsers} size={16} colorMap={colorMap} />
+              {shouldShowVoteIdentities ? (
+                <VotingAvatarStack users={confirmedUsersForDisplay} size={16} colorMap={colorMap} />
+              ) : null}
               <span className="text-slate-400 dark:text-slate-500">
                 {confirmedUsers.length}
               </span>
@@ -179,7 +222,9 @@ export function SessionCard({
               <span className="font-semibold text-rose-600 dark:text-rose-300">
                 Unavailable
               </span>
-              <VotingAvatarStack users={unavailableUsers} size={16} colorMap={colorMap} />
+              {shouldShowVoteIdentities ? (
+                <VotingAvatarStack users={unavailableUsersForDisplay} size={16} colorMap={colorMap} />
+              ) : null}
               <span className="text-slate-400 dark:text-slate-500">
                 {unavailableUsers.length}
               </span>
@@ -188,7 +233,9 @@ export function SessionCard({
               <span className="font-semibold text-slate-500 dark:text-slate-300">
                 Unresponded
               </span>
-              <VotingAvatarStack users={unrespondedUsers} size={16} colorMap={colorMap} />
+              {shouldShowVoteIdentities ? (
+                <VotingAvatarStack users={unrespondedUsersForDisplay} size={16} colorMap={colorMap} />
+              ) : null}
               <span className="text-slate-400 dark:text-slate-500">
                 {unrespondedUsers.length}
               </span>

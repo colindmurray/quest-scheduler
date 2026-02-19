@@ -2,7 +2,7 @@ import { Archive } from "lucide-react";
 import { SessionCard } from "./SessionCard";
 import { SectionHeader } from "./section-header";
 import { TabButton } from "./tab-button";
-import { canViewVoterIdentities } from "../../../lib/vote-visibility";
+import { getVoteIdentityDisplayMode } from "../../../lib/vote-visibility";
 
 export function PastSessionsSection({
   pastSessionsTab,
@@ -64,11 +64,12 @@ export function PastSessionsSection({
                 attendanceSummary={scheduler.attendanceSummary}
                 participants={scheduler.effectiveParticipants || []}
                 voters={scheduler.voters || []}
-                showVoterIdentities={canViewVoterIdentities({
+                voteIdentityDisplayMode={getVoteIdentityDisplayMode({
                   isCreator:
                     String(scheduler?.creatorId || "").trim() ===
                     String(currentUserId || "").trim(),
                   hideVoterIdentities: scheduler?.hideVoterIdentities,
+                  voteAnonymization: scheduler?.voteAnonymization,
                 })}
                 questingGroup={
                   scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null
@@ -100,11 +101,12 @@ export function PastSessionsSection({
                 attendanceSummary={scheduler.attendanceSummary}
                 participants={scheduler.effectiveParticipants || []}
                 voters={scheduler.voters || []}
-                showVoterIdentities={canViewVoterIdentities({
+                voteIdentityDisplayMode={getVoteIdentityDisplayMode({
                   isCreator:
                     String(scheduler?.creatorId || "").trim() ===
                     String(currentUserId || "").trim(),
                   hideVoterIdentities: scheduler?.hideVoterIdentities,
+                  voteAnonymization: scheduler?.voteAnonymization,
                 })}
                 questingGroup={
                   scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null
@@ -135,11 +137,12 @@ export function PastSessionsSection({
                 attendanceSummary={scheduler.attendanceSummary}
                 participants={scheduler.effectiveParticipants || []}
                 voters={scheduler.voters || []}
-                showVoterIdentities={canViewVoterIdentities({
+                voteIdentityDisplayMode={getVoteIdentityDisplayMode({
                   isCreator:
                     String(scheduler?.creatorId || "").trim() ===
                     String(currentUserId || "").trim(),
                   hideVoterIdentities: scheduler?.hideVoterIdentities,
+                  voteAnonymization: scheduler?.voteAnonymization,
                 })}
                 questingGroup={
                   scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null

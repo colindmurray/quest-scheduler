@@ -187,7 +187,7 @@ describe("CreateGroupPollModal", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Advanced settings/i }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Hide who has\/hasn't voted/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Hide voter names from participants/i }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
@@ -196,6 +196,7 @@ describe("CreateGroupPollModal", () => {
         "poll-1",
         expect.objectContaining({
           hideVoterIdentities: true,
+          voteAnonymization: "none",
         })
       );
     });
@@ -229,7 +230,7 @@ describe("CreateGroupPollModal", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Advanced settings/i }));
-    const checkbox = screen.queryByRole("checkbox", { name: /Hide who has\/hasn't voted/i });
+    const checkbox = screen.queryByRole("checkbox", { name: /Hide voter names from participants/i });
     expect(checkbox).toBeNull();
   });
 });

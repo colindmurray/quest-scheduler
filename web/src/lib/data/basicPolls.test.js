@@ -47,6 +47,7 @@ describe("basicPolls data layer", () => {
       expect.objectContaining({
         title: "Snack vote",
         status: "OPEN",
+        voteAnonymization: "none",
         hideVoterIdentities: false,
         createdAt: "server-time",
         updatedAt: "server-time",
@@ -61,6 +62,20 @@ describe("basicPolls data layer", () => {
       { path: "questingGroups/group-1/basicPolls/poll-1" },
       {
         title: "Updated title",
+        updatedAt: "server-time",
+      }
+    );
+  });
+
+  test("normalizes voteAnonymization on updates", async () => {
+    await basicPolls.updateBasicPoll("group-1", "poll-1", {
+      voteAnonymization: "not-valid",
+    });
+
+    expect(firestoreMocks.updateDoc).toHaveBeenCalledWith(
+      { path: "questingGroups/group-1/basicPolls/poll-1" },
+      {
+        voteAnonymization: "none",
         updatedAt: "server-time",
       }
     );

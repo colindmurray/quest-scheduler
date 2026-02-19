@@ -123,9 +123,14 @@ import {
 import { hasSubmittedSchedulerVote, isAttendingVote } from "../../lib/vote-utils";
 import {
   canViewOtherVotesForUser,
-  canViewVoterIdentities,
+  getVoteIdentityDisplayMode,
   resolveVoteVisibility,
+  resolveVoteAnonymization,
 } from "../../lib/vote-visibility";
+import {
+  anonymizeUsers,
+  buildAnonymousIdentityMap,
+} from "../../lib/anonymous-voter-identities";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "./calendar-styles.css";
 
@@ -568,7 +573,13 @@ export default function SchedulerPage() {
   }, [allVotes.data, user?.uid, userVote.data]);
   const showSchedulerVoteDetails = canReadAllVotes;
   const showSchedulerVoteProgress = canReadVoteProgress;
-  const showSchedulerVoterIdentities = canViewVoterIdentitiesForUser;
+  const schedulerVoteIdentityDisplayMode = getVoteIdentityDisplayMode({
+    isCreator,
+    hideVoterIdentities: scheduler.data?.hideVoterIdentities,
+    voteAnonymization: scheduler.data?.voteAnonymization,
+  });
+  const showSchedulerVoterIdentities =
+    canViewVoterIdentitiesForUser && schedulerVoteIdentityDisplayMode !== "hidden";
 
   const { infoBySlotId: userBlockersBySlotId } = useMemo(() => {
     return buildUserBlockInfo({
@@ -823,6 +834,67 @@ export default function SchedulerPage() {
       }),
     [groupUsers, voteMapById, voteMapByEmail, submittedVoteMapById, submittedVoteMapByEmail]
   );
+  const schedulerAnonymousIdentityMap = useMemo(() => {
+    if (schedulerVoteIdentityDisplayMode !== "anonymous") return null;
+    const seededUsers = [...participants, ...groupUsersWithStatus];
+    Object.values(slotVoters || {}).forEach((slotVoteUsers) => {
+      seededUsers.push(...(slotVoteUsers?.preferred || []));
+      seededUsers.push(...(slotVoteUsers?.feasible || []));
+    });
+    return buildAnonymousIdentityMap(seededUsers, { scopeKey: `scheduler:${id}` });
+  }, [
+    groupUsersWithStatus,
+    id,
+    participants,
+    schedulerVoteIdentityDisplayMode,
+    slotVoters,
+  ]);
+  const participantsForDisplay = useMemo(() => {
+    if (schedulerVoteIdentityDisplayMode !== "anonymous") return participants;
+    return anonymizeUsers(participants, schedulerAnonymousIdentityMap, {
+      keyPrefix: "participants",
+    });
+  }, [participants, schedulerAnonymousIdentityMap, schedulerVoteIdentityDisplayMode]);
+  const groupUsersWithStatusForDisplay = useMemo(() => {
+    if (schedulerVoteIdentityDisplayMode !== "anonymous") return groupUsersWithStatus;
+    return anonymizeUsers(groupUsersWithStatus, schedulerAnonymousIdentityMap, {
+      keyPrefix: "group-users",
+    });
+  }, [
+    groupUsersWithStatus,
+    schedulerAnonymousIdentityMap,
+    schedulerVoteIdentityDisplayMode,
+  ]);
+  const nonGroupParticipantsForDisplay = useMemo(() => {
+    if (schedulerVoteIdentityDisplayMode !== "anonymous") return nonGroupParticipants;
+    return anonymizeUsers(nonGroupParticipants, schedulerAnonymousIdentityMap, {
+      keyPrefix: "non-group-participants",
+    });
+  }, [
+    nonGroupParticipants,
+    schedulerAnonymousIdentityMap,
+    schedulerVoteIdentityDisplayMode,
+  ]);
+  const slotVotersForDisplay = useMemo(() => {
+    if (schedulerVoteIdentityDisplayMode !== "anonymous") return slotVoters;
+    return Object.fromEntries(
+      Object.entries(slotVoters || {}).map(([slotId, slotVoteUsers]) => [
+        slotId,
+        {
+          preferred: anonymizeUsers(
+            slotVoteUsers?.preferred || [],
+            schedulerAnonymousIdentityMap,
+            { keyPrefix: `${slotId}-preferred` }
+          ),
+          feasible: anonymizeUsers(
+            slotVoteUsers?.feasible || [],
+            schedulerAnonymousIdentityMap,
+            { keyPrefix: `${slotId}-feasible` }
+          ),
+        },
+      ])
+    );
+  }, [schedulerAnonymousIdentityMap, schedulerVoteIdentityDisplayMode, slotVoters]);
   const participantIdSet = useMemo(
     () =>
       new Set(
@@ -967,7 +1039,7 @@ export default function SchedulerPage() {
       const displayStart = toDisplayDate(startRaw, displayTimeZone) || startRaw;
       const displayEnd = toDisplayDate(endRaw, displayTimeZone) || endRaw;
       const counts = tallies[slot.id] || { feasible: 0, preferred: 0 };
-      const voters = slotVoters[slot.id] || { preferred: [], feasible: [] };
+      const voters = slotVotersForDisplay[slot.id] || { preferred: [], feasible: [] };
       return {
         id: slot.id,
         start: displayStart,
@@ -985,7 +1057,7 @@ export default function SchedulerPage() {
         feasibleVoters: voters.feasible,
       };
     });
-  }, [slots.data, tallies, slotVoters, displayTimeZone]);
+  }, [displayTimeZone, slotVotersForDisplay, slots.data, tallies]);
 
   const calendarEventCountByDay = useMemo(() => {
     return calendarEvents.reduce((counts, event) => {
@@ -2253,6 +2325,7 @@ export default function SchedulerPage() {
         timezone: scheduler.data.timezone,
         timezoneMode: scheduler.data.timezoneMode,
         voteVisibility: resolveVoteVisibility(scheduler.data?.voteVisibility),
+        voteAnonymization: resolveVoteAnonymization(scheduler.data?.voteAnonymization),
         hideVoterIdentities: scheduler.data?.hideVoterIdentities === true,
         votesAllSubmitted: false,
         winningSlotId: null,
@@ -2813,7 +2886,7 @@ export default function SchedulerPage() {
                 </p>
               </div>
               <AvatarStackWithColors
-                users={participants}
+                users={participantsForDisplay}
                 max={8}
                 size={24}
               />
@@ -2846,12 +2919,12 @@ export default function SchedulerPage() {
                   </span>
                 </div>
                 <div className="mt-2 grid gap-2">
-                  {groupUsersWithStatus.length === 0 && (
+                  {groupUsersWithStatusForDisplay.length === 0 && (
                     <span className="text-xs text-slate-500 dark:text-slate-400">
                       No members listed for this group.
                     </span>
                   )}
-                  {groupUsersWithStatus.map((member) => (
+                  {groupUsersWithStatusForDisplay.map((member) => (
                     <div
                       key={member.email}
                       className="flex items-center gap-2 rounded-xl border border-transparent bg-white/70 px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-slate-900/70 dark:text-slate-200"
@@ -2884,50 +2957,56 @@ export default function SchedulerPage() {
                   No additional participants outside the questing group.
                 </span>
               )}
-              {nonGroupParticipants.map((participant) => (
-                <div
-                  key={participant.email}
-                  className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
-                >
-                  <AvatarBubbleWithColors user={participant} size={18} />
-                  <UserIdentity user={participant} className="text-slate-700 dark:text-slate-200" />
-                  <span
-                    className={`text-[10px] font-semibold ${
-                      participant.isPendingInvite
-                        ? "text-amber-600 dark:text-amber-300"
-                        : !showSchedulerVoterIdentities
-                          ? "text-slate-400 dark:text-slate-500"
-                        : participant.hasVoted
-                          ? "text-emerald-600 dark:text-emerald-300"
-                          : "text-slate-400 dark:text-slate-500"
-                    }`}
+              {nonGroupParticipants.map((participant, index) => {
+                const displayParticipant = nonGroupParticipantsForDisplay[index] || participant;
+                return (
+                  <div
+                    key={participant.email}
+                    className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
                   >
-                    {participant.isPendingInvite
-                      ? "Pending invite"
-                      : !showSchedulerVoterIdentities
-                        ? "Hidden"
-                      : participant.hasVoted
-                        ? "Voted"
-                        : "Pending"}
-                  </span>
-                  {isCreator &&
-                    normalizeEmail(participant.email) !==
-                      normalizeEmail(scheduler.data.creatorEmail) &&
-                    !participant.isGroupMember && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMemberToRemove(participant);
-                        setRemoveMemberOpen(true);
-                      }}
-                      className="ml-1 text-[10px] font-semibold text-red-500 hover:text-red-600"
-                      title="Remove participant"
+                    <AvatarBubbleWithColors user={displayParticipant} size={18} />
+                    <UserIdentity
+                      user={displayParticipant}
+                      className="text-slate-700 dark:text-slate-200"
+                    />
+                    <span
+                      className={`text-[10px] font-semibold ${
+                        participant.isPendingInvite
+                          ? "text-amber-600 dark:text-amber-300"
+                          : !showSchedulerVoterIdentities
+                            ? "text-slate-400 dark:text-slate-500"
+                          : participant.hasVoted
+                            ? "text-emerald-600 dark:text-emerald-300"
+                            : "text-slate-400 dark:text-slate-500"
+                      }`}
                     >
-                      Remove
-                    </button>
-                  )}
-                </div>
-              ))}
+                      {participant.isPendingInvite
+                        ? "Pending invite"
+                        : !showSchedulerVoterIdentities
+                          ? "Hidden"
+                        : participant.hasVoted
+                          ? "Voted"
+                          : "Pending"}
+                    </span>
+                    {isCreator &&
+                      normalizeEmail(participant.email) !==
+                        normalizeEmail(scheduler.data.creatorEmail) &&
+                      !participant.isGroupMember && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMemberToRemove(participant);
+                          setRemoveMemberOpen(true);
+                        }}
+                        className="ml-1 text-[10px] font-semibold text-red-500 hover:text-red-600"
+                        title="Remove participant"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             {pendingInviteNonParticipants.length > 0 && (
               <div className="mt-4">
@@ -3126,7 +3205,7 @@ export default function SchedulerPage() {
               {slotsByDate.map((slot) => {
                 const vote = draftVotes[slot.id];
                 const counts = tallies[slot.id] || { feasible: 0, preferred: 0 };
-                const voters = slotVoters[slot.id] || { feasible: [], preferred: [] };
+                const voters = slotVotersForDisplay[slot.id] || { feasible: [], preferred: [] };
                 const startDate = slot.start ? new Date(slot.start) : null;
                 const blocker = userBlockersBySlotId?.[slot.id] || null;
                 const blockerScheduler =
@@ -3401,7 +3480,7 @@ export default function SchedulerPage() {
                 filteredSortedSlots.map((slot) => {
                 const startDate = slot.start ? new Date(slot.start) : null;
                 const endDate = slot.end ? new Date(slot.end) : null;
-                const voters = slotVoters[slot.id] || { feasible: [], preferred: [] };
+                const voters = slotVotersForDisplay[slot.id] || { feasible: [], preferred: [] };
                 const isPast = pastSlotIds.has(slot.id);
                 const hasWinner = Boolean(scheduler.data?.winningSlotId);
                 const isWinner = scheduler.data?.winningSlotId === slot.id && isLocked;
@@ -3649,10 +3728,13 @@ export default function SchedulerPage() {
                     allParticipantsVoted: poll?.votesAllSubmitted === true,
                     isFinalized: (poll?.status || "OPEN") === "FINALIZED",
                   });
-                  const canViewEmbeddedVoterIdentities = canViewVoterIdentities({
+                  const embeddedVoteIdentityDisplayMode = getVoteIdentityDisplayMode({
                     isCreator,
                     hideVoterIdentities: poll?.hideVoterIdentities,
+                    voteAnonymization: poll?.voteAnonymization,
                   });
+                  const canViewEmbeddedVoterIdentities =
+                    embeddedVoteIdentityDisplayMode !== "hidden";
                   const canReadEmbeddedVoteProgress =
                     canReadEmbeddedVoteDetails || canViewEmbeddedVoterIdentities;
                   const embeddedFinalResults = poll?.finalResults || null;
@@ -3678,6 +3760,31 @@ export default function SchedulerPage() {
                   const pendingUsers = eligibleUsers.filter(
                     (participant) => !votedIdSet.has(String(participant.id || ""))
                   );
+                  const embeddedAnonymousIdentityMap =
+                    embeddedVoteIdentityDisplayMode === "anonymous"
+                      ? buildAnonymousIdentityMap(
+                          [...eligibleUsers, ...votedUsers, ...pendingUsers],
+                          { scopeKey: `scheduler:${id}:embedded:${poll.id}` }
+                        )
+                      : null;
+                  const eligibleUsersForDisplay =
+                    embeddedVoteIdentityDisplayMode === "anonymous"
+                      ? anonymizeUsers(eligibleUsers, embeddedAnonymousIdentityMap, {
+                          keyPrefix: "eligible",
+                        })
+                      : eligibleUsers;
+                  const votedUsersForDisplay =
+                    embeddedVoteIdentityDisplayMode === "anonymous"
+                      ? anonymizeUsers(votedUsers, embeddedAnonymousIdentityMap, {
+                          keyPrefix: "voted",
+                        })
+                      : votedUsers;
+                  const pendingUsersForDisplay =
+                    embeddedVoteIdentityDisplayMode === "anonymous"
+                      ? anonymizeUsers(pendingUsers, embeddedAnonymousIdentityMap, {
+                          keyPrefix: "pending",
+                        })
+                      : pendingUsers;
                   const embeddedVoteVisibilityHint = !canReadEmbeddedVoteDetails
                     ? resolveVoteVisibility(poll?.voteVisibility) === "hidden_while_voting"
                       ? "Vote details unlock after you submit your vote."
@@ -3727,9 +3834,9 @@ export default function SchedulerPage() {
                       onChangeOtherText={(value) => setEmbeddedOtherText(poll.id, value)}
                       onSubmitVote={() => submitEmbeddedPollVote(poll)}
                       onClearVote={() => clearEmbeddedPollVote(poll)}
-                      eligibleUsers={eligibleUsers}
-                      votedUsers={votedUsers}
-                      pendingUsers={pendingUsers}
+                      eligibleUsers={eligibleUsersForDisplay}
+                      votedUsers={votedUsersForDisplay}
+                      pendingUsers={pendingUsersForDisplay}
                       showVoteProgress={canReadEmbeddedVoteProgress}
                       showVoterIdentities={canViewEmbeddedVoterIdentities}
                       voteVisibilityHint={embeddedVoteVisibilityHint}

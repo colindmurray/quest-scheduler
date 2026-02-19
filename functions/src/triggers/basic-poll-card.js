@@ -22,6 +22,7 @@ const { BASIC_POLL_STATUSES } = require("../basic-polls/constants");
 const { hasSubmittedVoteForPoll } = require("../basic-polls/vote-submission");
 const {
   canViewOtherVotesPublicly,
+  resolveVoteAnonymization,
   resolveVoteVisibility,
 } = require("../utils/vote-visibility");
 
@@ -42,6 +43,7 @@ function computeBasicPollSyncHash(pollData, voteCount, totalParticipants) {
     title: pollData?.title || "",
     status: pollData?.status || BASIC_POLL_STATUSES.OPEN,
     voteVisibility: resolveVoteVisibility(pollData?.voteVisibility),
+    voteAnonymization: resolveVoteAnonymization(pollData?.voteAnonymization),
     votesAllSubmitted: pollData?.votesAllSubmitted === true,
     description: pollData?.description || "",
     settings: pollData?.settings || {},

@@ -29,6 +29,7 @@ describe("EmbeddedPollEditorModal", () => {
     expect(payload.title).toBe("Food poll");
     expect(payload.required).toBe(true);
     expect(payload.hideVoterIdentities).toBe(false);
+    expect(payload.voteAnonymization).toBe("none");
     expect(payload.options).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: "Pizza", order: 0 }),
@@ -72,7 +73,7 @@ describe("EmbeddedPollEditorModal", () => {
     expect(screen.getAllByRole("combobox")[0].value).toBe("RANKED_CHOICE");
     expect(screen.getByRole("checkbox", { name: "Required poll" }).checked).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: /Advanced settings/i }));
-    expect(screen.getByRole("checkbox", { name: /Hide who has\/hasn't voted/i }).checked).toBe(
+    expect(screen.getByRole("checkbox", { name: /Hide voter names from participants/i }).checked).toBe(
       true
     );
     expect(screen.getByRole("button", { name: "Save poll" })).toBeTruthy();
@@ -99,7 +100,7 @@ describe("EmbeddedPollEditorModal", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Advanced settings/i }));
-    const checkbox = screen.queryByRole("checkbox", { name: /Hide who has\/hasn't voted/i });
+    const checkbox = screen.queryByRole("checkbox", { name: /Hide voter names from participants/i });
     expect(checkbox).toBeNull();
   });
 });

@@ -22,13 +22,15 @@ import { BASIC_POLL_STATUSES, BASIC_POLL_VOTE_TYPES, resolveBasicPollVoteType } 
 import { createBasicPoll, updateBasicPoll } from "../../../lib/data/basicPolls";
 import { coerceDate } from "../../../lib/time";
 import {
+  DEFAULT_VOTE_ANONYMIZATION,
   DEFAULT_VOTE_VISIBILITY,
-  VOTE_VISIBILITY,
   VOTE_VISIBILITY_OPTIONS,
+  resolveVoteAnonymization,
   resolveHideVoterIdentitiesForVisibility,
   resolveVoteVisibility,
 } from "../../../lib/vote-visibility";
 import { PollMarkdownContent } from "../../../components/polls/poll-markdown-content";
+import { VotePrivacySettings } from "../../../components/polls/vote-privacy-settings";
 import { QuestingGroupSelect } from "../../scheduler/components/questing-group-select";
 
 function createDefaultOptions() {
@@ -85,6 +87,9 @@ function buildInitialState(selectedGroupId = null, initialPoll = null) {
   const voteVisibility = resolveVoteVisibility(
     initialPoll?.voteVisibility || DEFAULT_VOTE_VISIBILITY
   );
+  const voteAnonymization = resolveVoteAnonymization(
+    initialPoll?.voteAnonymization || DEFAULT_VOTE_ANONYMIZATION
+  );
   return {
     selectedGroupId,
     title: String(initialPoll?.title || ""),
@@ -95,6 +100,7 @@ function buildInitialState(selectedGroupId = null, initialPoll = null) {
     maxSelections,
     allowWriteIn,
     voteVisibility,
+    voteAnonymization,
     hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
       initialPoll?.hideVoterIdentities === true,
       voteVisibility
@@ -269,7 +275,6 @@ export function CreateGroupPollModal({
   const voteVisibilityLabel =
     VOTE_VISIBILITY_OPTIONS.find((option) => option.value === state.voteVisibility)?.label ||
     "Vote visibility";
-  const hideVoterIdentitiesLocked = state.voteVisibility === VOTE_VISIBILITY.FULL;
   const deadlineTimeValue = deadlineDate
     ? `${String(deadlineDate.getHours()).padStart(2, "0")}:${String(
         deadlineDate.getMinutes()
@@ -332,6 +337,7 @@ export function CreateGroupPollModal({
         description: String(state.description || "").trim(),
         options: normalizedOptions,
         voteVisibility: normalizedVoteVisibility,
+        voteAnonymization: resolveVoteAnonymization(state.voteAnonymization),
         hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
           state.hideVoterIdentities === true,
           normalizedVoteVisibility
@@ -775,85 +781,35 @@ export function CreateGroupPollModal({
               ) : null}
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
-              <button
-                type="button"
-                onClick={() => setAdvancedSettingsExpanded((previous) => !previous)}
-                aria-expanded={advancedSettingsExpanded}
-                className="flex w-full items-center justify-between rounded-lg border border-slate-200/80 px-3 py-2 text-left transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-              >
-                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  Advanced settings
-                </span>
-                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  {advancedSettingsExpanded ? "Hide" : "Show"}
-                </span>
-              </button>
-              <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-                Vote privacy: {voteVisibilityLabel}
-                {state.hideVoterIdentities ? " + identities hidden" : ""}
-              </p>
-              {advancedSettingsExpanded ? (
-                <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2.5 dark:border-slate-700 dark:bg-slate-800/60">
-                  <div className="w-full sm:w-64">
-                    <Select
-                      value={state.voteVisibility}
-                      onValueChange={(value) => {
-                        const nextVisibility = resolveVoteVisibility(value);
-                        setState((previous) => ({
-                          ...previous,
-                          voteVisibility: nextVisibility,
-                          hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
-                            previous.hideVoterIdentities,
-                            nextVisibility
-                          ),
-                        }));
-                      }}
-                    >
-                      <SelectTrigger className="h-9 rounded-lg border-slate-300 bg-white px-3 text-xs dark:border-slate-600 dark:bg-slate-900">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {VOTE_VISIBILITY_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    {
-                      VOTE_VISIBILITY_OPTIONS.find(
-                        (option) => option.value === resolveVoteVisibility(state.voteVisibility)
-                      )?.description
-                    }
-                  </p>
-                  {!hideVoterIdentitiesLocked ? (
-                    <>
-                      <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                        <input
-                          type="checkbox"
-                          checked={state.hideVoterIdentities}
-                          onChange={(event) =>
-                            setState((previous) => ({
-                              ...previous,
-                              hideVoterIdentities: event.target.checked,
-                            }))
-                          }
-                        />
-                        <span className="font-semibold text-slate-700 dark:text-slate-200">
-                          Hide who has/hasn't voted
-                        </span>
-                      </label>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                        When enabled, only show vote counts without revealing who voted.
-                      </p>
-                    </>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
+            <VotePrivacySettings
+              expanded={advancedSettingsExpanded}
+              onExpandedChange={setAdvancedSettingsExpanded}
+              voteVisibility={state.voteVisibility}
+              onVoteVisibilityChange={(nextVisibility) => {
+                setState((previous) => ({
+                  ...previous,
+                  voteVisibility: nextVisibility,
+                  hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
+                    previous.hideVoterIdentities,
+                    nextVisibility
+                  ),
+                }));
+              }}
+              hideVoterIdentities={state.hideVoterIdentities}
+              onHideVoterIdentitiesChange={(nextValue) =>
+                setState((previous) => ({
+                  ...previous,
+                  hideVoterIdentities: nextValue,
+                }))
+              }
+              voteAnonymization={state.voteAnonymization}
+              onVoteAnonymizationChange={(nextValue) =>
+                setState((previous) => ({
+                  ...previous,
+                  voteAnonymization: nextValue,
+                }))
+              }
+            />
 
             {error ? <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p> : null}
           </div>

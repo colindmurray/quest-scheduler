@@ -1,9 +1,12 @@
 const {
+  DEFAULT_VOTE_ANONYMIZATION,
   DEFAULT_HIDE_VOTER_IDENTITIES,
   DEFAULT_VOTE_VISIBILITY,
+  VOTE_ANONYMIZATION,
   VOTE_VISIBILITY,
   canViewVoterIdentities,
   canViewOtherVotesPublicly,
+  resolveVoteAnonymization,
   resolveHideVoterIdentities,
   resolveHideVoterIdentitiesForVisibility,
   resolveVoteVisibility,
@@ -21,6 +24,13 @@ describe("vote visibility helper", () => {
     expect(resolveHideVoterIdentities(false)).toBe(false);
     expect(resolveHideVoterIdentities(undefined)).toBe(false);
     expect(resolveHideVoterIdentities("true")).toBe(false);
+  });
+
+  test("vote anonymization defaults unknown values", () => {
+    expect(resolveVoteAnonymization("invalid")).toBe(DEFAULT_VOTE_ANONYMIZATION);
+    expect(resolveVoteAnonymization(VOTE_ANONYMIZATION.CREATOR_EXCLUDED)).toBe(
+      VOTE_ANONYMIZATION.CREATOR_EXCLUDED
+    );
   });
 
   test("hide voter identities is forced off for full visibility", () => {

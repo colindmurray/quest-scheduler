@@ -33,9 +33,13 @@ import { BASIC_POLL_STATUSES, BASIC_POLL_VOTE_TYPES } from "../../../lib/basic-p
 import { coerceDate } from "../../../lib/time";
 import {
   canViewOtherVotesForUser,
-  canViewVoterIdentities,
+  getVoteIdentityDisplayMode,
   resolveVoteVisibility,
 } from "../../../lib/vote-visibility";
+import {
+  anonymizeUsers,
+  buildAnonymousIdentityMap,
+} from "../../../lib/anonymous-voter-identities";
 import {
   deleteBasicPoll,
   deleteBasicPollVote,
@@ -165,14 +169,42 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
       isFinalized: (poll?.status || BASIC_POLL_STATUSES.OPEN) === BASIC_POLL_STATUSES.FINALIZED,
     });
   }, [isPollCreator, myVote, poll]);
-  const canReadVoterIdentities = useMemo(() => {
-    if (!poll) return false;
-    return canViewVoterIdentities({
+  const voteIdentityDisplayMode = useMemo(() => {
+    if (!poll) return "hidden";
+    return getVoteIdentityDisplayMode({
       isCreator: isPollCreator,
       hideVoterIdentities: poll.hideVoterIdentities,
+      voteAnonymization: poll.voteAnonymization,
     });
   }, [isPollCreator, poll]);
+  const canReadVoterIdentities = voteIdentityDisplayMode !== "hidden";
   const canReadVoteProgress = canReadVoteDetails || canReadVoterIdentities;
+  const anonymousIdentityMap = useMemo(() => {
+    if (voteIdentityDisplayMode !== "anonymous") return null;
+    return buildAnonymousIdentityMap(
+      [...participantUsers, ...votedUsers, ...pendingUsers],
+      { scopeKey: `group:${groupId}:poll:${pollId}` }
+    );
+  }, [
+    groupId,
+    participantUsers,
+    pendingUsers,
+    pollId,
+    voteIdentityDisplayMode,
+    votedUsers,
+  ]);
+  const participantUsersForDisplay = useMemo(() => {
+    if (voteIdentityDisplayMode !== "anonymous") return participantUsers;
+    return anonymizeUsers(participantUsers, anonymousIdentityMap, { keyPrefix: "eligible" });
+  }, [anonymousIdentityMap, participantUsers, voteIdentityDisplayMode]);
+  const votedUsersForDisplay = useMemo(() => {
+    if (voteIdentityDisplayMode !== "anonymous") return votedUsers;
+    return anonymizeUsers(votedUsers, anonymousIdentityMap, { keyPrefix: "voted" });
+  }, [anonymousIdentityMap, voteIdentityDisplayMode, votedUsers]);
+  const pendingUsersForDisplay = useMemo(() => {
+    if (voteIdentityDisplayMode !== "anonymous") return pendingUsers;
+    return anonymizeUsers(pendingUsers, anonymousIdentityMap, { keyPrefix: "pending" });
+  }, [anonymousIdentityMap, pendingUsers, voteIdentityDisplayMode]);
   const nudgeCooldownRemaining = useMemo(
     () => getNudgeCooldownRemaining(pollDiscord?.nudgeLastSentAt),
     [pollDiscord?.nudgeLastSentAt]
@@ -626,9 +658,9 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
                 onChangeOtherText={setOtherText}
                 onSubmitVote={submitVote}
                 onClearVote={clearVote}
-                eligibleUsers={participantUsers}
-                votedUsers={votedUsers}
-                pendingUsers={pendingUsers}
+                eligibleUsers={participantUsersForDisplay}
+                votedUsers={votedUsersForDisplay}
+                pendingUsers={pendingUsersForDisplay}
                 showVoteProgress={canReadVoteProgress}
                 showVoterIdentities={canReadVoterIdentities}
                 voteVisibilityHint={voteVisibilityHint}

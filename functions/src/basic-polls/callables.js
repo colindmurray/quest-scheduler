@@ -15,6 +15,7 @@ const {
   hasSubmittedVote,
 } = require("./vote-submission");
 const {
+  resolveVoteAnonymization,
   resolveHideVoterIdentitiesForVisibility,
   resolveVoteVisibility,
 } = require("../utils/vote-visibility");
@@ -316,6 +317,7 @@ const createBasicPoll = functions.https.onCall(async (data, context) => {
   const basePoll = {
     ...pollData,
     voteVisibility: resolveVoteVisibility(pollData?.voteVisibility),
+    voteAnonymization: resolveVoteAnonymization(pollData?.voteAnonymization),
     hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
       pollData?.hideVoterIdentities,
       pollData?.voteVisibility

@@ -301,6 +301,67 @@ test("basic poll CRUD helpers work end-to-end with vote cleanup", async () => {
   expect(memberVoteSnap.exists()).toBe(false);
 });
 
+test("basic poll privacy settings persist and normalize on update", async () => {
+  const password = "password123";
+  const managerEmail = uniqueEmail("basic-poll-privacy-manager");
+  const memberEmail = uniqueEmail("basic-poll-privacy-member");
+  const manager = await registerUser(managerEmail, password);
+  const member = await registerUser(memberEmail, password);
+  const groupId = "integration-basic-poll-privacy";
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "questingGroups", groupId), {
+      name: "Privacy Group",
+      creatorId: manager.uid,
+      creatorEmail: managerEmail,
+      memberManaged: false,
+      memberIds: [manager.uid, member.uid],
+      pendingInvites: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  });
+
+  await signInUser(managerEmail, password);
+  const pollId = await createBasicPoll(groupId, {
+    title: "Privacy poll",
+    settings: { voteType: "MULTIPLE_CHOICE" },
+    options: [
+      { id: "opt-1", label: "One", order: 0 },
+      { id: "opt-2", label: "Two", order: 1 },
+    ],
+    voteVisibility: "hidden_until_all_voted",
+    hideVoterIdentities: true,
+    voteAnonymization: "creator_excluded",
+  });
+
+  const createdSnap = await getDoc(doc(db, "questingGroups", groupId, "basicPolls", pollId));
+  expect(createdSnap.exists()).toBe(true);
+  expect(createdSnap.data()).toEqual(
+    expect.objectContaining({
+      voteVisibility: "hidden_until_all_voted",
+      hideVoterIdentities: true,
+      voteAnonymization: "creator_excluded",
+    })
+  );
+
+  await updateBasicPoll(groupId, pollId, {
+    voteVisibility: "full_visibility",
+    hideVoterIdentities: true,
+    voteAnonymization: "all_participants",
+  });
+
+  const updatedSnap = await getDoc(doc(db, "questingGroups", groupId, "basicPolls", pollId));
+  expect(updatedSnap.exists()).toBe(true);
+  expect(updatedSnap.data()).toEqual(
+    expect.objectContaining({
+      voteVisibility: "full_visibility",
+      hideVoterIdentities: false,
+      voteAnonymization: "all_participants",
+    })
+  );
+});
+
 test("finalized group poll snapshots remain stable after vote docs are deleted", async () => {
   const password = "password123";
   const managerEmail = uniqueEmail("basic-poll-finalize-manager");
@@ -756,6 +817,9 @@ test("embedded basic poll CRUD/reorder/subscribe helpers work for scheduler pare
   const pollA = await createEmbeddedBasicPoll(schedulerId, {
     title: "Poll A",
     order: 0,
+    voteVisibility: "hidden_while_voting",
+    hideVoterIdentities: true,
+    voteAnonymization: "creator_excluded",
     options: [{ id: "opt-a", label: "A", order: 0 }],
   });
   const pollB = await createEmbeddedBasicPoll(schedulerId, {
@@ -775,10 +839,32 @@ test("embedded basic poll CRUD/reorder/subscribe helpers work for scheduler pare
   );
   expect(subscribedPolls.length).toBeGreaterThanOrEqual(3);
 
-  await updateEmbeddedBasicPoll(schedulerId, pollB, { required: true });
+  const createdPollASnap = await getDoc(doc(db, "schedulers", schedulerId, "basicPolls", pollA));
+  expect(createdPollASnap.exists()).toBe(true);
+  expect(createdPollASnap.data()).toEqual(
+    expect.objectContaining({
+      voteVisibility: "hidden_while_voting",
+      hideVoterIdentities: true,
+      voteAnonymization: "creator_excluded",
+    })
+  );
+
+  await updateEmbeddedBasicPoll(schedulerId, pollB, {
+    required: true,
+    voteVisibility: "full_visibility",
+    hideVoterIdentities: true,
+    voteAnonymization: "all_participants",
+  });
   const updatedPollSnap = await getDoc(doc(db, "schedulers", schedulerId, "basicPolls", pollB));
   expect(updatedPollSnap.exists()).toBe(true);
-  expect(updatedPollSnap.data().required).toBe(true);
+  expect(updatedPollSnap.data()).toEqual(
+    expect.objectContaining({
+      required: true,
+      voteVisibility: "full_visibility",
+      hideVoterIdentities: false,
+      voteAnonymization: "all_participants",
+    })
+  );
 
   await reorderEmbeddedBasicPolls(schedulerId, [pollC, pollA, pollB]);
 

@@ -23,6 +23,7 @@ import { hasSubmittedVote } from "../basic-polls/vote-submission";
 import { coerceDate } from "../time";
 import {
   VOTE_VISIBILITY,
+  resolveVoteAnonymization,
   resolveHideVoterIdentities,
   resolveHideVoterIdentitiesForVisibility,
   resolveVoteVisibility,
@@ -79,6 +80,7 @@ function sanitizePollCreateData(pollData = {}) {
   return {
     ...pollData,
     voteVisibility,
+    voteAnonymization: resolveVoteAnonymization(pollData?.voteAnonymization),
     hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
       pollData?.hideVoterIdentities,
       voteVisibility
@@ -89,17 +91,24 @@ function sanitizePollCreateData(pollData = {}) {
 
 function sanitizePollUpdateData(updates = {}) {
   const hasVoteVisibility = Object.prototype.hasOwnProperty.call(updates || {}, "voteVisibility");
+  const hasVoteAnonymization = Object.prototype.hasOwnProperty.call(
+    updates || {},
+    "voteAnonymization"
+  );
   const hasHideVoterIdentities = Object.prototype.hasOwnProperty.call(
     updates || {},
     "hideVoterIdentities"
   );
-  if (!hasVoteVisibility && !hasHideVoterIdentities) {
+  if (!hasVoteVisibility && !hasVoteAnonymization && !hasHideVoterIdentities) {
     return updates;
   }
 
   const normalized = { ...updates };
   if (hasVoteVisibility) {
     normalized.voteVisibility = resolveVoteVisibility(updates?.voteVisibility);
+  }
+  if (hasVoteAnonymization) {
+    normalized.voteAnonymization = resolveVoteAnonymization(updates?.voteAnonymization);
   }
   if (hasHideVoterIdentities) {
     normalized.hideVoterIdentities = resolveHideVoterIdentitiesForVisibility(

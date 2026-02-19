@@ -8,12 +8,13 @@ import {
 } from "../../../components/ui/simple-modal";
 import { PollMarkdownContent } from "../../../components/polls/poll-markdown-content";
 import {
+  DEFAULT_VOTE_ANONYMIZATION,
   DEFAULT_VOTE_VISIBILITY,
-  VOTE_VISIBILITY,
-  VOTE_VISIBILITY_OPTIONS,
+  resolveVoteAnonymization,
   resolveHideVoterIdentitiesForVisibility,
   resolveVoteVisibility,
 } from "../../../lib/vote-visibility";
+import { VotePrivacySettings } from "../../../components/polls/vote-privacy-settings";
 
 function buildDefaultOptions() {
   return [
@@ -33,6 +34,7 @@ function createInitialDraft(initialPoll) {
       allowWriteIn: false,
       required: false,
       voteVisibility: DEFAULT_VOTE_VISIBILITY,
+      voteAnonymization: DEFAULT_VOTE_ANONYMIZATION,
       hideVoterIdentities: false,
       deadlineAtLocal: "",
       options: buildDefaultOptions(),
@@ -83,6 +85,7 @@ function createInitialDraft(initialPoll) {
     allowWriteIn: voteType === "MULTIPLE_CHOICE" && settings.allowWriteIn === true,
     required: initialPoll.required === true,
     voteVisibility: resolveVoteVisibility(initialPoll?.voteVisibility),
+    voteAnonymization: resolveVoteAnonymization(initialPoll?.voteAnonymization),
     hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
       initialPoll?.hideVoterIdentities === true,
       initialPoll?.voteVisibility
@@ -116,11 +119,6 @@ export function EmbeddedPollEditorModal({
     () => draft.options.find((option) => option.id === draft.noteEditor.optionId) || null,
     [draft.noteEditor.optionId, draft.options]
   );
-  const hideVoterIdentitiesLocked = draft.voteVisibility === VOTE_VISIBILITY.FULL;
-  const voteVisibilityLabel =
-    VOTE_VISIBILITY_OPTIONS.find((option) => option.value === resolveVoteVisibility(draft.voteVisibility))
-      ?.label || "Vote visibility";
-
   function updateOption(optionId, updates) {
     setDraft((previous) => ({
       ...previous,
@@ -207,6 +205,7 @@ export function EmbeddedPollEditorModal({
         options: normalizedOptions,
         required: draft.required,
         voteVisibility: normalizedVoteVisibility,
+        voteAnonymization: resolveVoteAnonymization(draft.voteAnonymization),
         hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
           draft.hideVoterIdentities === true,
           normalizedVoteVisibility
@@ -470,79 +469,35 @@ export function EmbeddedPollEditorModal({
               </div>
             </div>
 
-            <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
-              <button
-                type="button"
-                onClick={() => setAdvancedSettingsExpanded((previous) => !previous)}
-                aria-expanded={advancedSettingsExpanded}
-                className="flex w-full items-center justify-between rounded-lg border border-slate-200/80 px-3 py-2 text-left transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-              >
-                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  Advanced settings
-                </span>
-                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  {advancedSettingsExpanded ? "Hide" : "Show"}
-                </span>
-              </button>
-              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Vote privacy: {voteVisibilityLabel}
-                {draft.hideVoterIdentities ? " + identities hidden" : ""}
-              </p>
-              {advancedSettingsExpanded ? (
-                <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2.5 dark:border-slate-700 dark:bg-slate-900/60">
-                  <div className="w-full sm:w-64">
-                    <select
-                      value={draft.voteVisibility}
-                      onChange={(event) => {
-                        const nextVisibility = resolveVoteVisibility(event.target.value);
-                        setDraft((previous) => ({
-                          ...previous,
-                          voteVisibility: nextVisibility,
-                          hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
-                            previous.hideVoterIdentities,
-                            nextVisibility
-                          ),
-                        }));
-                      }}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                    >
-                      {VOTE_VISIBILITY_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {
-                      VOTE_VISIBILITY_OPTIONS.find(
-                        (option) => option.value === resolveVoteVisibility(draft.voteVisibility)
-                      )?.description
-                    }
-                  </p>
-                  {!hideVoterIdentitiesLocked ? (
-                    <>
-                      <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-                        <input
-                          type="checkbox"
-                          checked={draft.hideVoterIdentities}
-                          onChange={(event) =>
-                            setDraft((previous) => ({
-                              ...previous,
-                              hideVoterIdentities: event.target.checked,
-                            }))
-                          }
-                        />
-                        <span className="font-medium">Hide who has/hasn't voted</span>
-                      </label>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        When enabled, only show vote counts without revealing who voted.
-                      </p>
-                    </>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
+            <VotePrivacySettings
+              expanded={advancedSettingsExpanded}
+              onExpandedChange={setAdvancedSettingsExpanded}
+              voteVisibility={draft.voteVisibility}
+              onVoteVisibilityChange={(nextVisibility) => {
+                setDraft((previous) => ({
+                  ...previous,
+                  voteVisibility: nextVisibility,
+                  hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
+                    previous.hideVoterIdentities,
+                    nextVisibility
+                  ),
+                }));
+              }}
+              hideVoterIdentities={draft.hideVoterIdentities}
+              onHideVoterIdentitiesChange={(nextValue) =>
+                setDraft((previous) => ({
+                  ...previous,
+                  hideVoterIdentities: nextValue,
+                }))
+              }
+              voteAnonymization={draft.voteAnonymization}
+              onVoteAnonymizationChange={(nextValue) =>
+                setDraft((previous) => ({
+                  ...previous,
+                  voteAnonymization: nextValue,
+                }))
+              }
+            />
 
             {error ? <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p> : null}
           </div>
