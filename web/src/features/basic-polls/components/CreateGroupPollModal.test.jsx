@@ -186,7 +186,7 @@ describe("CreateGroupPollModal", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit privacy" }));
+    fireEvent.click(screen.getByRole("button", { name: /Advanced settings/i }));
     fireEvent.click(screen.getByRole("checkbox", { name: /Hide who has\/hasn't voted/i }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -228,7 +228,7 @@ describe("CreateGroupPollModal", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit privacy" }));
+    fireEvent.click(screen.getByRole("button", { name: /Advanced settings/i }));
     const checkbox = screen.getByRole("checkbox", { name: /Hide who has\/hasn't voted/i });
     expect(checkbox.disabled).toBe(true);
     expect(checkbox.checked).toBe(false);

@@ -71,7 +71,7 @@ describe("EmbeddedPollEditorModal", () => {
     expect(screen.getByDisplayValue("Existing description")).toBeTruthy();
     expect(screen.getAllByRole("combobox")[0].value).toBe("RANKED_CHOICE");
     expect(screen.getByRole("checkbox", { name: "Required poll" }).checked).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Edit privacy" }));
+    fireEvent.click(screen.getByRole("button", { name: /Advanced settings/i }));
     expect(screen.getByRole("checkbox", { name: /Hide who has\/hasn't voted/i }).checked).toBe(
       true
     );
@@ -98,7 +98,7 @@ describe("EmbeddedPollEditorModal", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit privacy" }));
+    fireEvent.click(screen.getByRole("button", { name: /Advanced settings/i }));
     const checkbox = screen.getByRole("checkbox", { name: /Hide who has\/hasn't voted/i });
     expect(checkbox.disabled).toBe(true);
     expect(checkbox.checked).toBe(false);
