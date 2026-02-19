@@ -12,6 +12,7 @@ let groupData;
 let groupExists;
 let slotsDocs;
 let votesSize;
+let votesDocs;
 
 const schedulerSetMock = vi.fn();
 const schedulerGetMock = vi.fn();
@@ -34,6 +35,7 @@ describe('scheduler triggers', () => {
     groupExists = false;
     slotsDocs = [];
     votesSize = 0;
+    votesDocs = [];
 
     schedulerGetMock.mockResolvedValue({ exists: true, data: () => schedulerData });
 
@@ -145,7 +147,12 @@ describe('scheduler triggers', () => {
         return { get: vi.fn(async () => ({ docs: slotsDocs })) };
       }
       if (name === 'votes') {
-        return { get: vi.fn(async () => ({ size: votesSize })) };
+        return {
+          get: vi.fn(async () => ({
+            size: votesSize,
+            docs: votesDocs,
+          })),
+        };
       }
       return { get: vi.fn(async () => ({ docs: [] })) };
     });
@@ -326,6 +333,58 @@ describe('scheduler triggers', () => {
     expect(editChannelMessageMock).toHaveBeenCalled();
     expect(createChannelMessageMock).not.toHaveBeenCalled();
     expect(schedulerSetMock).toHaveBeenCalled();
+  });
+
+  test('processDiscordSchedulerUpdate hides vote totals for non-public visibility', async () => {
+    schedulerData = {
+      status: 'OPEN',
+      title: 'Quest',
+      voteVisibility: 'hidden',
+      participantIds: ['user-1', 'user-2'],
+      discord: { messageId: 'msg1', channelId: 'chan1', lastStatus: 'OPEN' },
+    };
+    groupExists = false;
+    slotsDocs = [{ id: 'slot1', data: () => ({ start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }) }];
+    votesDocs = [
+      { id: 'user-1', data: () => ({ noTimesWork: false, votes: { slot1: 'FEASIBLE' } }) },
+      { id: 'user-2', data: () => ({ noTimesWork: true, votes: {} }) },
+    ];
+    votesSize = votesDocs.length;
+
+    await schedulerTriggers.processDiscordSchedulerUpdate.run({ data: { schedulerId: 'sched1' } });
+
+    expect(buildPollCardMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voteCount: null,
+        totalParticipants: 2,
+      })
+    );
+  });
+
+  test('processDiscordSchedulerUpdate shows totals once hidden-until-all-voted unlocks', async () => {
+    schedulerData = {
+      status: 'OPEN',
+      title: 'Quest',
+      voteVisibility: 'hidden_until_all_voted',
+      participantIds: ['user-1', 'user-2'],
+      discord: { messageId: 'msg1', channelId: 'chan1', lastStatus: 'OPEN' },
+    };
+    groupExists = false;
+    slotsDocs = [{ id: 'slot1', data: () => ({ start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }) }];
+    votesDocs = [
+      { id: 'user-1', data: () => ({ noTimesWork: false, votes: { slot1: 'FEASIBLE' } }) },
+      { id: 'user-2', data: () => ({ noTimesWork: true, votes: {} }) },
+    ];
+    votesSize = votesDocs.length;
+
+    await schedulerTriggers.processDiscordSchedulerUpdate.run({ data: { schedulerId: 'sched1' } });
+
+    expect(buildPollCardMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voteCount: 2,
+        totalParticipants: 2,
+      })
+    );
   });
 
   test('updateDiscordPollOnVote enqueues poll update when enabled', async () => {

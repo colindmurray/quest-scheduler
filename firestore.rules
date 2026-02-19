@@ -283,7 +283,9 @@ service cloud.firestore {
 
       match /basicPolls/{pollId} {
         function groupData() {
-          return get(/databases/$(database)/documents/questingGroups/$(groupId)).data;
+          return exists(/databases/$(database)/documents/questingGroups/$(groupId))
+            ? get(/databases/$(database)/documents/questingGroups/$(groupId)).data
+            : null;
         }
 
         function canReadGroupBasicPoll() {
@@ -315,10 +317,82 @@ service cloud.firestore {
 
         match /votes/{userId} {
           function pollData() {
-            return get(/databases/$(database)/documents/questingGroups/$(groupId)/basicPolls/$(pollId)).data;
+            return exists(/databases/$(database)/documents/questingGroups/$(groupId)/basicPolls/$(pollId))
+              ? get(/databases/$(database)/documents/questingGroups/$(groupId)/basicPolls/$(pollId)).data
+              : null;
           }
 
-          allow read: if canReadGroupBasicPoll();
+          function requesterVoteData() {
+            return request.auth != null
+              && exists(/databases/$(database)/documents/questingGroups/$(groupId)/basicPolls/$(pollId)/votes/$(request.auth.uid))
+              ? get(/databases/$(database)/documents/questingGroups/$(groupId)/basicPolls/$(pollId)/votes/$(request.auth.uid)).data
+              : null;
+          }
+
+          function hasSubmittedBasicPollVote(poll, vote) {
+            return poll != null
+              && vote != null
+              && (
+                (
+                  poll.settings != null
+                  && poll.settings.voteType == "RANKED_CHOICE"
+                  && vote.rankings != null
+                  && vote.rankings.size() > 0
+                )
+                || (
+                  (
+                    poll.settings == null
+                    || poll.settings.voteType != "RANKED_CHOICE"
+                  )
+                  && (
+                    (vote.optionIds != null && vote.optionIds.size() > 0)
+                    || (
+                      poll.settings != null
+                      && poll.settings.allowWriteIn == true
+                      && vote.otherText is string
+                      && vote.otherText.size() > 0
+                    )
+                  )
+                )
+              );
+          }
+
+          function pollVoteVisibility(data) {
+            return data != null
+              && (
+                data.voteVisibility == "hidden_while_voting"
+                || data.voteVisibility == "hidden_until_all_voted"
+                || data.voteVisibility == "hidden_until_finalized"
+                || data.voteVisibility == "hidden"
+              )
+              ? data.voteVisibility
+              : "full_visibility";
+          }
+
+          function canReadVotesByVisibility(data) {
+            return data != null && (
+              pollVoteVisibility(data) == "full_visibility"
+              || (
+                pollVoteVisibility(data) == "hidden_while_voting"
+                && hasSubmittedBasicPollVote(data, requesterVoteData())
+              )
+              || (
+                pollVoteVisibility(data) == "hidden_until_all_voted"
+                && data.votesAllSubmitted == true
+              )
+              || (
+                pollVoteVisibility(data) == "hidden_until_finalized"
+                && data.status == "FINALIZED"
+              )
+            );
+          }
+
+          allow read: if canReadGroupBasicPoll()
+            && (
+              isRequester(userId)
+              || isGroupManager(groupData())
+              || canReadVotesByVisibility(pollData())
+            );
 
           allow create, update: if isSignedIn()
             && isRequester(userId)
@@ -440,11 +514,15 @@ service cloud.firestore {
 
       match /basicPolls/{pollId} {
         function schedulerData() {
-          return get(/databases/$(database)/documents/schedulers/$(schedulerId)).data;
+          return exists(/databases/$(database)/documents/schedulers/$(schedulerId))
+            ? get(/databases/$(database)/documents/schedulers/$(schedulerId)).data
+            : null;
         }
 
         function pollData() {
-          return get(/databases/$(database)/documents/schedulers/$(schedulerId)/basicPolls/$(pollId)).data;
+          return exists(/databases/$(database)/documents/schedulers/$(schedulerId)/basicPolls/$(pollId))
+            ? get(/databases/$(database)/documents/schedulers/$(schedulerId)/basicPolls/$(pollId)).data
+            : null;
         }
 
         function isSchedulerEmbeddedPollWritable(scheduler, poll) {
@@ -464,7 +542,77 @@ service cloud.firestore {
         allow create, update, delete: if isCreator(schedulerData());
 
         match /votes/{userId} {
-          allow read: if canReadScheduler(schedulerData());
+          function requesterVoteData() {
+            return request.auth != null
+              && exists(/databases/$(database)/documents/schedulers/$(schedulerId)/basicPolls/$(pollId)/votes/$(request.auth.uid))
+              ? get(/databases/$(database)/documents/schedulers/$(schedulerId)/basicPolls/$(pollId)/votes/$(request.auth.uid)).data
+              : null;
+          }
+
+          function hasSubmittedBasicPollVote(poll, vote) {
+            return poll != null
+              && vote != null
+              && (
+                (
+                  poll.settings != null
+                  && poll.settings.voteType == "RANKED_CHOICE"
+                  && vote.rankings != null
+                  && vote.rankings.size() > 0
+                )
+                || (
+                  (
+                    poll.settings == null
+                    || poll.settings.voteType != "RANKED_CHOICE"
+                  )
+                  && (
+                    (vote.optionIds != null && vote.optionIds.size() > 0)
+                    || (
+                      poll.settings != null
+                      && poll.settings.allowWriteIn == true
+                      && vote.otherText is string
+                      && vote.otherText.size() > 0
+                    )
+                  )
+                )
+              );
+          }
+
+          function pollVoteVisibility(data) {
+            return data != null
+              && (
+                data.voteVisibility == "hidden_while_voting"
+                || data.voteVisibility == "hidden_until_all_voted"
+                || data.voteVisibility == "hidden_until_finalized"
+                || data.voteVisibility == "hidden"
+              )
+              ? data.voteVisibility
+              : "full_visibility";
+          }
+
+          function canReadVotesByVisibility(data) {
+            return data != null && (
+              pollVoteVisibility(data) == "full_visibility"
+              || (
+                pollVoteVisibility(data) == "hidden_while_voting"
+                && hasSubmittedBasicPollVote(data, requesterVoteData())
+              )
+              || (
+                pollVoteVisibility(data) == "hidden_until_all_voted"
+                && data.votesAllSubmitted == true
+              )
+              || (
+                pollVoteVisibility(data) == "hidden_until_finalized"
+                && data.status == "FINALIZED"
+              )
+            );
+          }
+
+          allow read: if canReadScheduler(schedulerData())
+            && (
+              isCreator(schedulerData())
+              || isRequester(userId)
+              || canReadVotesByVisibility(pollData())
+            );
 
           allow create, update: if isSignedIn()
             && isRequester(userId)
@@ -481,10 +629,69 @@ service cloud.firestore {
       }
 
       match /votes/{userId} {
-        allow read: if canReadScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data);
+        function schedulerData() {
+          return exists(/databases/$(database)/documents/schedulers/$(schedulerId))
+            ? get(/databases/$(database)/documents/schedulers/$(schedulerId)).data
+            : null;
+        }
+
+        function requesterVoteData() {
+          return request.auth != null
+            && exists(/databases/$(database)/documents/schedulers/$(schedulerId)/votes/$(request.auth.uid))
+            ? get(/databases/$(database)/documents/schedulers/$(schedulerId)/votes/$(request.auth.uid)).data
+            : null;
+        }
+
+        function hasSubmittedSchedulerVote(vote) {
+          return vote != null
+            && (
+              vote.noTimesWork == true
+              || (
+                vote.votes != null
+                && vote.votes.values().hasAny(["FEASIBLE", "PREFERRED"])
+              )
+            );
+        }
+
+        function schedulerVoteVisibility(data) {
+          return data != null
+            && (
+              data.voteVisibility == "hidden_while_voting"
+              || data.voteVisibility == "hidden_until_all_voted"
+              || data.voteVisibility == "hidden_until_finalized"
+              || data.voteVisibility == "hidden"
+            )
+            ? data.voteVisibility
+            : "full_visibility";
+        }
+
+        function canReadSchedulerVotesByVisibility(data) {
+          return data != null && (
+            schedulerVoteVisibility(data) == "full_visibility"
+            || (
+              schedulerVoteVisibility(data) == "hidden_while_voting"
+              && hasSubmittedSchedulerVote(requesterVoteData())
+            )
+            || (
+              schedulerVoteVisibility(data) == "hidden_until_all_voted"
+              && data.votesAllSubmitted == true
+            )
+            || (
+              schedulerVoteVisibility(data) == "hidden_until_finalized"
+              && data.status == "FINALIZED"
+            )
+          );
+        }
+
+        allow read: if canReadScheduler(schedulerData())
+          && (
+            isCreator(schedulerData())
+            || isRequester(userId)
+            || canReadSchedulerVotesByVisibility(schedulerData())
+          );
         function creatorVoteUpdateAllowed(voteData) {
           return voteData != null
-            && isCreator(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data)
+            && isCreator(schedulerData())
             && request.resource.data.diff(voteData).affectedKeys().hasOnly(["votes", "updatedAt"])
             && voteData.votes != null
             && request.resource.data.votes != null
@@ -494,13 +701,13 @@ service cloud.firestore {
         allow create, update: if isSignedIn()
           && (
             (isRequester(userId)
-              && canVoteScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data))
+              && canVoteScheduler(schedulerData()))
             || creatorVoteUpdateAllowed(resource.data)
           );
         allow delete: if isSignedIn() && (
           (isRequester(userId)
-            && canVoteScheduler(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data))
-          || isCreator(get(/databases/$(database)/documents/schedulers/$(schedulerId)).data)
+            && canVoteScheduler(schedulerData()))
+          || isCreator(schedulerData())
         );
       }
     }

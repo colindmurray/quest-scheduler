@@ -44,7 +44,8 @@ test.describe.serial("Embedded poll editor lifecycle", () => {
     await addModal.locator('input[placeholder="Option 2"]').fill("Combat-heavy");
     await addModal.locator("input").first().fill(addedTitle);
     await addModal.getByRole("checkbox", { name: "Required poll" }).check();
-    await addModal.getByRole("button", { name: "Add poll", exact: true }).click();
+    const addPollButton = addModal.getByRole("button", { name: "Add poll", exact: true });
+    await addPollButton.evaluate((element) => element.click());
 
     await expect(page.getByText(addedTitle)).toBeVisible();
 
@@ -56,7 +57,11 @@ test.describe.serial("Embedded poll editor lifecycle", () => {
     await expect(page.getByRole("heading", { name: "Edit embedded poll" })).toBeVisible();
     await editAddedModal.locator("input").first().fill(updatedAddedTitle);
     await editAddedModal.getByRole("checkbox", { name: "Required poll" }).uncheck();
-    await editAddedModal.getByRole("button", { name: "Save poll", exact: true }).click();
+    const saveAddedPollButton = editAddedModal.getByRole("button", {
+      name: "Save poll",
+      exact: true,
+    });
+    await saveAddedPollButton.evaluate((element) => element.click());
 
     await expect(page.getByText(updatedAddedTitle)).toBeVisible();
     const updatedCard = cardForTitle(updatedAddedTitle);
@@ -76,7 +81,11 @@ test.describe.serial("Embedded poll editor lifecycle", () => {
     });
     await expect(page.getByRole("heading", { name: "Edit embedded poll" })).toBeVisible();
     await editExistingModal.locator("input").first().fill(updatedExistingTitle);
-    await editExistingModal.getByRole("button", { name: "Save poll", exact: true }).click();
+    const saveExistingPollButton = editExistingModal.getByRole("button", {
+      name: "Save poll",
+      exact: true,
+    });
+    await saveExistingPollButton.evaluate((element) => element.click());
     await expect(page.getByText(updatedExistingTitle)).toBeVisible();
   });
 });

@@ -9,6 +9,8 @@ import {
 } from "../../../lib/data/schedulers";
 import { userRef } from "../../../lib/data/users";
 import { questingGroupRef } from "../../../lib/data/questingGroups";
+import { hasSubmittedSchedulerVote } from "../../../lib/vote-utils";
+import { canViewOtherVotesForUser, resolveVoteVisibility } from "../../../lib/vote-visibility";
 
 export function useSchedulerData({ schedulerId, user }) {
   const schedulerDocRef = useMemo(
@@ -34,18 +36,29 @@ export function useSchedulerData({ schedulerId, user }) {
     () => (schedulerId ? schedulerSlotsRef(schedulerId) : null),
     [schedulerId]
   );
-  const votesRef = useMemo(
-    () => (schedulerId ? schedulerVotesRef(schedulerId) : null),
-    [schedulerId]
-  );
   const userVoteRef = useMemo(
     () => (schedulerId && user ? schedulerVoteDocRef(schedulerId, user.uid) : null),
     [schedulerId, user]
   );
 
   const slots = useFirestoreCollection(slotsRef);
-  const allVotes = useFirestoreCollection(votesRef);
   const userVote = useFirestoreDoc(userVoteRef);
+  const canReadAllVotes = useMemo(() => {
+    const schedulerData = scheduler.data || null;
+    if (!schedulerId || !user || !schedulerData) return false;
+    return canViewOtherVotesForUser({
+      voteVisibility: resolveVoteVisibility(schedulerData.voteVisibility),
+      isCreator: schedulerData.creatorId === user.uid,
+      hasVoted: hasSubmittedSchedulerVote(userVote.data),
+      allParticipantsVoted: schedulerData.votesAllSubmitted === true,
+      isFinalized: schedulerData.status === "FINALIZED",
+    });
+  }, [scheduler.data, schedulerId, user, userVote.data]);
+  const votesRef = useMemo(
+    () => (schedulerId && canReadAllVotes ? schedulerVotesRef(schedulerId) : null),
+    [canReadAllVotes, schedulerId]
+  );
+  const allVotes = useFirestoreCollection(votesRef);
 
   return {
     scheduler,
@@ -54,6 +67,7 @@ export function useSchedulerData({ schedulerId, user }) {
     questingGroup,
     slots,
     allVotes,
+    canReadAllVotes,
     userVote,
     userVoteRef,
   };

@@ -14,6 +14,7 @@ const {
 const {
   hasSubmittedVote,
 } = require("./vote-submission");
+const { resolveVoteVisibility } = require("../utils/vote-visibility");
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -311,6 +312,8 @@ const createBasicPoll = functions.https.onCall(async (data, context) => {
   const createdRef = parentRef.collection("basicPolls").doc();
   const basePoll = {
     ...pollData,
+    voteVisibility: resolveVoteVisibility(pollData?.voteVisibility),
+    votesAllSubmitted: false,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };

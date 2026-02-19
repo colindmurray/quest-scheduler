@@ -121,6 +121,7 @@ import {
   getNextCycleVoteValue,
 } from "./utils/calendar-month-vote-controls";
 import { hasSubmittedSchedulerVote, isAttendingVote } from "../../lib/vote-utils";
+import { canViewOtherVotesForUser, resolveVoteVisibility } from "../../lib/vote-visibility";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "./calendar-styles.css";
 
@@ -147,6 +148,7 @@ export default function SchedulerPage() {
     questingGroup,
     slots,
     allVotes,
+    canReadAllVotes,
     userVote,
     userVoteRef,
   } = useSchedulerData({ schedulerId: id, user });
@@ -214,6 +216,7 @@ export default function SchedulerPage() {
   } = useSchedulerEmbeddedPollVotes({
     schedulerId: id,
     userId: user?.uid || null,
+    isCreator: scheduler.data?.creatorId === user?.uid,
   });
   const [embeddedSubmittingByPoll, setEmbeddedSubmittingByPoll] = useState({});
   const [embeddedClearingByPoll, setEmbeddedClearingByPoll] = useState({});
@@ -522,15 +525,42 @@ export default function SchedulerPage() {
   ]);
 
   const { tallies, slotVoters } = useMemo(() => {
+    const voteDocs =
+      user?.uid &&
+      userVote.data &&
+      !allVotes.data.some((voteDoc) => voteDoc?.id === user.uid)
+        ? [...allVotes.data, { id: user.uid, ...userVote.data }]
+        : allVotes.data;
     return buildEffectiveTallies({
       schedulerId: id,
       schedulerStatus: scheduler.data?.status || "OPEN",
       pollPriorityAtMs,
       slots: slots.data,
-      voteDocs: allVotes.data,
+      voteDocs,
       profilesById: profilesByUserId,
     });
-  }, [allVotes.data, id, pollPriorityAtMs, profilesByUserId, scheduler.data?.status, slots.data]);
+  }, [
+    allVotes.data,
+    id,
+    pollPriorityAtMs,
+    profilesByUserId,
+    scheduler.data?.status,
+    slots.data,
+    user?.uid,
+    userVote.data,
+  ]);
+
+  const visibleVoteDocs = useMemo(() => {
+    if (
+      user?.uid &&
+      userVote.data &&
+      !allVotes.data.some((voteDoc) => voteDoc?.id === user.uid)
+    ) {
+      return [...allVotes.data, { id: user.uid, ...userVote.data }];
+    }
+    return allVotes.data;
+  }, [allVotes.data, user?.uid, userVote.data]);
+  const showSchedulerVoteDetails = canReadAllVotes;
 
   const { infoBySlotId: userBlockersBySlotId } = useMemo(() => {
     return buildUserBlockInfo({
@@ -596,8 +626,8 @@ export default function SchedulerPage() {
     [enrichPendingInviteUsers, pendingInviteEmails]
   );
   const submittedVoteDocs = useMemo(
-    () => allVotes.data.filter((voteDoc) => hasSubmittedSchedulerVote(voteDoc)),
-    [allVotes.data]
+    () => visibleVoteDocs.filter((voteDoc) => hasSubmittedSchedulerVote(voteDoc)),
+    [visibleVoteDocs]
   );
   const voterEmails = useMemo(
     () => submittedVoteDocs.map((voteDoc) => voteDoc.userEmail).filter(Boolean),
@@ -609,8 +639,8 @@ export default function SchedulerPage() {
   }, [participantEmails, voterEmails]);
   const colorMap = useMemo(() => buildColorMap(uniqueEmails), [uniqueEmails]);
   const voteMapById = useMemo(
-    () => new Map(allVotes.data.map((voteDoc) => [voteDoc.id, voteDoc])),
-    [allVotes.data]
+    () => new Map(visibleVoteDocs.map((voteDoc) => [voteDoc.id, voteDoc])),
+    [visibleVoteDocs]
   );
   const submittedVoteMapById = useMemo(
     () => new Map(submittedVoteDocs.map((voteDoc) => [voteDoc.id, voteDoc])),
@@ -619,11 +649,11 @@ export default function SchedulerPage() {
   const voteMapByEmail = useMemo(
     () =>
       new Map(
-        allVotes.data
+        visibleVoteDocs
           .filter((voteDoc) => voteDoc.userEmail)
           .map((voteDoc) => [normalizeEmail(voteDoc.userEmail), voteDoc])
       ),
-    [allVotes.data]
+    [visibleVoteDocs]
   );
   const submittedVoteMapByEmail = useMemo(
     () =>
@@ -836,12 +866,24 @@ export default function SchedulerPage() {
     });
   }, [embeddedPolls, embeddedVotesByPoll, nudgeEligibleParticipantIds]);
   const participantCount = participantIdSet.size;
-  const voteCount = submittedVoteDocs.length;
+  const knownVoteCount = submittedVoteDocs.length;
+  const voteCount = showSchedulerVoteDetails
+    ? knownVoteCount
+    : hasSubmittedSchedulerVote(userVote.data)
+      ? 1
+      : 0;
   const allVotesIn = useMemo(() => {
     if (scheduler.data?.status !== "OPEN") return false;
     if (!participantCount) return false;
-    return voteCount >= participantCount;
-  }, [participantCount, scheduler.data?.status, voteCount]);
+    if (scheduler.data?.votesAllSubmitted === true) return true;
+    return showSchedulerVoteDetails && knownVoteCount >= participantCount;
+  }, [
+    knownVoteCount,
+    participantCount,
+    scheduler.data?.status,
+    scheduler.data?.votesAllSubmitted,
+    showSchedulerVoteDetails,
+  ]);
   const winningSlot = useMemo(() => {
     const winningId = scheduler.data?.winningSlotId;
     if (!winningId) return null;
@@ -2202,6 +2244,8 @@ export default function SchedulerPage() {
         pendingInvites,
         timezone: scheduler.data.timezone,
         timezoneMode: scheduler.data.timezoneMode,
+        voteVisibility: resolveVoteVisibility(scheduler.data?.voteVisibility),
+        votesAllSubmitted: false,
         winningSlotId: null,
         googleEventId: null,
         googleCalendarId: null,
@@ -2229,7 +2273,7 @@ export default function SchedulerPage() {
         const validSlotIds = new Set(futureSlots.map((slot) => slot.id));
         const participantIdSet = new Set(participantIds);
         await Promise.all(
-          allVotes.data.map((voteDoc) => {
+          visibleVoteDocs.map((voteDoc) => {
             if (voteDoc.id !== user.uid) {
               return Promise.resolve();
             }
@@ -2551,6 +2595,18 @@ export default function SchedulerPage() {
   const inviterLabel = pendingInviteMeta.invitedByEmail || scheduler.data.creatorEmail || "someone";
   const inviterProfile =
     participantMapByEmail.get(normalizeEmail(inviterLabel)) || { email: inviterLabel };
+  const voteVisibilityMode = resolveVoteVisibility(scheduler.data?.voteVisibility);
+  const voteVisibilityHint = showSchedulerVoteDetails
+    ? null
+    : voteVisibilityMode === "hidden_while_voting"
+      ? "Vote details unlock after you submit your vote."
+      : voteVisibilityMode === "hidden_until_all_voted"
+        ? "Vote details unlock once all participants have voted."
+        : voteVisibilityMode === "hidden_until_finalized"
+          ? "Vote details unlock once the poll is finalized."
+          : voteVisibilityMode === "hidden"
+            ? "Only the poll creator can view participant vote details."
+            : null;
   const pollDescription = (scheduler.data.description || "").trim();
   const canAccess =
     isCreator ||
@@ -2584,6 +2640,13 @@ export default function SchedulerPage() {
       </div>
     );
   }
+
+  const isCurrentUserParticipant = (participant) => {
+    const participantId = String(participant?.id || "").trim();
+    if (participantId && participantId === String(user?.uid || "")) return true;
+    const participantEmail = normalizeEmail(participant?.email);
+    return Boolean(participantEmail && participantEmail === normalizedUserEmail);
+  };
 
   return (
     <>
@@ -2743,7 +2806,8 @@ export default function SchedulerPage() {
               <div>
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Participants</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {participantCount} total · {voteCount} voted
+                  {participantCount} total
+                  {showSchedulerVoteDetails ? ` · ${voteCount} voted` : " · vote progress hidden"}
                 </p>
               </div>
               <AvatarStackWithColors
@@ -2752,6 +2816,9 @@ export default function SchedulerPage() {
                 size={24}
               />
             </div>
+            {voteVisibilityHint ? (
+              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">{voteVisibilityHint}</p>
+            ) : null}
             {questingGroupName && (
               <div
                 className="mt-3 rounded-2xl border px-3 py-3 text-xs"
@@ -2791,12 +2858,18 @@ export default function SchedulerPage() {
                       <UserIdentity user={member} className="text-xs" />
                       <span
                         className={`ml-auto text-[10px] font-semibold ${
-                          member.hasVoted
+                          !showSchedulerVoteDetails && !isCurrentUserParticipant(member)
+                            ? "text-slate-400 dark:text-slate-500"
+                            : member.hasVoted
                             ? "text-emerald-600 dark:text-emerald-300"
                             : "text-slate-400 dark:text-slate-500"
                         }`}
                       >
-                        {member.hasVoted ? "Voted" : "Pending"}
+                        {!showSchedulerVoteDetails && !isCurrentUserParticipant(member)
+                          ? "Hidden"
+                          : member.hasVoted
+                            ? "Voted"
+                            : "Pending"}
                       </span>
                     </div>
                   ))}
@@ -2820,6 +2893,8 @@ export default function SchedulerPage() {
                     className={`text-[10px] font-semibold ${
                       participant.isPendingInvite
                         ? "text-amber-600 dark:text-amber-300"
+                        : !showSchedulerVoteDetails && !isCurrentUserParticipant(participant)
+                          ? "text-slate-400 dark:text-slate-500"
                         : participant.hasVoted
                           ? "text-emerald-600 dark:text-emerald-300"
                           : "text-slate-400 dark:text-slate-500"
@@ -2827,6 +2902,8 @@ export default function SchedulerPage() {
                   >
                     {participant.isPendingInvite
                       ? "Pending invite"
+                      : !showSchedulerVoteDetails && !isCurrentUserParticipant(participant)
+                        ? "Hidden"
                       : participant.hasVoted
                         ? "Voted"
                         : "Pending"}
@@ -3541,6 +3618,13 @@ export default function SchedulerPage() {
                   const pollSubmittedVotes = pollVotes.filter((voteDoc) =>
                     hasSubmittedEmbeddedVote(poll, voteDoc)
                   );
+                  const canReadEmbeddedVoteProgress = canViewOtherVotesForUser({
+                    voteVisibility: resolveVoteVisibility(poll?.voteVisibility),
+                    isCreator,
+                    hasVoted: hasSubmitted,
+                    allParticipantsVoted: poll?.votesAllSubmitted === true,
+                    isFinalized: (poll?.status || "OPEN") === "FINALIZED",
+                  });
                   const embeddedFinalResults = poll?.finalResults || null;
                   const canVoteEmbedded = canVoteEmbeddedPoll(poll);
                   const lifecycleBusy = embeddedLifecycleBusyByPoll[poll.id] === true;
@@ -3564,6 +3648,17 @@ export default function SchedulerPage() {
                   const pendingUsers = eligibleUsers.filter(
                     (participant) => !votedIdSet.has(String(participant.id || ""))
                   );
+                  const embeddedVoteVisibilityHint = !canReadEmbeddedVoteProgress
+                    ? resolveVoteVisibility(poll?.voteVisibility) === "hidden_while_voting"
+                      ? "Vote progress unlocks after you submit your vote."
+                      : resolveVoteVisibility(poll?.voteVisibility) === "hidden_until_all_voted"
+                        ? "Vote progress unlocks once all participants have voted."
+                        : resolveVoteVisibility(poll?.voteVisibility) === "hidden_until_finalized"
+                          ? "Vote progress unlocks once this poll is finalized."
+                          : resolveVoteVisibility(poll?.voteVisibility) === "hidden"
+                            ? "Only the poll creator can view participant vote progress."
+                            : null
+                    : null;
 
                   return (
                     <BasicPollVotingCard
@@ -3605,6 +3700,8 @@ export default function SchedulerPage() {
                       eligibleUsers={eligibleUsers}
                       votedUsers={votedUsers}
                       pendingUsers={pendingUsers}
+                      showVoteProgress={canReadEmbeddedVoteProgress}
+                      voteVisibilityHint={embeddedVoteVisibilityHint}
                       onFinalizePoll={() => finalizeEmbeddedPollIndividually(poll)}
                       onReopenPoll={() => reopenEmbeddedPollIndividually(poll)}
                       onBreakTie={(method) => breakEmbeddedPollTieIndividually(poll, method)}

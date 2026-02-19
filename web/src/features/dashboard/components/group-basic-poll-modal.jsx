@@ -31,6 +31,7 @@ import {
 } from "../../../lib/basic-polls/vote-draft";
 import { BASIC_POLL_STATUSES, BASIC_POLL_VOTE_TYPES } from "../../../lib/basic-polls/constants";
 import { coerceDate } from "../../../lib/time";
+import { canViewOtherVotesForUser, resolveVoteVisibility } from "../../../lib/vote-visibility";
 import {
   deleteBasicPoll,
   deleteBasicPollVote,
@@ -150,6 +151,16 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
   const isPollCreator = Boolean(
     user?.uid && poll?.creatorId && String(poll.creatorId) === String(user.uid)
   );
+  const canReadOtherVotes = useMemo(() => {
+    if (!poll) return false;
+    return canViewOtherVotesForUser({
+      voteVisibility: resolveVoteVisibility(poll.voteVisibility),
+      isCreator: isPollCreator,
+      hasVoted: hasSubmittedVoteForPoll(poll, myVote),
+      allParticipantsVoted: poll.votesAllSubmitted === true,
+      isFinalized: (poll?.status || BASIC_POLL_STATUSES.OPEN) === BASIC_POLL_STATUSES.FINALIZED,
+    });
+  }, [isPollCreator, myVote, poll]);
   const nudgeCooldownRemaining = useMemo(
     () => getNudgeCooldownRemaining(pollDiscord?.nudgeLastSentAt),
     [pollDiscord?.nudgeLastSentAt]
@@ -177,6 +188,17 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
       basicPollMissingNudgeUserIds.length > 0
   );
   const cardBusy = submittingVote || clearingVote;
+  const voteVisibilityHint = !canReadOtherVotes
+    ? resolveVoteVisibility(poll?.voteVisibility) === "hidden_while_voting"
+      ? "Vote progress unlocks after you submit your vote."
+      : resolveVoteVisibility(poll?.voteVisibility) === "hidden_until_all_voted"
+        ? "Vote progress unlocks once all participants have voted."
+        : resolveVoteVisibility(poll?.voteVisibility) === "hidden_until_finalized"
+          ? "Vote progress unlocks once this poll is finalized."
+          : resolveVoteVisibility(poll?.voteVisibility) === "hidden"
+            ? "Only the poll creator can view participant vote progress."
+            : null
+    : null;
 
   useEffect(() => {
     if (!groupId || !pollId || !isGroupMember) {
@@ -211,6 +233,16 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
       return;
     }
 
+    if (!canReadOtherVotes) {
+      const ownVotes =
+        user?.uid && hasSubmittedVoteForPoll(poll, myVote)
+          ? [{ id: user.uid, ...(myVote || {}) }]
+          : [];
+      setVotes(ownVotes);
+      setVotesLoading(false);
+      return;
+    }
+
     setVotesLoading(true);
     const unsubscribe = subscribeToBasicPollVotes(
       "group",
@@ -226,7 +258,7 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
       }
     );
     return () => unsubscribe();
-  }, [groupId, pollId, isGroupMember]);
+  }, [canReadOtherVotes, groupId, isGroupMember, myVote, poll, pollId, user?.uid]);
 
   useEffect(() => {
     if (!groupId || !pollId || !isGroupMember || !user?.uid) {
@@ -585,6 +617,8 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
                 eligibleUsers={participantUsers}
                 votedUsers={votedUsers}
                 pendingUsers={pendingUsers}
+                showVoteProgress={canReadOtherVotes}
+                voteVisibilityHint={voteVisibilityHint}
                 onViewOptionNote={(pollTitle, option) =>
                   setOptionNoteViewer({
                     pollTitle: String(pollTitle || "General poll"),

@@ -21,6 +21,11 @@ import {
 import { BASIC_POLL_STATUSES, BASIC_POLL_VOTE_TYPES, resolveBasicPollVoteType } from "../../../lib/basic-polls/constants";
 import { createBasicPoll, updateBasicPoll } from "../../../lib/data/basicPolls";
 import { coerceDate } from "../../../lib/time";
+import {
+  DEFAULT_VOTE_VISIBILITY,
+  VOTE_VISIBILITY_OPTIONS,
+  resolveVoteVisibility,
+} from "../../../lib/vote-visibility";
 import { PollMarkdownContent } from "../../../components/polls/poll-markdown-content";
 import { QuestingGroupSelect } from "../../scheduler/components/questing-group-select";
 
@@ -75,6 +80,9 @@ function buildInitialState(selectedGroupId = null, initialPoll = null) {
       ? String(Math.max(1, Number(settings.maxSelections)))
       : "";
   const deadlineAtLocal = toDateTimeLocalValue(settings.deadlineAt || initialPoll?.deadlineAt || null);
+  const voteVisibility = resolveVoteVisibility(
+    initialPoll?.voteVisibility || DEFAULT_VOTE_VISIBILITY
+  );
   return {
     selectedGroupId,
     title: String(initialPoll?.title || ""),
@@ -84,6 +92,7 @@ function buildInitialState(selectedGroupId = null, initialPoll = null) {
     allowMultiple,
     maxSelections,
     allowWriteIn,
+    voteVisibility,
     deadlineAtLocal,
     options: normalizeInitialOptions(initialPoll),
     noteEditor: { optionId: null, tab: "write", value: "" },
@@ -249,6 +258,9 @@ export function CreateGroupPollModal({
     state.allowMultiple &&
     String(state.maxSelections || "").trim().length > 0;
   const deadlineDate = useMemo(() => parseLocalDateTime(state.deadlineAtLocal), [state.deadlineAtLocal]);
+  const voteVisibilityLabel =
+    VOTE_VISIBILITY_OPTIONS.find((option) => option.value === state.voteVisibility)?.label ||
+    "Vote visibility";
   const deadlineTimeValue = deadlineDate
     ? `${String(deadlineDate.getHours()).padStart(2, "0")}:${String(
         deadlineDate.getMinutes()
@@ -309,6 +321,7 @@ export function CreateGroupPollModal({
         title: normalizedTitle,
         description: String(state.description || "").trim(),
         options: normalizedOptions,
+        voteVisibility: resolveVoteVisibility(state.voteVisibility),
         settings: {
           voteType: state.voteType,
           allowMultiple: state.voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && state.allowMultiple,
@@ -375,6 +388,9 @@ export function CreateGroupPollModal({
             </span>
             <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200">
               {filledOptionCount} option{filledOptionCount === 1 ? "" : "s"}
+            </span>
+            <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200">
+              {voteVisibilityLabel}
             </span>
             <Popover open={deadlineEditorOpen} onOpenChange={setDeadlineEditorOpen}>
               <PopoverTrigger asChild>
@@ -522,6 +538,26 @@ export function CreateGroupPollModal({
                     <SelectContent>
                       <SelectItem value={BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE}>Multiple choice</SelectItem>
                       <SelectItem value={BASIC_POLL_VOTE_TYPES.RANKED_CHOICE}>Ranked choice</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={state.voteVisibility}
+                    onValueChange={(value) =>
+                      setState((previous) => ({
+                        ...previous,
+                        voteVisibility: resolveVoteVisibility(value),
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="h-8 w-[13rem] rounded-full border-slate-300 bg-white px-3 text-xs dark:border-slate-600 dark:bg-slate-900">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VOTE_VISIBILITY_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <Popover open={customizationOpen} onOpenChange={setCustomizationOpen}>

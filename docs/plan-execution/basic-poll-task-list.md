@@ -1,12 +1,13 @@
 ---
 created: 2026-02-11
-lastUpdated: 2026-02-12
+lastUpdated: 2026-02-19
 summary: "Plan-specific execution tracker for the active basic-poll rollout with checkpoint state and ordered tasks."
 category: TASK_TRACKER
 status: CURRENT
 implementationStatus: ONGOING
 note: "Active plan execution tracker synchronized with docs/task-list.md."
 changelog:
+  - "2026-02-19: Finalized vote-visibility rollout by enforcing Discord basic-poll card vote-count gating, aligning scheduler vote-submission semantics across rules/runtime, and re-running full unit/rules/integration/e2e validation gates."
   - "2026-02-12: Removed legacy `/poll-create` flat payload fallback; worker now enforces `multiple`/`ranked` subcommands only."
   - "2026-02-12: Fixed Discord basic poll card web-link usability by adding a clickable embed link field (`View on web`) and deployed updated Discord card handlers to prod/staging."
   - "2026-02-12: Migrated Discord `/poll-create` to `multiple`/`ranked` subcommands, updated worker parsing, re-registered commands (global + target guilds), and deployed worker to prod/staging."
@@ -38,10 +39,10 @@ changelog:
 - Last Generated: 2026-02-11
 
 ## Execution Checkpoint
-- Last Completed: Merged validated branch into `master`, removed deploy-rejected redundant indexes, and completed staging + production deploys
-- Next Step: Track post-deploy stability and transition planning toward Phase 12 backlog items
-- Open Issues: None in automated validation gates.
-- Last Updated (YYYY-MM-DD): 2026-02-12
+- Last Completed: Finalized Vote Visibility Settings for scheduler/basic-poll flows, including Discord card visibility enforcement and full validation-gate reruns.
+- Next Step: Push `feature/vote-visibility-settings` for review and run manual QA for all five visibility modes across web + Discord surfaces.
+- Open Issues: Emulator-backed notification triggers still emit expected `NOT_FOUND` noise during integration/e2e runs.
+- Last Updated (YYYY-MM-DD): 2026-02-19
 
 ## Ordered Task Checklist
 - [x] `P1` `1.1` Firestore rules: group-linked basic polls (Section: Phase 1: Data Model & Security Rules)
@@ -125,6 +126,25 @@ changelog:
 - [ ] `P3` `13.8` Inline banner: unvoted required embedded polls (Section: Phase 13: Nice-to-Have Enhancements)
 
 ## Progress Notes
+
+- 2026-02-19: Vote visibility finalization pass:
+  - Closed remaining Discord/basic-poll visibility gaps:
+    - `functions/src/triggers/basic-poll-card.js`: hide vote counts when mode does not allow public disclosure.
+    - `functions/src/discord/worker.js`: ensure finalize card updates and Discord-created poll defaults respect `voteVisibility`.
+    - `functions/src/discord/basic-poll-card.js`: explicit `Vote progress hidden` card state.
+  - Aligned scheduler rule submission semantics with runtime vote helpers (`FEASIBLE`/`PREFERRED` or `noTimesWork`) in `firestore.rules`.
+  - Added/updated regression coverage:
+    - `functions/src/triggers/basic-poll-card.test.js`
+    - `functions/src/discord/worker.basic-poll.test.js`
+    - `functions/src/discord/basic-poll-card.test.js`
+    - `functions/src/utils/vote-visibility.parity.test.js`
+    - `web/src/__tests__/rules/rules.test.js`
+  - Validation:
+    - `cd web && npm test -- --run` (pass: `92 files`, `414 tests`)
+    - `cd functions && npm test -- --run` (pass: `56 files`, `390 tests`)
+    - `npm --prefix web run test:rules` (pass: `24 tests`)
+    - `npm --prefix web run test:integration` (pass: `4 files`, `14 tests`)
+    - `npm --prefix web run test:e2e:emulators` (pass: `69 passed`, `75 skipped`)
 
 - 2026-02-12: Legacy poll-create fallback removal:
   - `functions/src/discord/worker.js`:

@@ -1,12 +1,14 @@
 ---
 created: 2026-01-06
-lastUpdated: 2026-02-17
+lastUpdated: 2026-02-19
 summary: "Primary global execution tracker for current long-running work, checkpoints, and validation notes."
 category: TASK_TRACKER
 status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-19: Closed final vote-visibility gaps by enforcing hidden vote counts on Discord basic-poll cards, aligning scheduler rule submission semantics with runtime helpers, and re-running full validation gates."
+  - "2026-02-19: Completed Vote Visibility Settings across web/functions/rules/dashboard/Discord, stabilized flaky WebKit scheduler e2e loading assertions, and re-ran full unit/rules/integration/e2e validation gates."
   - "2026-02-17: Deployed latest calendar-voting and Discord repost refresh updates to staging and production (`hosting,functions`) after unit/integration/e2e validation pass."
   - "2026-02-17: Added Discord repost submitted-vote-count regression coverage (`votes: {}` treated as pending) and re-ran unit + integration + e2e validation gates across calendar voting and repost features."
   - "2026-02-17: Added Discord poll repost recovery coverage and creator-only poll-options visibility checks (new seeded e2e scenario + callable fallback test) to support manual panel refresh workflows."
@@ -79,12 +81,41 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Deployed latest calendar inline voting + Discord repost refresh updates to staging and production after full targeted unit/integration/e2e validation.
-- Next Step: Manually sanity-check the poll-options repost action and month-calendar inline voting in production against a live Discord-linked poll.
-- Open Issues: Integration suite still emits expected noisy notification trigger errors under emulators (`notificationEvents` NOT_FOUND); test command exits are passing.
-- Last Updated (YYYY-MM-DD): 2026-02-17
+- Last Completed: Completed Vote Visibility Settings for schedulers/basic polls, enforced vote visibility in Firestore rules + dashboard attendance hooks, and closed validation gates including full emulator e2e reruns.
+- Next Step: Push feature branch for review and run product QA on each visibility mode (`full_visibility`, `hidden_while_voting`, `hidden_until_all_voted`, `hidden_until_finalized`, `hidden`) across web + Discord cards.
+- Open Issues: Emulator-backed integration/e2e runs still log expected notification trigger `NOT_FOUND` noise (`notificationEvents`) even when suites pass.
+- Last Updated (YYYY-MM-DD): 2026-02-19
 
 ## Progress Notes
+
+- 2026-02-19: Vote Visibility Settings completion + validation gate reruns.
+  - Implementation completion:
+    - Added/extended shared vote visibility helpers in both runtimes:
+      - `web/src/lib/vote-visibility.js`
+      - `functions/src/utils/vote-visibility.js`
+    - Wired scheduler/basic-poll creation + update flows to persist normalized `voteVisibility` and vote completion metadata (`votesAllSubmitted`).
+    - Enforced visibility in rules for scheduler votes and basic-poll votes (group + scheduler embedded) while preserving own-vote and creator/manager access.
+    - Updated scheduler/dashboard/basic-poll UIs to show hidden-progress messaging and only disclose participant vote details when allowed by visibility mode.
+    - Updated Discord sync/repost paths to hide public vote counts when visibility mode blocks disclosure.
+    - Closed remaining Discord/basic-poll gaps by:
+      - enforcing vote-count visibility gating in `functions/src/triggers/basic-poll-card.js` and finalize-card updates in `functions/src/discord/worker.js`
+      - defaulting Discord-created basic polls to explicit `voteVisibility: full_visibility`
+      - rendering `Vote progress hidden` in Discord basic-poll cards when vote counts are not publicly visible.
+    - Added cross-runtime vote visibility parity coverage in:
+      - `functions/src/utils/vote-visibility.parity.test.js`
+    - Aligned scheduler Firestore `hasSubmittedSchedulerVote` rules logic with runtime helpers (`FEASIBLE`/`PREFERRED` or `noTimesWork`) and added regression assertions.
+    - Stabilized flaky WebKit scheduler e2e assertions by adding reusable scheduler-open polling helpers with reload fallback in:
+      - `web/e2e/scheduler.spec.js`
+      - `web/e2e/scheduler-month-calendar-vote-controls.spec.js`
+      - `web/e2e/scheduler-discord-repost-controls.spec.js`
+      - `web/e2e/scheduler-vote-visibility.spec.js`
+  - Validation:
+    - `cd web && npm test -- --run` (pass: `92 files`, `414 tests`)
+    - `cd functions && npm test -- --run` (pass: `56 files`, `390 tests`)
+    - `npm --prefix web run test:rules` (pass: `24 tests`)
+    - `npm --prefix web run test:integration` (pass: `4 files`, `14 tests`; expected emulator noise persisted)
+    - `npm --prefix web run test:e2e:emulators` (pass: `69 passed`, `75 skipped`)
+    - Focused WebKit reruns for previously flaky specs were also executed and passed before final full e2e rerun.
 
 - 2026-02-17: Discord poll repost refresh workflow validation + coverage.
   - Existing implementation confirmation:

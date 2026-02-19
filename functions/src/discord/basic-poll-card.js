@@ -133,7 +133,7 @@ function buildBasicPollCard({ groupId, pollId, poll, voteCount, totalParticipant
       value:
         Number.isFinite(voteCount) && Number.isFinite(totalParticipants)
           ? `${voteCount}/${totalParticipants} voted${pending > 0 ? ` (${pending} pending)` : ""}`
-          : "Unknown",
+          : "Vote progress hidden",
       inline: true,
     },
     {

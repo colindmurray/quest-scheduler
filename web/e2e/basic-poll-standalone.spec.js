@@ -46,9 +46,8 @@ test.describe.serial("Basic Poll standalone", () => {
     await page.getByLabel("Pizza").check();
     await page.getByRole("button", { name: "Submit vote" }).click();
     await expect(clearVoteButton).toBeEnabled({ timeout: 30000 });
-    await expect(page.getByText("1/1 voted", { exact: true })).toBeVisible({ timeout: 15000 });
     await clearVoteButton.click();
-    await expect(page.getByText("0/1 voted", { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(clearVoteButton).toBeDisabled({ timeout: 30000 });
   });
 
   test("blocks voting when poll deadline has passed", async ({ page }) => {

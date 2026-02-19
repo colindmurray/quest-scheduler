@@ -31,6 +31,8 @@ export function BasicPollVotingCard({
   eligibleUsers = [],
   votedUsers = [],
   pendingUsers = [],
+  showVoteProgress = true,
+  voteVisibilityHint = null,
 }) {
   const voteType = poll?.settings?.voteType || BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE;
   const isRanked = voteType === BASIC_POLL_VOTE_TYPES.RANKED_CHOICE;
@@ -100,7 +102,9 @@ export function BasicPollVotingCard({
             </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {voteCount}/{participantCount} voted
+            {showVoteProgress
+              ? `${voteCount}/${participantCount} voted`
+              : "Vote progress hidden"}
           </p>
           <PollParticipantSummary
             eligibleUsers={eligibleUsers}
@@ -109,8 +113,12 @@ export function BasicPollVotingCard({
             eligibleCount={participantCount}
             votedCount={voteCount}
             showPending={!isFinalized}
+            showVoteProgress={showVoteProgress}
             className="mt-1"
           />
+          {voteVisibilityHint ? (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">{voteVisibilityHint}</p>
+          ) : null}
           <PollMarkdownContent content={poll?.description} />
         </div>
         {isCreator && (onReopenPoll || onFinalizePoll) ? (

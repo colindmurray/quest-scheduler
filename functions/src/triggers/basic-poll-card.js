@@ -20,6 +20,10 @@ const {
 const { buildBasicPollCard } = require("../discord/basic-poll-card");
 const { BASIC_POLL_STATUSES } = require("../basic-polls/constants");
 const { hasSubmittedVoteForPoll } = require("../basic-polls/vote-submission");
+const {
+  canViewOtherVotesPublicly,
+  resolveVoteVisibility,
+} = require("../utils/vote-visibility");
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -37,6 +41,8 @@ function computeBasicPollSyncHash(pollData, voteCount, totalParticipants) {
   const payload = {
     title: pollData?.title || "",
     status: pollData?.status || BASIC_POLL_STATUSES.OPEN,
+    voteVisibility: resolveVoteVisibility(pollData?.voteVisibility),
+    votesAllSubmitted: pollData?.votesAllSubmitted === true,
     description: pollData?.description || "",
     settings: pollData?.settings || {},
     options: Array.isArray(pollData?.options)
@@ -83,8 +89,17 @@ async function upsertDiscordBasicPollCard({ groupId, pollId, groupData, pollRef,
     return;
   }
 
-  const voteCount = await countSubmittedVotes(pollRef, pollData);
+  const submittedVoteCount = await countSubmittedVotes(pollRef, pollData);
   const totalParticipants = computeTotalParticipants(groupData);
+  const allParticipantsVoted =
+    totalParticipants > 0 && submittedVoteCount >= totalParticipants;
+  const canShowVoteCount = canViewOtherVotesPublicly({
+    voteVisibility: pollData?.voteVisibility,
+    allParticipantsVoted,
+    isFinalized: String(pollData?.status || BASIC_POLL_STATUSES.OPEN).toUpperCase() ===
+      BASIC_POLL_STATUSES.FINALIZED,
+  });
+  const voteCount = canShowVoteCount ? submittedVoteCount : null;
   const syncHash = computeBasicPollSyncHash(pollData, voteCount, totalParticipants);
 
   const currentDiscord = pollData?.discord || {};

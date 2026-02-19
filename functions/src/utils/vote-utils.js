@@ -14,8 +14,15 @@ function isAttendingVote(value) {
   return normalized === "FEASIBLE" || normalized === "PREFERRED";
 }
 
+function hasSubmittedSchedulerVote(voteDoc) {
+  if (!voteDoc) return false;
+  if (voteDoc.noTimesWork === true) return true;
+  const votes = voteDoc.votes || {};
+  return Object.values(votes).some((value) => isAttendingVote(value));
+}
+
 module.exports = {
   normalizeVoteValue,
   isAttendingVote,
+  hasSubmittedSchedulerVote,
 };
-

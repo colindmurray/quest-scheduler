@@ -20,6 +20,8 @@ const {
 } = require("../discord/sync-core");
 const { createChannelMessage, editChannelMessage } = require("../discord/discord-client");
 const { buildPollCard, buildPollStatusCard } = require("../discord/poll-card");
+const { hasSubmittedSchedulerVote } = require("../utils/vote-utils");
+const { canViewOtherVotesPublicly } = require("../utils/vote-visibility");
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -27,18 +29,67 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
+function normalizeIdList(values = []) {
+  return Array.from(
+    new Set(
+      (values || [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+async function resolveSchedulerParticipantIds(scheduler = {}) {
+  const participants = new Set(normalizeIdList(scheduler.participantIds || []));
+  if (scheduler.questingGroupId) {
+    const groupSnap = await db.collection("questingGroups").doc(String(scheduler.questingGroupId)).get();
+    if (groupSnap.exists) {
+      normalizeIdList(groupSnap.data()?.memberIds || []).forEach((memberId) =>
+        participants.add(memberId)
+      );
+    }
+  }
+  return participants;
+}
+
+async function syncSchedulerVoteCompletion(schedulerRef, scheduler) {
+  const [votesSnap, participantIds] = await Promise.all([
+    schedulerRef.collection("votes").get(),
+    resolveSchedulerParticipantIds(scheduler),
+  ]);
+  const submittedVoteCount = votesSnap.docs.filter((voteDoc) =>
+    hasSubmittedSchedulerVote(voteDoc.data?.() || {})
+  ).length;
+  const totalParticipants = participantIds.size;
+  const votesAllSubmitted = totalParticipants > 0 && submittedVoteCount >= totalParticipants;
+
+  if (
+    scheduler?.votesAllSubmitted === votesAllSubmitted &&
+    scheduler?.submittedVoteCount === submittedVoteCount &&
+    scheduler?.totalParticipantCount === totalParticipants
+  ) {
+    return;
+  }
+
+  await schedulerRef.set(
+    {
+      votesAllSubmitted,
+      submittedVoteCount,
+      totalParticipantCount: totalParticipants,
+    },
+    { merge: true }
+  );
+}
+
 async function getVoteStats(schedulerRef, scheduler) {
   const votesSnap = await schedulerRef.collection("votes").get();
   const voteDocs = votesSnap.docs || [];
-  const voteCount = votesSnap.size;
-  const attendingCount = voteDocs.filter((doc) => {
-    const data = doc.data?.() || {};
-    if (data.noTimesWork) {
-      return false;
-    }
-    const votes = data.votes || {};
-    return Object.keys(votes).length > 0;
-  }).length;
+  const submittedVoteCount =
+    voteDocs.length > 0
+      ? voteDocs.filter((doc) => hasSubmittedSchedulerVote(doc.data?.() || {})).length
+      : Number.isFinite(votesSnap.size)
+        ? votesSnap.size
+        : 0;
 
   const participants = new Set(scheduler.participantIds || []);
 
@@ -50,7 +101,20 @@ async function getVoteStats(schedulerRef, scheduler) {
     }
   }
 
-  return { voteCount, totalParticipants: participants.size, attendingCount };
+  const totalParticipants = participants.size;
+  const allParticipantsVoted =
+    totalParticipants > 0 && submittedVoteCount >= totalParticipants;
+  const canShowVoteCount = canViewOtherVotesPublicly({
+    voteVisibility: scheduler?.voteVisibility,
+    allParticipantsVoted,
+    isFinalized: scheduler?.status === "FINALIZED",
+  });
+
+  return {
+    voteCount: canShowVoteCount ? submittedVoteCount : null,
+    totalParticipants,
+    attendingCount: submittedVoteCount,
+  };
 }
 
 function hasNonDiscordChanges(beforeData, afterData) {
@@ -525,21 +589,22 @@ exports.updateDiscordPollOnVote = onDocumentWritten(
   },
   async (event) => {
     const schedulerId = event.params.schedulerId;
-    const voteId = event.params.voteId;
-    const afterVote = event.data?.after?.data?.() || null;
-
-    if (!afterVote) {
-      return;
-    }
 
     const schedulerSnap = await db.collection("schedulers").doc(schedulerId).get();
     if (!schedulerSnap.exists) {
       return;
     }
     const scheduler = schedulerSnap.data() || {};
-    const hasDiscordLink = Boolean(
-      scheduler.discord?.messageId && scheduler.discord?.channelId
-    );
+
+    const schedulerRef = db.collection("schedulers").doc(schedulerId);
+    try {
+      await syncSchedulerVoteCompletion(schedulerRef, scheduler);
+    } catch (err) {
+      logger.error("Failed to sync scheduler vote completion state", {
+        schedulerId,
+        error: err?.message,
+      });
+    }
 
     try {
       await enqueueSyncTask({

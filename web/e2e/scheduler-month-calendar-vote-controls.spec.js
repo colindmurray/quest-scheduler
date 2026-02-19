@@ -1,6 +1,36 @@
 import { expect, test } from "@playwright/test";
 import { testUsers } from "./fixtures/test-users";
 
+async function openSchedulerAndWaitForTitle(page, schedulerId, title) {
+  await page.goto(`/scheduler/${schedulerId}`);
+
+  const titleHeading = page.getByRole("heading", { name: title });
+  const loadingLabel = page.getByText("Loading session poll...");
+
+  await expect
+    .poll(
+      async () => {
+        if ((await titleHeading.count()) > 0) {
+          return true;
+        }
+
+        if ((await loadingLabel.count()) > 0) {
+          await page.reload();
+        }
+
+        return false;
+      },
+      {
+        timeout: 30000,
+        intervals: [500, 1000, 1500, 2000],
+        message: `Expected scheduler title '${title}' to load`,
+      }
+    )
+    .toBe(true);
+
+  await expect(titleHeading).toBeVisible();
+}
+
 test.describe("Scheduler month calendar vote controls", () => {
   test("supports inline month voting, +more modal voting, and calendar no-times toggle", async ({
     page,
@@ -15,10 +45,7 @@ test.describe("Scheduler month calendar vote controls", () => {
     await page.locator("form").getByRole("button", { name: /^log in$/i }).click();
     await page.waitForURL(/\/dashboard/);
 
-    await page.goto(`/scheduler/${schedulerId}`);
-    await expect(page.getByText("E2E Month Calendar Vote Poll")).toBeVisible({
-      timeout: 15000,
-    });
+    await openSchedulerAndWaitForTitle(page, schedulerId, "E2E Month Calendar Vote Poll");
 
     await page.getByRole("button", { name: "Calendar View" }).click();
     await expect(

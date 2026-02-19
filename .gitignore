@@ -40,3 +40,4 @@ Thumbs.db
 
 # Codex local run artifacts
 .codex/runs/
+.tmp/

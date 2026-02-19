@@ -21,6 +21,13 @@ async function seed() {
     process.env.E2E_SCHEDULER_NOTIFICATION_ID || "e2e-scheduler-notification";
   const emptyVoteSchedulerId =
     process.env.E2E_EMPTY_VOTE_SCHEDULER_ID || "e2e-empty-vote-pending";
+  const visibilityHiddenWhileSchedulerId =
+    process.env.E2E_VISIBILITY_HIDDEN_WHILE_SCHEDULER_ID || "e2e-visibility-hidden-while";
+  const visibilityHiddenUntilFinalizedSchedulerId =
+    process.env.E2E_VISIBILITY_HIDDEN_UNTIL_FINALIZED_SCHEDULER_ID ||
+    "e2e-visibility-hidden-until-finalized";
+  const visibilityFullSchedulerId =
+    process.env.E2E_VISIBILITY_FULL_SCHEDULER_ID || "e2e-visibility-full";
   const monthVoteSchedulerId =
     process.env.E2E_MONTH_VOTE_SCHEDULER_ID || "e2e-month-calendar-votes";
   const discordRepostSchedulerId =
@@ -296,6 +303,7 @@ async function seed() {
     seedDefaultSlots = true,
     questingGroupId = null,
     questingGroupName = null,
+    voteVisibility = "full_visibility",
   }) => {
     const pendingInviteMeta = {};
     pendingEmails.forEach((email) => {
@@ -315,6 +323,7 @@ async function seed() {
       pendingInvites: pendingEmails,
       pendingInviteMeta,
       allowLinkSharing: false,
+      voteVisibility,
       timezone: "UTC",
       timezoneMode: "utc",
       winningSlotId,
@@ -503,6 +512,67 @@ async function seed() {
     userAvatar: null,
     noTimesWork: false,
     votes: {},
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  await seedScheduler({
+    id: visibilityHiddenWhileSchedulerId,
+    title: "E2E Visibility Hidden While Voting",
+    pendingEmails: [],
+    participantIds: [participantId, inviteeId],
+    voteVisibility: "hidden_while_voting",
+  });
+  await db.doc(`schedulers/${visibilityHiddenWhileSchedulerId}/votes/${participantId}`).set({
+    voterId: participantId,
+    userEmail: participantEmail,
+    userAvatar: null,
+    noTimesWork: false,
+    votes: { "slot-1": "FEASIBLE" },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  await seedScheduler({
+    id: visibilityHiddenUntilFinalizedSchedulerId,
+    title: "E2E Visibility Hidden Until Finalized",
+    pendingEmails: [],
+    participantIds: [participantId, inviteeId],
+    voteVisibility: "hidden_until_finalized",
+  });
+  await db.doc(`schedulers/${visibilityHiddenUntilFinalizedSchedulerId}/votes/${participantId}`).set({
+    voterId: participantId,
+    userEmail: participantEmail,
+    userAvatar: null,
+    noTimesWork: false,
+    votes: { "slot-1": "FEASIBLE" },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  await db.doc(`schedulers/${visibilityHiddenUntilFinalizedSchedulerId}/votes/${inviteeId}`).set({
+    voterId: inviteeId,
+    userEmail: inviteeEmail,
+    userAvatar: null,
+    noTimesWork: false,
+    votes: { "slot-1": "PREFERRED" },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  await seedScheduler({
+    id: visibilityFullSchedulerId,
+    title: "E2E Visibility Full",
+    pendingEmails: [],
+    participantIds: [participantId, inviteeId],
+    voteVisibility: "full_visibility",
+  });
+  await db.doc(`schedulers/${visibilityFullSchedulerId}/votes/${participantId}`).set({
+    voterId: participantId,
+    userEmail: participantEmail,
+    userAvatar: null,
+    noTimesWork: false,
+    votes: { "slot-1": "FEASIBLE" },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  await db.doc(`schedulers/${visibilityFullSchedulerId}/votes/${inviteeId}`).set({
+    voterId: inviteeId,
+    userEmail: inviteeEmail,
+    userAvatar: null,
+    noTimesWork: false,
+    votes: { "slot-1": "PREFERRED" },
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
   await seedScheduler({
@@ -729,7 +799,7 @@ async function seed() {
 
   // Wait for functions triggers to populate busy windows for the owner.
   const waitForBusyWindow = async () => {
-    const maxTries = 40;
+    const maxTries = 120;
     for (let i = 0; i < maxTries; i++) {
       const snap = await db.doc(`usersPublic/${participantId}`).get();
       const windows = snap.exists ? snap.data()?.busyWindows || [] : [];

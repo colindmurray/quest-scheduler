@@ -1,6 +1,36 @@
 import { expect, test } from '@playwright/test';
 import { testUsers } from './fixtures/test-users';
 
+async function openSchedulerAndWaitForTitle(page, schedulerId, title) {
+  await page.goto(`/scheduler/${schedulerId}`);
+
+  const titleHeading = page.getByRole('heading', { name: title });
+  const loadingLabel = page.getByText('Loading session poll...');
+
+  await expect
+    .poll(
+      async () => {
+        if ((await titleHeading.count()) > 0) {
+          return true;
+        }
+
+        if ((await loadingLabel.count()) > 0) {
+          await page.reload();
+        }
+
+        return false;
+      },
+      {
+        timeout: 30000,
+        intervals: [500, 1000, 1500, 2000],
+        message: `Expected scheduler title '${title}' to load`,
+      }
+    )
+    .toBe(true);
+
+  await expect(titleHeading).toBeVisible();
+}
+
 test.describe('Scheduler poll access', () => {
   test('unauthenticated poll routes redirect to auth', async ({ page }) => {
     await page.goto('/scheduler/test-poll');
@@ -23,8 +53,7 @@ test.describe('Scheduler poll access', () => {
     await page.locator('form').getByRole('button', { name: /^log in$/i }).click();
     await page.waitForURL(/\/dashboard/);
 
-    await page.goto(`/scheduler/${schedulerId}`);
+    await openSchedulerAndWaitForTitle(page, schedulerId, 'E2E Scheduler Poll');
     await expect(page.getByText('Session Poll')).toBeVisible();
-    await expect(page.getByText('E2E Scheduler Poll')).toBeVisible();
   });
 });

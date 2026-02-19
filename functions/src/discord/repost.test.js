@@ -291,4 +291,52 @@ describe('discord repost poll', () => {
       })
     );
   });
+
+  test('hides vote totals for non-public visibility modes', async () => {
+    schedulerGetMock.mockResolvedValueOnce(
+      buildDocSnap({
+        creatorId: 'user1',
+        questingGroupId: 'group1',
+        participantIds: ['user1', 'user2'],
+        status: 'OPEN',
+        voteVisibility: 'hidden',
+        discord: { messageId: 'old-msg', channelId: 'old-chan' },
+      })
+    );
+    groupGetMock.mockResolvedValueOnce(
+      buildDocSnap({
+        memberIds: ['user1', 'user2'],
+        discord: { channelId: 'chan1', guildId: 'guild1' },
+      })
+    );
+    slotsGetMock.mockResolvedValueOnce({
+      docs: [
+        {
+          id: 'slot1',
+          data: () => ({ start: '2024-01-01T10:00:00Z', end: '2024-01-01T11:00:00Z' }),
+        },
+      ],
+    });
+    votesGetMock.mockResolvedValueOnce({
+      docs: [
+        {
+          id: 'user1',
+          data: () => ({ noTimesWork: false, votes: { slot1: 'FEASIBLE' } }),
+        },
+        {
+          id: 'user2',
+          data: () => ({ noTimesWork: true, votes: {} }),
+        },
+      ],
+    });
+
+    await repost.discordRepostPollCard.run({
+      auth: { uid: 'user1' },
+      data: { schedulerId: 'sched1' },
+    });
+
+    const createCall = createChannelMessageMock.mock.calls[0]?.[0];
+    const fields = createCall?.body?.embeds?.[0]?.fields || [];
+    expect(fields.some((field) => field?.name === 'Votes')).toBe(false);
+  });
 });

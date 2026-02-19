@@ -85,6 +85,57 @@ async function resolveRecipientsForScheduler(schedulerId) {
   return Array.from(recipientIds);
 }
 
+async function resolveTotalParticipantsForBasicPoll(parentType, parentId) {
+  if (parentType === "group") {
+    const groupSnap = await db.collection("questingGroups").doc(String(parentId)).get();
+    if (!groupSnap.exists) return 0;
+    const groupData = groupSnap.data() || {};
+    const participantIds = new Set(toUserIdList([...(groupData.memberIds || []), groupData.creatorId]));
+    return participantIds.size;
+  }
+
+  const schedulerSnap = await db.collection("schedulers").doc(String(parentId)).get();
+  if (!schedulerSnap.exists) return 0;
+  const schedulerData = schedulerSnap.data() || {};
+  const participantIds = new Set(toUserIdList(schedulerData.participantIds || []));
+  if (schedulerData.questingGroupId) {
+    const groupSnap = await db.collection("questingGroups").doc(String(schedulerData.questingGroupId)).get();
+    if (groupSnap.exists) {
+      const groupData = groupSnap.data() || {};
+      toUserIdList(groupData.memberIds || []).forEach((memberId) => participantIds.add(memberId));
+    }
+  }
+  return participantIds.size;
+}
+
+async function syncBasicPollVoteCompletion({ parentType, parentId, pollRef, pollData }) {
+  const [votesSnap, totalParticipants] = await Promise.all([
+    pollRef.collection("votes").get(),
+    resolveTotalParticipantsForBasicPoll(parentType, parentId),
+  ]);
+  const submittedVoteCount = votesSnap.docs.filter((voteDoc) =>
+    hasSubmittedVoteForPoll(pollData, voteDoc.data() || {})
+  ).length;
+  const votesAllSubmitted = totalParticipants > 0 && submittedVoteCount >= totalParticipants;
+
+  if (
+    pollData?.votesAllSubmitted === votesAllSubmitted &&
+    pollData?.submittedVoteCount === submittedVoteCount &&
+    pollData?.totalParticipantCount === totalParticipants
+  ) {
+    return;
+  }
+
+  await pollRef.set(
+    {
+      votesAllSubmitted,
+      submittedVoteCount,
+      totalParticipantCount: totalParticipants,
+    },
+    { merge: true }
+  );
+}
+
 function buildDeadlineLabel(deadlineMillis) {
   if (!deadlineMillis) {
     return "The deadline was removed.";
@@ -173,10 +224,8 @@ exports.onGroupBasicPollVoteWritten = onDocumentWritten(
   "questingGroups/{groupId}/basicPolls/{pollId}/votes/{userId}",
   async (event) => {
     const after = event.data?.after;
-    if (!snapshotExists(after)) return;
-
     const before = event.data?.before;
-    const afterData = after.data() || {};
+    const afterData = snapshotExists(after) ? after.data() || {} : null;
     const beforeData = snapshotExists(before) ? before.data() || {} : null;
 
     const pollRef = db
@@ -187,6 +236,23 @@ exports.onGroupBasicPollVoteWritten = onDocumentWritten(
     const pollSnap = await pollRef.get();
     if (!pollSnap.exists) return;
     const pollData = pollSnap.data() || {};
+
+    try {
+      await syncBasicPollVoteCompletion({
+        parentType: "group",
+        parentId: event.params.groupId,
+        pollRef,
+        pollData,
+      });
+    } catch (error) {
+      logger.error("Failed to sync group basic poll vote completion", {
+        groupId: event.params.groupId,
+        pollId: event.params.pollId,
+        error: error?.message,
+      });
+    }
+
+    if (!snapshotExists(after)) return;
 
     if (!hasSubmittedVoteForPoll(pollData, afterData)) return;
     if (
@@ -220,10 +286,8 @@ exports.onSchedulerBasicPollVoteWritten = onDocumentWritten(
   "schedulers/{schedulerId}/basicPolls/{pollId}/votes/{userId}",
   async (event) => {
     const after = event.data?.after;
-    if (!snapshotExists(after)) return;
-
     const before = event.data?.before;
-    const afterData = after.data() || {};
+    const afterData = snapshotExists(after) ? after.data() || {} : null;
     const beforeData = snapshotExists(before) ? before.data() || {} : null;
 
     const pollRef = db
@@ -234,6 +298,23 @@ exports.onSchedulerBasicPollVoteWritten = onDocumentWritten(
     const pollSnap = await pollRef.get();
     if (!pollSnap.exists) return;
     const pollData = pollSnap.data() || {};
+
+    try {
+      await syncBasicPollVoteCompletion({
+        parentType: "scheduler",
+        parentId: event.params.schedulerId,
+        pollRef,
+        pollData,
+      });
+    } catch (error) {
+      logger.error("Failed to sync scheduler basic poll vote completion", {
+        schedulerId: event.params.schedulerId,
+        pollId: event.params.pollId,
+        error: error?.message,
+      });
+    }
+
+    if (!snapshotExists(after)) return;
 
     if (!hasSubmittedVoteForPoll(pollData, afterData)) return;
     if (

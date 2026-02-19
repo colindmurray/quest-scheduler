@@ -271,6 +271,7 @@ describe('basic-poll callables', () => {
           title: 'Snack vote',
           options: pollData.options,
           settings: pollData.settings,
+          voteVisibility: 'hidden_while_voting',
         },
       },
       buildContext('owner-1')
@@ -281,6 +282,7 @@ describe('basic-poll callables', () => {
       expect.objectContaining({
         title: 'Snack vote',
         status: 'OPEN',
+        voteVisibility: 'hidden_while_voting',
         createdAt: 'server-time',
       })
     );
@@ -307,6 +309,28 @@ describe('basic-poll callables', () => {
     );
     expect(createdEvent?.recipients?.userIds).toEqual(
       expect.arrayContaining(['owner-1', 'member-1', 'member-2'])
+    );
+  });
+
+  test('createBasicPoll defaults invalid vote visibility to full visibility', async () => {
+    await callables.createBasicPoll.run(
+      {
+        parentType: 'group',
+        parentId: 'g1',
+        pollData: {
+          title: 'Fallback vote visibility',
+          options: pollData.options,
+          settings: pollData.settings,
+          voteVisibility: 'not-a-mode',
+        },
+      },
+      buildContext('owner-1')
+    );
+
+    expect(createdPollSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voteVisibility: 'full_visibility',
+      })
     );
   });
 

@@ -77,6 +77,12 @@ import { AvatarStack } from "../../components/ui/voter-avatars";
 import { buildColorMap, uniqueUsers } from "../../components/ui/voter-avatar-utils";
 import { DatePicker } from "../../components/ui/date-picker";
 import { Switch } from "../../components/ui/switch";
+import {
+  DEFAULT_VOTE_VISIBILITY,
+  VOTE_VISIBILITY_OPTIONS,
+  resolveVoteVisibility,
+} from "../../lib/vote-visibility";
+import { hasSubmittedSchedulerVote } from "../../lib/vote-utils";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "./calendar-styles.css";
 import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
@@ -194,6 +200,7 @@ export default function CreateSchedulerPage() {
   const [draftTime, setDraftTime] = useState("18:00");
   const [draftDuration, setDraftDuration] = useState(240);
   const [allowLinkSharing, setAllowLinkSharing] = useState(false);
+  const [voteVisibility, setVoteVisibility] = useState(DEFAULT_VOTE_VISIBILITY);
   const [selectedTimezone, setSelectedTimezone] = useState(
     Intl.DateTimeFormat().resolvedOptions().timeZone
   );
@@ -367,6 +374,7 @@ export default function CreateSchedulerPage() {
     setTitle(scheduler.data.title || "");
     setDescription(scheduler.data.description || "");
     setAllowLinkSharing(Boolean(scheduler.data.allowLinkSharing));
+    setVoteVisibility(resolveVoteVisibility(scheduler.data.voteVisibility));
     const creatorEmail = scheduler.data.creatorEmail || user?.email;
     setInvites(explicitParticipantEmails.filter((email) => email && email !== creatorEmail));
     const pendingList = (scheduler.data.pendingInvites || [])
@@ -740,6 +748,7 @@ export default function CreateSchedulerPage() {
       pollTitle,
       pollDescription,
       timezoneModeForScheduler,
+      voteVisibility: resolveVoteVisibility(voteVisibility),
     };
   };
 
@@ -762,6 +771,7 @@ export default function CreateSchedulerPage() {
         pollTitle,
         pollDescription,
         timezoneModeForScheduler,
+        voteVisibility: nextVoteVisibility,
       } = getPollInputs();
       const inviteRecipients = Array.from(
         new Set([...explicitParticipants, ...pendingList].filter(Boolean))
@@ -799,6 +809,18 @@ export default function CreateSchedulerPage() {
       const removedPendingRecipients = Array.from(previousPending).filter(
         (email) => !inviteRecipientSet.has(email)
       );
+      const combinedParticipantIds = new Set([...participantIds, ...groupMemberIds].filter(Boolean));
+      const submittedVoteIds = new Set(
+        votesSnapshot.data
+          .filter((voteDoc) => hasSubmittedSchedulerVote(voteDoc))
+          .map((voteDoc) => String(voteDoc?.id || "").trim())
+          .filter(Boolean)
+      );
+      const votesAllSubmitted =
+        combinedParticipantIds.size > 0 &&
+        Array.from(combinedParticipantIds).every((participantId) =>
+          submittedVoteIds.has(String(participantId))
+        );
       await updateScheduler(editId, {
         title: pollTitle,
         description: pollDescription,
@@ -808,6 +830,8 @@ export default function CreateSchedulerPage() {
         timezoneMode: timezoneModeForScheduler,
         questingGroupId: selectedGroup?.id || null,
         questingGroupName: selectedGroup?.name || null,
+        voteVisibility: nextVoteVisibility,
+        votesAllSubmitted,
         participants: deleteField(),
         updatedAt: serverTimestamp(),
       });
@@ -943,6 +967,7 @@ export default function CreateSchedulerPage() {
         pollTitle,
         pollDescription,
         timezoneModeForScheduler,
+        voteVisibility: nextVoteVisibility,
       } = getPollInputs();
       const inviteRecipients = Array.from(
         new Set([...explicitParticipants, ...pendingList].filter(Boolean))
@@ -977,6 +1002,8 @@ export default function CreateSchedulerPage() {
         timezoneMode: timezoneModeForScheduler,
         winningSlotId: null,
         googleEventId: null,
+        voteVisibility: nextVoteVisibility,
+        votesAllSubmitted: false,
         questingGroupId: selectedGroup?.id || null,
         questingGroupName: selectedGroup?.name || null,
         createdAt: serverTimestamp(),
@@ -1245,6 +1272,31 @@ export default function CreateSchedulerPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="grid gap-2">
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Vote visibility
+              </span>
+              <Select value={voteVisibility} onValueChange={(value) => setVoteVisibility(resolveVoteVisibility(value))}>
+                <SelectTrigger className="h-12 rounded-2xl px-4">
+                  <SelectValue placeholder="Select vote visibility" />
+                </SelectTrigger>
+                <SelectContent>
+                  {VOTE_VISIBILITY_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {
+                  VOTE_VISIBILITY_OPTIONS.find(
+                    (option) => option.value === resolveVoteVisibility(voteVisibility)
+                  )?.description
+                }
+              </p>
             </div>
 
             {/* Questing Group Selector */}

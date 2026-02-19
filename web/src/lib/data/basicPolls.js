@@ -21,6 +21,7 @@ import { computeInstantRunoffResults } from "../basic-polls/irv";
 import { computeMultipleChoiceTallies } from "../basic-polls/multiple-choice";
 import { hasSubmittedVote } from "../basic-polls/vote-submission";
 import { coerceDate } from "../time";
+import { resolveVoteVisibility } from "../vote-visibility";
 
 const DELETE_BATCH_SIZE = 450;
 const PARENT_TYPE_COLLECTIONS = {
@@ -66,6 +67,25 @@ export const basicPollVoteRef = (parentType, parentId, pollId, userId) => {
 
 function mapSnapshotDocs(snapshot) {
   return snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+}
+
+function sanitizePollCreateData(pollData = {}) {
+  return {
+    ...pollData,
+    voteVisibility: resolveVoteVisibility(pollData?.voteVisibility),
+    votesAllSubmitted: false,
+  };
+}
+
+function sanitizePollUpdateData(updates = {}) {
+  if (!Object.prototype.hasOwnProperty.call(updates || {}, "voteVisibility")) {
+    return updates;
+  }
+
+  return {
+    ...updates,
+    voteVisibility: resolveVoteVisibility(updates?.voteVisibility),
+  };
 }
 
 function resolvePollDeadline(pollData = {}) {
@@ -179,13 +199,14 @@ async function deleteBasicPollWithVotes(parentType, parentId, pollId) {
 
 export async function createBasicPoll(groupId, pollData = {}, options = {}) {
   if (!groupId) return null;
+  const normalizedPollData = sanitizePollCreateData(pollData);
 
   const useServer = options.useServer !== false;
   if (useServer) {
     const response = await callBasicPollServerAction("createBasicPoll", {
       parentType: "group",
       parentId: groupId,
-      pollData,
+      pollData: normalizedPollData,
     });
     if (response?.pollId) {
       return response.pollId;
@@ -193,8 +214,8 @@ export async function createBasicPoll(groupId, pollData = {}, options = {}) {
   }
 
   const created = await addDoc(groupBasicPollsRef(groupId), {
-    ...pollData,
-    status: pollData.status ?? BASIC_POLL_STATUSES.OPEN,
+    ...normalizedPollData,
+    status: normalizedPollData.status ?? BASIC_POLL_STATUSES.OPEN,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -297,9 +318,10 @@ export async function fetchDashboardGroupBasicPolls(groupIds = [], userId) {
 
 export async function updateBasicPoll(groupId, pollId, updates = {}) {
   if (!groupId || !pollId) return;
+  const normalizedUpdates = sanitizePollUpdateData(updates);
 
   await updateDoc(groupBasicPollRef(groupId, pollId), {
-    ...updates,
+    ...normalizedUpdates,
     updatedAt: serverTimestamp(),
   });
 }
@@ -435,13 +457,14 @@ export function subscribeToBasicPoll(groupId, pollId, callback, onError) {
 
 export async function createEmbeddedBasicPoll(schedulerId, pollData = {}, options = {}) {
   if (!schedulerId) return null;
+  const normalizedPollData = sanitizePollCreateData(pollData);
 
   const useServer = options.useServer !== false;
   if (useServer) {
     const response = await callBasicPollServerAction("createBasicPoll", {
       parentType: "scheduler",
       parentId: schedulerId,
-      pollData,
+      pollData: normalizedPollData,
     });
     if (response?.pollId) {
       return response.pollId;
@@ -450,7 +473,7 @@ export async function createEmbeddedBasicPoll(schedulerId, pollData = {}, option
 
   const pollsRef = collection(db, "schedulers", schedulerId, "basicPolls");
   const created = await addDoc(pollsRef, {
-    ...pollData,
+    ...normalizedPollData,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -532,9 +555,10 @@ export async function fetchDashboardEmbeddedBasicPolls(schedulerIds = [], userId
 
 export async function updateEmbeddedBasicPoll(schedulerId, pollId, updates = {}) {
   if (!schedulerId || !pollId) return;
+  const normalizedUpdates = sanitizePollUpdateData(updates);
 
   await updateDoc(doc(db, "schedulers", schedulerId, "basicPolls", pollId), {
-    ...updates,
+    ...normalizedUpdates,
     updatedAt: serverTimestamp(),
   });
 }
@@ -552,6 +576,18 @@ export async function fetchRequiredEmbeddedPollFinalizeSummary(schedulerId) {
   return callBasicPollServerAction("getRequiredEmbeddedPollFinalizeSummary", {
     schedulerId,
   });
+}
+
+export async function breakBasicPollTieForParent(parentType, parentId, pollId, method) {
+  if (!parentType || !parentId || !pollId || !method) return null;
+  const response = await callBasicPollServerAction("breakBasicPollTie", {
+    parentType,
+    parentId,
+    pollId,
+    method,
+  });
+  if (response) return response;
+  throw new Error("Tie-break action is currently unavailable.");
 }
 
 export async function deleteEmbeddedBasicPoll(schedulerId, pollId, options = {}) {

@@ -9,9 +9,10 @@ import {
   normalizeVoteOptionIds,
   normalizeVoteRankings,
 } from "../../../lib/basic-polls/vote-submission";
-import { BASIC_POLL_VOTE_TYPES } from "../../../lib/basic-polls/constants";
+import { BASIC_POLL_STATUSES, BASIC_POLL_VOTE_TYPES } from "../../../lib/basic-polls/constants";
+import { canViewOtherVotesForUser, resolveVoteVisibility } from "../../../lib/vote-visibility";
 
-export function useSchedulerEmbeddedPollVotes({ schedulerId, userId }) {
+export function useSchedulerEmbeddedPollVotes({ schedulerId, userId, isCreator = false }) {
   const [embeddedPolls, setEmbeddedPolls] = useState([]);
   const [embeddedPollsLoading, setEmbeddedPollsLoading] = useState(true);
   const [embeddedPollVoteCounts, setEmbeddedPollVoteCounts] = useState({});
@@ -45,33 +46,54 @@ export function useSchedulerEmbeddedPollVotes({ schedulerId, userId }) {
     setEmbeddedVotesByPoll({});
     if (!schedulerId || embeddedPolls.length === 0) return () => {};
     const unsubscribers = embeddedPolls.map((poll) =>
-      subscribeToBasicPollVotes(
-        "scheduler",
-        schedulerId,
-        poll.id,
-        (voteDocs) => {
-          const normalizedVotes = voteDocs || [];
-          const count = normalizedVotes.filter((voteDoc) =>
-            hasSubmittedVoteForPoll(poll, voteDoc)
-          ).length;
-          setEmbeddedVotesByPoll((previous) => ({ ...previous, [poll.id]: normalizedVotes }));
-          setEmbeddedPollVoteCounts((previous) => {
-            if (previous[poll.id] === count) return previous;
-            return { ...previous, [poll.id]: count };
-          });
-        },
-        () => {
-          setEmbeddedVotesByPoll((previous) => ({ ...previous, [poll.id]: [] }));
-          setEmbeddedPollVoteCounts((previous) => ({ ...previous, [poll.id]: 0 }));
+      {
+        const myVote = embeddedMyVotes[poll.id] || null;
+        const hasVoted = hasSubmittedVoteForPoll(poll, myVote);
+        const canReadOtherVotes = canViewOtherVotesForUser({
+          voteVisibility: resolveVoteVisibility(poll?.voteVisibility),
+          isCreator,
+          hasVoted,
+          allParticipantsVoted: poll?.votesAllSubmitted === true,
+          isFinalized:
+            String(poll?.status || BASIC_POLL_STATUSES.OPEN).toUpperCase() ===
+            BASIC_POLL_STATUSES.FINALIZED,
+        });
+
+        if (!canReadOtherVotes) {
+          const ownVotes = hasVoted && myVote ? [{ id: userId, ...myVote }] : [];
+          setEmbeddedVotesByPoll((previous) => ({ ...previous, [poll.id]: ownVotes }));
+          setEmbeddedPollVoteCounts((previous) => ({ ...previous, [poll.id]: ownVotes.length }));
+          return () => {};
         }
-      )
+
+        return subscribeToBasicPollVotes(
+          "scheduler",
+          schedulerId,
+          poll.id,
+          (voteDocs) => {
+            const normalizedVotes = voteDocs || [];
+            const count = normalizedVotes.filter((voteDoc) =>
+              hasSubmittedVoteForPoll(poll, voteDoc)
+            ).length;
+            setEmbeddedVotesByPoll((previous) => ({ ...previous, [poll.id]: normalizedVotes }));
+            setEmbeddedPollVoteCounts((previous) => {
+              if (previous[poll.id] === count) return previous;
+              return { ...previous, [poll.id]: count };
+            });
+          },
+          () => {
+            setEmbeddedVotesByPoll((previous) => ({ ...previous, [poll.id]: [] }));
+            setEmbeddedPollVoteCounts((previous) => ({ ...previous, [poll.id]: 0 }));
+          }
+        );
+      }
     );
     return () => {
       unsubscribers.forEach((unsubscribe) => {
         if (typeof unsubscribe === "function") unsubscribe();
       });
     };
-  }, [embeddedPolls, schedulerId]);
+  }, [embeddedMyVotes, embeddedPolls, isCreator, schedulerId, userId]);
 
   useEffect(() => {
     setEmbeddedMyVotes({});

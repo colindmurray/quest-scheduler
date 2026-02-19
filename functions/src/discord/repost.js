@@ -4,6 +4,8 @@ const admin = require("firebase-admin");
 const { DISCORD_REGION, DISCORD_BOT_TOKEN } = require("./config");
 const { createChannelMessage, deleteChannelMessage } = require("./discord-client");
 const { buildPollCard } = require("./poll-card");
+const { hasSubmittedSchedulerVote } = require("../utils/vote-utils");
+const { canViewOtherVotesPublicly } = require("../utils/vote-visibility");
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -16,17 +18,13 @@ async function fetchSlots(schedulerRef) {
   return slotsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 }
 
-async function fetchVotes(schedulerRef) {
+async function fetchSubmittedVoteCount(schedulerRef) {
   const votesSnap = await schedulerRef.collection("votes").get();
   const voteDocs = votesSnap.docs || [];
-  const voteCount = votesSnap.size || voteDocs.length;
-  const attendingCount = voteDocs.filter((doc) => {
-    const data = doc.data?.() || {};
-    if (data.noTimesWork) return false;
-    const votes = data.votes || {};
-    return Object.keys(votes).length > 0;
-  }).length;
-  return { voteCount, attendingCount };
+  if (voteDocs.length > 0) {
+    return voteDocs.filter((doc) => hasSubmittedSchedulerVote(doc.data?.() || {})).length;
+  }
+  return Number.isFinite(votesSnap.size) ? votesSnap.size : 0;
 }
 
 function computeTotalParticipants(scheduler, group) {
@@ -97,17 +95,24 @@ exports.discordRepostPollCard = onCall(
 
     await tryDeleteOldMessage(scheduler.discord);
 
-    const [slots, votes] = await Promise.all([
+    const [slots, submittedVoteCount] = await Promise.all([
       fetchSlots(schedulerRef),
-      fetchVotes(schedulerRef),
+      fetchSubmittedVoteCount(schedulerRef),
     ]);
     const totalParticipants = computeTotalParticipants(scheduler, group);
+    const allParticipantsVoted =
+      totalParticipants > 0 && submittedVoteCount >= totalParticipants;
+    const canShowVoteCount = canViewOtherVotesPublicly({
+      voteVisibility: scheduler?.voteVisibility,
+      allParticipantsVoted,
+      isFinalized: scheduler?.status === "FINALIZED",
+    });
 
     const messageBody = buildPollCard({
       schedulerId,
       scheduler,
       slots,
-      voteCount: votes.voteCount,
+      voteCount: canShowVoteCount ? submittedVoteCount : null,
       totalParticipants,
     });
 

@@ -66,7 +66,7 @@ describe("EmbeddedPollEditorModal", () => {
 
     expect(screen.getByDisplayValue("Existing poll")).toBeTruthy();
     expect(screen.getByDisplayValue("Existing description")).toBeTruthy();
-    expect(screen.getByRole("combobox").value).toBe("RANKED_CHOICE");
+    expect(screen.getAllByRole("combobox")[0].value).toBe("RANKED_CHOICE");
     expect(screen.getByRole("checkbox", { name: "Required poll" }).checked).toBe(true);
     expect(screen.getByRole("button", { name: "Save poll" })).toBeTruthy();
   });

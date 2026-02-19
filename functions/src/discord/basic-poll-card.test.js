@@ -50,6 +50,25 @@ describe('buildBasicPollCard', () => {
     );
   });
 
+  test('renders hidden vote progress label when vote count is not publicly visible', () => {
+    const card = buildBasicPollCard({
+      groupId: 'g1',
+      pollId: 'p-hidden',
+      poll: {
+        title: 'Secret vote',
+        status: 'OPEN',
+        options: [{ id: 'o1', label: 'Pizza' }],
+        settings: { voteType: 'MULTIPLE_CHOICE' },
+      },
+      voteCount: null,
+      totalParticipants: 5,
+    });
+
+    expect(card.embeds[0].fields.find((field) => field.name === 'Votes')?.value).toBe(
+      'Vote progress hidden'
+    );
+  });
+
   test('renders finalized poll card with disabled close button and results link', () => {
     const card = buildBasicPollCard({
       groupId: 'g1',

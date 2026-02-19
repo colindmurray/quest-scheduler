@@ -262,6 +262,8 @@ describe("discord worker poll-create", () => {
         status: "OPEN",
         source: "discord",
         creatorId: "qs-user-1",
+        voteVisibility: "full_visibility",
+        votesAllSubmitted: false,
         options: expect.arrayContaining([
           expect.objectContaining({ label: "Pizza", order: 0 }),
           expect.objectContaining({ label: "Tacos", order: 1 }),

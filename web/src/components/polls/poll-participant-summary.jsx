@@ -20,6 +20,7 @@ export function PollParticipantSummary({
   eligibleCount = null,
   votedCount = null,
   showPending = true,
+  showVoteProgress = true,
   className = "",
 }) {
   const effectiveEligibleCount = toCount(eligibleCount, eligibleUsers.length);
@@ -44,6 +45,12 @@ export function PollParticipantSummary({
         </span>
         <AvatarStack users={eligibleUsers} max={10} size={18} colorMap={colorMap} />
       </div>
+      {!showVoteProgress ? (
+        <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+          Vote progress hidden.
+        </div>
+      ) : null}
+      {showVoteProgress ? (
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5">
           <span className="font-medium text-emerald-600 dark:text-emerald-400">
@@ -66,6 +73,7 @@ export function PollParticipantSummary({
           </div>
         ) : null}
       </div>
+      ) : null}
     </div>
   );
 }

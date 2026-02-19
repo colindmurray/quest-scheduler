@@ -11,6 +11,11 @@ const {
   DISCORD_NOTIFICATION_DEFAULTS,
 } = require("./config");
 const { normalizeEmail } = require("../utils/email");
+const {
+  DEFAULT_VOTE_VISIBILITY,
+  canViewOtherVotesPublicly,
+  resolveVoteVisibility,
+} = require("../utils/vote-visibility");
 const { queueNotificationEvent } = require("../notifications/write-event");
 const { computeInstantRunoffResults } = require("../basic-polls/irv");
 const { computeMultipleChoiceTallies } = require("../basic-polls/multiple-choice");
@@ -989,6 +994,7 @@ async function handlePollCreate(interaction) {
 
   const pollRef = linkedGroup.groupRef.collection("basicPolls").doc();
   const pollId = pollRef.id;
+  const pollVoteVisibility = resolveVoteVisibility(DEFAULT_VOTE_VISIBILITY);
   const pollData = {
     title: title || "Untitled Poll",
     description: null,
@@ -1002,15 +1008,22 @@ async function handlePollCreate(interaction) {
       allowWriteIn: rankedChoice ? false : allowOther,
       deadlineAt: deadlineResult.deadlineAt,
     },
+    voteVisibility: pollVoteVisibility,
+    votesAllSubmitted: false,
     source: "discord",
   };
 
   const totalParticipants = resolveGroupNotificationRecipients(linkedGroup.groupData).length;
+  const canShowVoteCount = canViewOtherVotesPublicly({
+    voteVisibility: pollVoteVisibility,
+    allParticipantsVoted: false,
+    isFinalized: false,
+  });
   const cardBody = buildBasicPollCard({
     groupId: linkedGroup.groupId,
     pollId,
     poll: pollData,
-    voteCount: 0,
+    voteCount: canShowVoteCount ? 0 : null,
     totalParticipants,
   });
 
@@ -2078,6 +2091,13 @@ async function handleBasicPollFinalize(interaction, pollId) {
     hasSubmittedBasicPollVote(finalizedPollData, voteDoc)
   ).length;
   const totalParticipants = resolveGroupNotificationRecipients(context.groupData).length;
+  const allParticipantsVoted =
+    totalParticipants > 0 && voteCount >= totalParticipants;
+  const canShowVoteCount = canViewOtherVotesPublicly({
+    voteVisibility: finalizedPollData?.voteVisibility,
+    allParticipantsVoted,
+    isFinalized: true,
+  });
   const discordChannelId =
     context.pollData?.discord?.channelId ||
     context.groupData?.discord?.channelId ||
@@ -2093,7 +2113,7 @@ async function handleBasicPollFinalize(interaction, pollId) {
           groupId: context.groupId,
           pollId,
           poll: finalizedPollData,
-          voteCount,
+          voteCount: canShowVoteCount ? voteCount : null,
           totalParticipants,
         }),
       });

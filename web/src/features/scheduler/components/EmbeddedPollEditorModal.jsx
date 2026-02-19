@@ -7,6 +7,11 @@ import {
   SimpleModalTitle,
 } from "../../../components/ui/simple-modal";
 import { PollMarkdownContent } from "../../../components/polls/poll-markdown-content";
+import {
+  DEFAULT_VOTE_VISIBILITY,
+  VOTE_VISIBILITY_OPTIONS,
+  resolveVoteVisibility,
+} from "../../../lib/vote-visibility";
 
 function buildDefaultOptions() {
   return [
@@ -25,6 +30,7 @@ function createInitialDraft(initialPoll) {
       maxSelections: "",
       allowWriteIn: false,
       required: false,
+      voteVisibility: DEFAULT_VOTE_VISIBILITY,
       deadlineAtLocal: "",
       options: buildDefaultOptions(),
       descriptionTab: "write",
@@ -73,6 +79,7 @@ function createInitialDraft(initialPoll) {
         : "",
     allowWriteIn: voteType === "MULTIPLE_CHOICE" && settings.allowWriteIn === true,
     required: initialPoll.required === true,
+    voteVisibility: resolveVoteVisibility(initialPoll?.voteVisibility),
     deadlineAtLocal,
     options: normalizedOptions,
     descriptionTab: "write",
@@ -185,6 +192,7 @@ export function EmbeddedPollEditorModal({
         description: String(draft.description || "").trim(),
         options: normalizedOptions,
         required: draft.required,
+        voteVisibility: resolveVoteVisibility(draft.voteVisibility),
         settings: {
           voteType: draft.voteType,
           allowMultiple: draft.voteType === "MULTIPLE_CHOICE" && draft.allowMultiple,
@@ -314,6 +322,34 @@ export function EmbeddedPollEditorModal({
                   }
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Vote visibility
+                </label>
+                <select
+                  value={draft.voteVisibility}
+                  onChange={(event) =>
+                    setDraft((previous) => ({
+                      ...previous,
+                      voteVisibility: resolveVoteVisibility(event.target.value),
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  {VOTE_VISIBILITY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {
+                    VOTE_VISIBILITY_OPTIONS.find(
+                      (option) => option.value === resolveVoteVisibility(draft.voteVisibility)
+                    )?.description
+                  }
+                </p>
               </div>
             </div>
 

@@ -7,6 +7,7 @@ let editChannelMessageMock;
 let deleteChannelMessageMock;
 let enqueueMock;
 let pollSetMock;
+let buildBasicPollCardMock;
 
 let state;
 
@@ -20,6 +21,7 @@ describe('basic poll Discord sync triggers', () => {
     deleteChannelMessageMock = vi.fn().mockResolvedValue({ ok: true });
     enqueueMock = vi.fn().mockResolvedValue(undefined);
     pollSetMock = vi.fn().mockResolvedValue(undefined);
+    buildBasicPollCardMock = vi.fn().mockReturnValue({ embeds: [{ title: 'card' }], components: [] });
 
     state = {
       groupExists: true,
@@ -136,7 +138,7 @@ describe('basic poll Discord sync triggers', () => {
     };
     require.cache[require.resolve('../discord/basic-poll-card')] = {
       exports: {
-        buildBasicPollCard: vi.fn(() => ({ embeds: [{ title: 'card' }], components: [] })),
+        buildBasicPollCard: (...args) => buildBasicPollCardMock(...args),
       },
     };
 
@@ -305,5 +307,26 @@ describe('basic poll Discord sync triggers', () => {
       channelId: 'channel-1',
       messageId: 'msg-gone',
     });
+  });
+
+  test('processDiscordBasicPollUpdate hides vote counts for hidden visibility mode', async () => {
+    state.pollData = {
+      ...state.pollData,
+      voteVisibility: 'hidden',
+    };
+
+    await moduleUnderTest.processDiscordBasicPollUpdate({
+      data: {
+        groupId: 'group-1',
+        pollId: 'poll-1',
+      },
+    });
+
+    expect(buildBasicPollCardMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voteCount: null,
+        totalParticipants: 3,
+      })
+    );
   });
 });

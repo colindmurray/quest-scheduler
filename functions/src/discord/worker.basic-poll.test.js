@@ -499,6 +499,25 @@ describe('discord worker basic poll voting', () => {
     expect(responseBody.content).toBe('Poll finalized and results posted.');
   });
 
+  test('finalize keeps Discord vote progress hidden when visibility mode is hidden', async () => {
+    const state = worker.__testState;
+    state.groupData.creatorId = 'qs-user-1';
+    state.pollData.voteVisibility = 'hidden';
+    state.pollData.discord = {
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'poll-msg-hidden',
+    };
+    state.votes.set('qs-user-1', { optionIds: ['pizza'] });
+    state.votes.set('member-2', { optionIds: ['pizza', 'tacos'] });
+
+    await worker.__test__.handleBasicPollFinalize(buildInteraction(), 'poll-1');
+
+    const editCall = editChannelMessageMock.mock.calls.at(-1)?.[0];
+    const votesField = editCall?.body?.embeds?.[0]?.fields?.find((field) => field.name === 'Votes');
+    expect(votesField?.value).toBe('Vote progress hidden');
+  });
+
   test('finalize rejects ranked ties and keeps poll open', async () => {
     const state = worker.__testState;
     state.groupData.creatorId = 'qs-user-1';

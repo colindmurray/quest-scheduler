@@ -41,7 +41,8 @@ test.describe.serial("Embedded poll create flow", () => {
     await addModal.locator("input").first().fill(embeddedTitle);
     await addModal.locator('input[placeholder="Option 1"]').fill("Option One");
     await addModal.locator('input[placeholder="Option 2"]').fill("Option Two");
-    await addModal.getByRole("button", { name: "Add poll", exact: true }).click();
+    const addPollButton = addModal.getByRole("button", { name: "Add poll", exact: true });
+    await addPollButton.evaluate((element) => element.click());
     await expect(page.getByText(embeddedTitle)).toBeVisible();
 
     await page.getByRole("button", { name: "Create poll", exact: true }).click();

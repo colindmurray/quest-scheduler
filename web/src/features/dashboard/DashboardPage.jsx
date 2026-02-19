@@ -481,7 +481,7 @@ export default function DashboardPage({
   const { profiles: participantProfilesById } = useUserProfilesByIds(profileLookupIds);
 
   const { slotsByScheduler, votesByScheduler, votersByScheduler } =
-    useSchedulerAttendance(filteredActiveSchedulers);
+    useSchedulerAttendance(filteredActiveSchedulers, user?.uid || null);
 
   // Enrich schedulers with slot data and voters
   const showTimeZone = useMemo(() => shouldShowTimeZone(settings), [settings]);

@@ -83,6 +83,18 @@ describe("useSchedulerEmbeddedPollVotes", () => {
       myVoteCallbacksByPollId["poll-ranked"]({ rankings: ["opt-2"] });
     });
 
+    act(() => {
+      votesCallbacksByPollId["poll-multi"]([
+        { id: "a", optionIds: ["opt-1"] },
+        { id: "b", otherText: " custom " },
+        { id: "c", optionIds: [] },
+      ]);
+      votesCallbacksByPollId["poll-ranked"]([
+        { id: "a", rankings: ["opt-2", "opt-1"] },
+        { id: "b", rankings: [] },
+      ]);
+    });
+
     expect(result.current.embeddedPollsLoading).toBe(false);
     expect(result.current.embeddedPollVoteCounts).toEqual({
       "poll-multi": 2,
