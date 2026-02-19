@@ -47,6 +47,12 @@ export function resolveHideVoterIdentities(value) {
   return value === true;
 }
 
+export function resolveHideVoterIdentitiesForVisibility(value, voteVisibility) {
+  const normalizedVisibility = resolveVoteVisibility(voteVisibility);
+  if (normalizedVisibility === VOTE_VISIBILITY.FULL) return false;
+  return resolveHideVoterIdentities(value);
+}
+
 export function canViewVoterIdentities({ isCreator = false, hideVoterIdentities = false } = {}) {
   if (isCreator) return true;
   return resolveHideVoterIdentities(hideVoterIdentities) !== true;

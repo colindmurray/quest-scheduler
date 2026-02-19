@@ -180,11 +180,13 @@ describe("CreateGroupPollModal", () => {
             allowMultiple: false,
             allowWriteIn: false,
           },
+          voteVisibility: "hidden",
           hideVoterIdentities: false,
         }}
       />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Edit privacy" }));
     fireEvent.click(screen.getByRole("checkbox", { name: /Hide who has\/hasn't voted/i }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -197,5 +199,38 @@ describe("CreateGroupPollModal", () => {
         })
       );
     });
+  });
+
+  test("disables identity toggle when vote visibility is full", () => {
+    render(
+      <CreateGroupPollModal
+        open
+        onOpenChange={vi.fn()}
+        mode="edit"
+        groupId="group-1"
+        groupName="Fellowship"
+        initialPoll={{
+          id: "poll-1",
+          title: "Snack Vote",
+          description: "Pick food",
+          options: [
+            { id: "opt-1", label: "Pizza", order: 0, note: "" },
+            { id: "opt-2", label: "Burgers", order: 1, note: "" },
+          ],
+          voteVisibility: "full_visibility",
+          hideVoterIdentities: true,
+          settings: {
+            voteType: "MULTIPLE_CHOICE",
+            allowMultiple: false,
+            allowWriteIn: false,
+          },
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit privacy" }));
+    const checkbox = screen.getByRole("checkbox", { name: /Hide who has\/hasn't voted/i });
+    expect(checkbox.disabled).toBe(true);
+    expect(checkbox.checked).toBe(false);
   });
 });

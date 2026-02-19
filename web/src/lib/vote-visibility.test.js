@@ -7,6 +7,7 @@ import {
   canViewOtherVotesForUser,
   canViewOtherVotesPublicly,
   resolveHideVoterIdentities,
+  resolveHideVoterIdentitiesForVisibility,
   resolveVoteVisibility,
 } from "./vote-visibility";
 
@@ -22,6 +23,11 @@ describe("vote visibility helpers", () => {
     expect(resolveHideVoterIdentities(false)).toBe(false);
     expect(resolveHideVoterIdentities(undefined)).toBe(false);
     expect(resolveHideVoterIdentities("true")).toBe(false);
+  });
+
+  test("hide voter identities is forced off for full visibility", () => {
+    expect(resolveHideVoterIdentitiesForVisibility(true, VOTE_VISIBILITY.FULL)).toBe(false);
+    expect(resolveHideVoterIdentitiesForVisibility(true, VOTE_VISIBILITY.HIDDEN)).toBe(true);
   });
 
   test("creator can always view voter identities", () => {

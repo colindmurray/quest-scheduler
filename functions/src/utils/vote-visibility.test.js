@@ -5,6 +5,7 @@ const {
   canViewVoterIdentities,
   canViewOtherVotesPublicly,
   resolveHideVoterIdentities,
+  resolveHideVoterIdentitiesForVisibility,
   resolveVoteVisibility,
 } = require("./vote-visibility");
 
@@ -20,6 +21,11 @@ describe("vote visibility helper", () => {
     expect(resolveHideVoterIdentities(false)).toBe(false);
     expect(resolveHideVoterIdentities(undefined)).toBe(false);
     expect(resolveHideVoterIdentities("true")).toBe(false);
+  });
+
+  test("hide voter identities is forced off for full visibility", () => {
+    expect(resolveHideVoterIdentitiesForVisibility(true, VOTE_VISIBILITY.FULL)).toBe(false);
+    expect(resolveHideVoterIdentitiesForVisibility(true, VOTE_VISIBILITY.HIDDEN)).toBe(true);
   });
 
   test("creator can always view identities while others follow hide setting", () => {

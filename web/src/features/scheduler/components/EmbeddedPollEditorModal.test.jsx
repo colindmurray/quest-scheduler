@@ -61,6 +61,7 @@ describe("EmbeddedPollEditorModal", () => {
             { id: "opt-2", label: "Two", order: 1, note: "" },
           ],
           settings: { voteType: "RANKED_CHOICE" },
+          voteVisibility: "hidden",
           hideVoterIdentities: true,
         }}
       />
@@ -70,9 +71,36 @@ describe("EmbeddedPollEditorModal", () => {
     expect(screen.getByDisplayValue("Existing description")).toBeTruthy();
     expect(screen.getAllByRole("combobox")[0].value).toBe("RANKED_CHOICE");
     expect(screen.getByRole("checkbox", { name: "Required poll" }).checked).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Edit privacy" }));
     expect(screen.getByRole("checkbox", { name: /Hide who has\/hasn't voted/i }).checked).toBe(
       true
     );
     expect(screen.getByRole("button", { name: "Save poll" })).toBeTruthy();
+  });
+
+  test("disables hide voter identities toggle under full visibility", () => {
+    render(
+      <EmbeddedPollEditorModal
+        open
+        onOpenChange={vi.fn()}
+        onSave={vi.fn()}
+        initialPoll={{
+          id: "poll-1",
+          title: "Existing poll",
+          options: [
+            { id: "opt-1", label: "One", order: 0, note: "" },
+            { id: "opt-2", label: "Two", order: 1, note: "" },
+          ],
+          settings: { voteType: "RANKED_CHOICE" },
+          voteVisibility: "full_visibility",
+          hideVoterIdentities: true,
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit privacy" }));
+    const checkbox = screen.getByRole("checkbox", { name: /Hide who has\/hasn't voted/i });
+    expect(checkbox.disabled).toBe(true);
+    expect(checkbox.checked).toBe(false);
   });
 });

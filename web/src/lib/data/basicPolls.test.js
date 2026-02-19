@@ -80,6 +80,22 @@ describe("basicPolls data layer", () => {
     );
   });
 
+  test("forces hideVoterIdentities off when voteVisibility is full", async () => {
+    await basicPolls.updateBasicPoll("group-1", "poll-1", {
+      voteVisibility: "full_visibility",
+      hideVoterIdentities: true,
+    });
+
+    expect(firestoreMocks.updateDoc).toHaveBeenCalledWith(
+      { path: "questingGroups/group-1/basicPolls/poll-1" },
+      {
+        voteVisibility: "full_visibility",
+        hideVoterIdentities: false,
+        updatedAt: "server-time",
+      }
+    );
+  });
+
   test("fetchGroupBasicPolls returns mapped poll docs", async () => {
     firestoreMocks.getDocs.mockResolvedValueOnce({
       docs: [{ id: "poll-1", data: () => ({ title: "A" }) }],

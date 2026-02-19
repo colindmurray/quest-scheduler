@@ -335,7 +335,7 @@ describe('basic-poll callables', () => {
     );
   });
 
-  test('createBasicPoll normalizes hideVoterIdentities', async () => {
+  test('createBasicPoll keeps hideVoterIdentities for non-full visibility', async () => {
     await callables.createBasicPoll.run(
       {
         parentType: 'group',
@@ -344,6 +344,7 @@ describe('basic-poll callables', () => {
           title: 'Identity toggle',
           options: pollData.options,
           settings: pollData.settings,
+          voteVisibility: 'hidden',
           hideVoterIdentities: true,
         },
       },
@@ -353,6 +354,30 @@ describe('basic-poll callables', () => {
     expect(createdPollSetMock).toHaveBeenCalledWith(
       expect.objectContaining({
         hideVoterIdentities: true,
+      })
+    );
+  });
+
+  test('createBasicPoll forces hideVoterIdentities off for full visibility', async () => {
+    await callables.createBasicPoll.run(
+      {
+        parentType: 'group',
+        parentId: 'g1',
+        pollData: {
+          title: 'Identity toggle full',
+          options: pollData.options,
+          settings: pollData.settings,
+          voteVisibility: 'full_visibility',
+          hideVoterIdentities: true,
+        },
+      },
+      buildContext('owner-1')
+    );
+
+    expect(createdPollSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voteVisibility: 'full_visibility',
+        hideVoterIdentities: false,
       })
     );
   });

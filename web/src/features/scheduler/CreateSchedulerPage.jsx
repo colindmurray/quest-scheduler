@@ -79,7 +79,9 @@ import { DatePicker } from "../../components/ui/date-picker";
 import { Switch } from "../../components/ui/switch";
 import {
   DEFAULT_VOTE_VISIBILITY,
+  VOTE_VISIBILITY,
   VOTE_VISIBILITY_OPTIONS,
+  resolveHideVoterIdentitiesForVisibility,
   resolveVoteVisibility,
 } from "../../lib/vote-visibility";
 import { hasSubmittedSchedulerVote } from "../../lib/vote-utils";
@@ -202,6 +204,7 @@ export default function CreateSchedulerPage() {
   const [allowLinkSharing, setAllowLinkSharing] = useState(false);
   const [voteVisibility, setVoteVisibility] = useState(DEFAULT_VOTE_VISIBILITY);
   const [hideVoterIdentities, setHideVoterIdentities] = useState(false);
+  const [votePrivacyExpanded, setVotePrivacyExpanded] = useState(false);
   const [selectedTimezone, setSelectedTimezone] = useState(
     Intl.DateTimeFormat().resolvedOptions().timeZone
   );
@@ -375,8 +378,14 @@ export default function CreateSchedulerPage() {
     setTitle(scheduler.data.title || "");
     setDescription(scheduler.data.description || "");
     setAllowLinkSharing(Boolean(scheduler.data.allowLinkSharing));
-    setVoteVisibility(resolveVoteVisibility(scheduler.data.voteVisibility));
-    setHideVoterIdentities(scheduler.data.hideVoterIdentities === true);
+    const schedulerVoteVisibility = resolveVoteVisibility(scheduler.data.voteVisibility);
+    setVoteVisibility(schedulerVoteVisibility);
+    setHideVoterIdentities(
+      resolveHideVoterIdentitiesForVisibility(
+        scheduler.data.hideVoterIdentities === true,
+        schedulerVoteVisibility
+      )
+    );
     const creatorEmail = scheduler.data.creatorEmail || user?.email;
     setInvites(explicitParticipantEmails.filter((email) => email && email !== creatorEmail));
     const pendingList = (scheduler.data.pendingInvites || [])
@@ -743,6 +752,7 @@ export default function CreateSchedulerPage() {
     const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const timezoneModeForScheduler =
       selectedTimezone === detectedTimezone ? "auto" : "manual";
+    const nextVoteVisibility = resolveVoteVisibility(voteVisibility);
     return {
       explicitParticipants,
       pendingList,
@@ -750,8 +760,11 @@ export default function CreateSchedulerPage() {
       pollTitle,
       pollDescription,
       timezoneModeForScheduler,
-      voteVisibility: resolveVoteVisibility(voteVisibility),
-      hideVoterIdentities: hideVoterIdentities === true,
+      voteVisibility: nextVoteVisibility,
+      hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
+        hideVoterIdentities === true,
+        nextVoteVisibility
+      ),
     };
   };
 
@@ -1217,6 +1230,12 @@ export default function CreateSchedulerPage() {
     );
   }
 
+  const normalizedVoteVisibility = resolveVoteVisibility(voteVisibility);
+  const voteVisibilityOption = VOTE_VISIBILITY_OPTIONS.find(
+    (option) => option.value === normalizedVoteVisibility
+  );
+  const hideVoterIdentitiesLocked = normalizedVoteVisibility === VOTE_VISIBILITY.FULL;
+
   return (
     <>
       <form
@@ -1282,45 +1301,79 @@ export default function CreateSchedulerPage() {
             </div>
 
             <div className="grid gap-2">
-              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                Vote visibility
-              </span>
-              <Select value={voteVisibility} onValueChange={(value) => setVoteVisibility(resolveVoteVisibility(value))}>
-                <SelectTrigger className="h-12 rounded-2xl px-4">
-                  <SelectValue placeholder="Select vote visibility" />
-                </SelectTrigger>
-                <SelectContent>
-                  {VOTE_VISIBILITY_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {
-                  VOTE_VISIBILITY_OPTIONS.find(
-                    (option) => option.value === resolveVoteVisibility(voteVisibility)
-                  )?.description
-                }
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200/70 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/60">
-              <label className="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={hideVoterIdentities}
-                  onChange={(event) => setHideVoterIdentities(event.target.checked)}
-                  className="mt-0.5"
-                />
-                <span>
-                  <span className="font-semibold">Hide who has/hasn't voted</span>
-                  <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
-                    When enabled, only show vote counts without revealing who voted.
-                  </span>
-                </span>
-              </label>
+              <div className="rounded-2xl border border-slate-200/70 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/60">
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        Vote privacy
+                      </span>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        Choose how much vote information participants can see while the poll is open.
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        Current: {voteVisibilityOption?.label || "Vote visibility"}
+                        {hideVoterIdentities ? " + identities hidden" : ""}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setVotePrivacyExpanded((previous) => !previous)}
+                      aria-expanded={votePrivacyExpanded}
+                      className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700/60"
+                    >
+                      {votePrivacyExpanded ? "Hide privacy" : "Edit privacy"}
+                    </button>
+                  </div>
+                  {votePrivacyExpanded ? (
+                    <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/60">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                          <input
+                            type="checkbox"
+                            checked={hideVoterIdentities}
+                            disabled={hideVoterIdentitiesLocked}
+                            onChange={(event) => setHideVoterIdentities(event.target.checked)}
+                            className="disabled:cursor-not-allowed"
+                          />
+                          <span className="font-semibold">Hide who has/hasn't voted</span>
+                        </label>
+                        <div className="w-full shrink-0 sm:w-72">
+                          <Select
+                            value={voteVisibility}
+                            onValueChange={(value) => {
+                              const nextVisibility = resolveVoteVisibility(value);
+                              setVoteVisibility(nextVisibility);
+                              setHideVoterIdentities((previous) =>
+                                resolveHideVoterIdentitiesForVisibility(previous, nextVisibility)
+                              );
+                            }}
+                          >
+                            <SelectTrigger className="h-10 rounded-xl px-3">
+                              <SelectValue placeholder="Select vote visibility" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {VOTE_VISIBILITY_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {voteVisibilityOption?.description}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {hideVoterIdentitiesLocked
+                          ? "Hide who has/hasn't voted is unavailable for Full visibility."
+                          : "When enabled, only show vote counts without revealing who voted."}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             </div>
 
             {/* Questing Group Selector */}

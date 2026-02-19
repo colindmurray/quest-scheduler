@@ -21,7 +21,12 @@ import { computeInstantRunoffResults } from "../basic-polls/irv";
 import { computeMultipleChoiceTallies } from "../basic-polls/multiple-choice";
 import { hasSubmittedVote } from "../basic-polls/vote-submission";
 import { coerceDate } from "../time";
-import { resolveHideVoterIdentities, resolveVoteVisibility } from "../vote-visibility";
+import {
+  VOTE_VISIBILITY,
+  resolveHideVoterIdentities,
+  resolveHideVoterIdentitiesForVisibility,
+  resolveVoteVisibility,
+} from "../vote-visibility";
 
 const DELETE_BATCH_SIZE = 450;
 const PARENT_TYPE_COLLECTIONS = {
@@ -70,10 +75,14 @@ function mapSnapshotDocs(snapshot) {
 }
 
 function sanitizePollCreateData(pollData = {}) {
+  const voteVisibility = resolveVoteVisibility(pollData?.voteVisibility);
   return {
     ...pollData,
-    voteVisibility: resolveVoteVisibility(pollData?.voteVisibility),
-    hideVoterIdentities: resolveHideVoterIdentities(pollData?.hideVoterIdentities),
+    voteVisibility,
+    hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
+      pollData?.hideVoterIdentities,
+      voteVisibility
+    ),
     votesAllSubmitted: false,
   };
 }
@@ -93,7 +102,15 @@ function sanitizePollUpdateData(updates = {}) {
     normalized.voteVisibility = resolveVoteVisibility(updates?.voteVisibility);
   }
   if (hasHideVoterIdentities) {
-    normalized.hideVoterIdentities = resolveHideVoterIdentities(updates?.hideVoterIdentities);
+    normalized.hideVoterIdentities = resolveHideVoterIdentitiesForVisibility(
+      updates?.hideVoterIdentities,
+      normalized.voteVisibility
+    );
+  } else if (
+    hasVoteVisibility &&
+    resolveVoteVisibility(normalized.voteVisibility) === VOTE_VISIBILITY.FULL
+  ) {
+    normalized.hideVoterIdentities = resolveHideVoterIdentities(false);
   }
   return normalized;
 }

@@ -15,7 +15,7 @@ const {
   hasSubmittedVote,
 } = require("./vote-submission");
 const {
-  resolveHideVoterIdentities,
+  resolveHideVoterIdentitiesForVisibility,
   resolveVoteVisibility,
 } = require("../utils/vote-visibility");
 
@@ -316,7 +316,10 @@ const createBasicPoll = functions.https.onCall(async (data, context) => {
   const basePoll = {
     ...pollData,
     voteVisibility: resolveVoteVisibility(pollData?.voteVisibility),
-    hideVoterIdentities: resolveHideVoterIdentities(pollData?.hideVoterIdentities),
+    hideVoterIdentities: resolveHideVoterIdentitiesForVisibility(
+      pollData?.hideVoterIdentities,
+      pollData?.voteVisibility
+    ),
     votesAllSubmitted: false,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),

@@ -18,6 +18,12 @@ function resolveHideVoterIdentities(value) {
   return value === true;
 }
 
+function resolveHideVoterIdentitiesForVisibility(value, voteVisibility) {
+  const normalizedVisibility = resolveVoteVisibility(voteVisibility);
+  if (normalizedVisibility === VOTE_VISIBILITY.FULL) return false;
+  return resolveHideVoterIdentities(value);
+}
+
 function canViewVoterIdentities({ isCreator = false, hideVoterIdentities = false } = {}) {
   if (isCreator) return true;
   return resolveHideVoterIdentities(hideVoterIdentities) !== true;
@@ -37,6 +43,7 @@ module.exports = {
   DEFAULT_HIDE_VOTER_IDENTITIES,
   resolveVoteVisibility,
   resolveHideVoterIdentities,
+  resolveHideVoterIdentitiesForVisibility,
   canViewVoterIdentities,
   canViewOtherVotesPublicly,
 };
