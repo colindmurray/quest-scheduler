@@ -187,7 +187,7 @@ describe("CreateGroupPollModal", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Advanced settings/i }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Hide list of participants who have already voted/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Hide identity of voters/i }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
@@ -230,7 +230,7 @@ describe("CreateGroupPollModal", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Advanced settings/i }));
-    const checkbox = screen.queryByRole("checkbox", { name: /Hide list of participants who have already voted/i });
+    const checkbox = screen.queryByRole("checkbox", { name: /Hide identity of voters/i });
     expect(checkbox).toBeNull();
   });
 });

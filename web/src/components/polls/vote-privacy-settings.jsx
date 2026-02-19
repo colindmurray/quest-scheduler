@@ -39,6 +39,10 @@ export function VotePrivacySettings({
     (option) => option.value === normalizedVoteAnonymization
   );
   const hideVoterIdentitiesLocked = normalizedVoteVisibility === VOTE_VISIBILITY.FULL;
+  const hideVoterIdentitiesLabel =
+    normalizedVoteVisibility === VOTE_VISIBILITY.HIDDEN
+      ? "Hide identity of voters from participants"
+      : "Hide identity of voters until votes revealed";
 
   return (
     <div
@@ -107,7 +111,7 @@ export function VotePrivacySettings({
                       onChange={(event) => onHideVoterIdentitiesChange?.(event.target.checked)}
                     />
                     <span className="inline-flex min-w-0 items-start gap-1 font-semibold leading-snug text-slate-700 dark:text-slate-200">
-                      <span>Hide list of participants who have already voted</span>
+                      <span>{hideVoterIdentitiesLabel}</span>
                       <span
                         className="inline-flex shrink-0 cursor-help items-center text-slate-500 dark:text-slate-400"
                         title={HIDE_VOTE_LIST_TOOLTIP}

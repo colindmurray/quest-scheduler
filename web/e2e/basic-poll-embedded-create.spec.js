@@ -52,7 +52,7 @@ test.describe.serial("Embedded poll create flow", () => {
     await openPrivacySettings(schedulerPrivacyPanel);
     await setSelectValue(schedulerPrivacyPanel, 0, "Visible after finalization", page);
     await schedulerPrivacyPanel
-      .getByRole("checkbox", { name: "Hide list of participants who have already voted" })
+      .getByRole("checkbox", { name: /Hide identity of voters/i })
       .check();
     await setSelectValue(schedulerPrivacyPanel, 1, "Anonymous for everyone", page);
 
@@ -71,7 +71,7 @@ test.describe.serial("Embedded poll create flow", () => {
     await openPrivacySettings(embeddedPrivacyPanel);
     await setSelectValue(embeddedPrivacyPanel, 0, "Visible after each participant votes", page);
     await embeddedPrivacyPanel
-      .getByRole("checkbox", { name: "Hide list of participants who have already voted" })
+      .getByRole("checkbox", { name: /Hide identity of voters/i })
       .check();
     await setSelectValue(embeddedPrivacyPanel, 1, "Anonymous for participants", page);
     const addPollButton = addModal.getByRole("button", { name: "Add poll", exact: true });
@@ -110,7 +110,7 @@ test.describe.serial("Embedded poll create flow", () => {
     await expect(editEmbeddedPrivacyPanel.getByText(/Anonymous for participants/i)).toBeVisible();
     await openPrivacySettings(editEmbeddedPrivacyPanel);
     await expect(
-      editEmbeddedPrivacyPanel.getByRole("checkbox", { name: "Hide list of participants who have already voted" })
+      editEmbeddedPrivacyPanel.getByRole("checkbox", { name: /Hide identity of voters/i })
     ).toBeChecked();
   });
 });
