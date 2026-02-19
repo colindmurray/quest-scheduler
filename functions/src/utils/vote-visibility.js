@@ -7,10 +7,20 @@ const VOTE_VISIBILITY = Object.freeze({
 });
 
 const DEFAULT_VOTE_VISIBILITY = VOTE_VISIBILITY.FULL;
+const DEFAULT_HIDE_VOTER_IDENTITIES = false;
 const VOTE_VISIBILITY_SET = new Set(Object.values(VOTE_VISIBILITY));
 
 function resolveVoteVisibility(value) {
   return VOTE_VISIBILITY_SET.has(value) ? value : DEFAULT_VOTE_VISIBILITY;
+}
+
+function resolveHideVoterIdentities(value) {
+  return value === true;
+}
+
+function canViewVoterIdentities({ isCreator = false, hideVoterIdentities = false } = {}) {
+  if (isCreator) return true;
+  return resolveHideVoterIdentities(hideVoterIdentities) !== true;
 }
 
 function canViewOtherVotesPublicly({ voteVisibility, allParticipantsVoted, isFinalized } = {}) {
@@ -24,6 +34,9 @@ function canViewOtherVotesPublicly({ voteVisibility, allParticipantsVoted, isFin
 module.exports = {
   VOTE_VISIBILITY,
   DEFAULT_VOTE_VISIBILITY,
+  DEFAULT_HIDE_VOTER_IDENTITIES,
   resolveVoteVisibility,
+  resolveHideVoterIdentities,
+  canViewVoterIdentities,
   canViewOtherVotesPublicly,
 };

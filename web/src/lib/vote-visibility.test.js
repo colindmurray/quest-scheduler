@@ -1,9 +1,12 @@
 import { describe, expect, test } from "vitest";
 import {
+  DEFAULT_HIDE_VOTER_IDENTITIES,
   DEFAULT_VOTE_VISIBILITY,
   VOTE_VISIBILITY,
+  canViewVoterIdentities,
   canViewOtherVotesForUser,
   canViewOtherVotesPublicly,
+  resolveHideVoterIdentities,
   resolveVoteVisibility,
 } from "./vote-visibility";
 
@@ -11,6 +14,23 @@ describe("vote visibility helpers", () => {
   test("resolveVoteVisibility defaults unknown values", () => {
     expect(resolveVoteVisibility("unknown_mode")).toBe(DEFAULT_VOTE_VISIBILITY);
     expect(resolveVoteVisibility(VOTE_VISIBILITY.HIDDEN)).toBe(VOTE_VISIBILITY.HIDDEN);
+  });
+
+  test("hide voter identities defaults to false and normalizes booleans", () => {
+    expect(DEFAULT_HIDE_VOTER_IDENTITIES).toBe(false);
+    expect(resolveHideVoterIdentities(true)).toBe(true);
+    expect(resolveHideVoterIdentities(false)).toBe(false);
+    expect(resolveHideVoterIdentities(undefined)).toBe(false);
+    expect(resolveHideVoterIdentities("true")).toBe(false);
+  });
+
+  test("creator can always view voter identities", () => {
+    expect(canViewVoterIdentities({ isCreator: true, hideVoterIdentities: true })).toBe(true);
+  });
+
+  test("non-creator identity visibility follows hideVoterIdentities", () => {
+    expect(canViewVoterIdentities({ isCreator: false, hideVoterIdentities: false })).toBe(true);
+    expect(canViewVoterIdentities({ isCreator: false, hideVoterIdentities: true })).toBe(false);
   });
 
   test("creator can always view other votes", () => {

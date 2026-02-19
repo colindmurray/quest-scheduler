@@ -47,6 +47,7 @@ describe("basicPolls data layer", () => {
       expect.objectContaining({
         title: "Snack vote",
         status: "OPEN",
+        hideVoterIdentities: false,
         createdAt: "server-time",
         updatedAt: "server-time",
       })
@@ -60,6 +61,20 @@ describe("basicPolls data layer", () => {
       { path: "questingGroups/group-1/basicPolls/poll-1" },
       {
         title: "Updated title",
+        updatedAt: "server-time",
+      }
+    );
+  });
+
+  test("normalizes hideVoterIdentities on updates", async () => {
+    await basicPolls.updateBasicPoll("group-1", "poll-1", {
+      hideVoterIdentities: "true",
+    });
+
+    expect(firestoreMocks.updateDoc).toHaveBeenCalledWith(
+      { path: "questingGroups/group-1/basicPolls/poll-1" },
+      {
+        hideVoterIdentities: false,
         updatedAt: "server-time",
       }
     );
@@ -171,6 +186,39 @@ describe("basicPolls data layer", () => {
         }),
       ])
     );
+  });
+
+  test("fetchDashboardGroupBasicPolls falls back to own vote when vote docs are permission denied", async () => {
+    firestoreMocks.getDocs
+      .mockResolvedValueOnce({
+        docs: [
+          {
+            id: "poll-1",
+            data: () => ({
+              title: "Hidden poll",
+              status: "OPEN",
+              settings: { voteType: "MULTIPLE_CHOICE", allowWriteIn: false },
+            }),
+          },
+        ],
+      })
+      .mockRejectedValueOnce({ code: "permission-denied" });
+    firestoreMocks.getDoc.mockResolvedValueOnce({
+      exists: () => true,
+      id: "user-1",
+      data: () => ({ optionIds: ["opt-a"] }),
+    });
+
+    const polls = await basicPolls.fetchDashboardGroupBasicPolls(["group-1"], "user-1");
+
+    expect(polls).toEqual([
+      expect.objectContaining({
+        pollId: "poll-1",
+        hasVoted: true,
+        votedCount: 1,
+        voterIds: ["user-1"],
+      }),
+    ]);
   });
 
   test("fetchDashboardEmbeddedBasicPolls returns scheduler poll summaries", async () => {

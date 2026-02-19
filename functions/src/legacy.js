@@ -930,6 +930,7 @@ exports.cloneSchedulerPoll = functions.https.onCall(async (data, context) => {
     timezone: scheduler.timezone || null,
     timezoneMode: scheduler.timezoneMode || null,
     voteVisibility: resolveVoteVisibility(scheduler.voteVisibility),
+    hideVoterIdentities: scheduler.hideVoterIdentities === true,
     votesAllSubmitted: false,
     winningSlotId: null,
     googleEventId: null,

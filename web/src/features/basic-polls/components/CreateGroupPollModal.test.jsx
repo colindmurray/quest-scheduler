@@ -158,4 +158,44 @@ describe("CreateGroupPollModal", () => {
     });
     expect(updateBasicPollMock).not.toHaveBeenCalled();
   });
+
+  test("persists hide voter identities toggle", async () => {
+    render(
+      <CreateGroupPollModal
+        open
+        onOpenChange={vi.fn()}
+        mode="edit"
+        groupId="group-1"
+        groupName="Fellowship"
+        initialPoll={{
+          id: "poll-1",
+          title: "Snack Vote",
+          description: "Pick food",
+          options: [
+            { id: "opt-1", label: "Pizza", order: 0, note: "" },
+            { id: "opt-2", label: "Burgers", order: 1, note: "" },
+          ],
+          settings: {
+            voteType: "MULTIPLE_CHOICE",
+            allowMultiple: false,
+            allowWriteIn: false,
+          },
+          hideVoterIdentities: false,
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Hide who has\/hasn't voted/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(updateBasicPollMock).toHaveBeenCalledWith(
+        "group-1",
+        "poll-1",
+        expect.objectContaining({
+          hideVoterIdentities: true,
+        })
+      );
+    });
+  });
 });

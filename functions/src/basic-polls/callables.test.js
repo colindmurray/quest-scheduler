@@ -283,6 +283,7 @@ describe('basic-poll callables', () => {
         title: 'Snack vote',
         status: 'OPEN',
         voteVisibility: 'hidden_while_voting',
+        hideVoterIdentities: false,
         createdAt: 'server-time',
       })
     );
@@ -330,6 +331,28 @@ describe('basic-poll callables', () => {
     expect(createdPollSetMock).toHaveBeenCalledWith(
       expect.objectContaining({
         voteVisibility: 'full_visibility',
+      })
+    );
+  });
+
+  test('createBasicPoll normalizes hideVoterIdentities', async () => {
+    await callables.createBasicPoll.run(
+      {
+        parentType: 'group',
+        parentId: 'g1',
+        pollData: {
+          title: 'Identity toggle',
+          options: pollData.options,
+          settings: pollData.settings,
+          hideVoterIdentities: true,
+        },
+      },
+      buildContext('owner-1')
+    );
+
+    expect(createdPollSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hideVoterIdentities: true,
       })
     );
   });

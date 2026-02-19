@@ -32,6 +32,7 @@ export function BasicPollVotingCard({
   votedUsers = [],
   pendingUsers = [],
   showVoteProgress = true,
+  showVoterIdentities = true,
   voteVisibilityHint = null,
 }) {
   const voteType = poll?.settings?.voteType || BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE;
@@ -114,6 +115,7 @@ export function BasicPollVotingCard({
             votedCount={voteCount}
             showPending={!isFinalized}
             showVoteProgress={showVoteProgress}
+            showVoterIdentities={showVoterIdentities}
             className="mt-1"
           />
           {voteVisibilityHint ? (

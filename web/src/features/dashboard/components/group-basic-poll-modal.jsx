@@ -31,7 +31,11 @@ import {
 } from "../../../lib/basic-polls/vote-draft";
 import { BASIC_POLL_STATUSES, BASIC_POLL_VOTE_TYPES } from "../../../lib/basic-polls/constants";
 import { coerceDate } from "../../../lib/time";
-import { canViewOtherVotesForUser, resolveVoteVisibility } from "../../../lib/vote-visibility";
+import {
+  canViewOtherVotesForUser,
+  canViewVoterIdentities,
+  resolveVoteVisibility,
+} from "../../../lib/vote-visibility";
 import {
   deleteBasicPoll,
   deleteBasicPollVote,
@@ -151,7 +155,7 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
   const isPollCreator = Boolean(
     user?.uid && poll?.creatorId && String(poll.creatorId) === String(user.uid)
   );
-  const canReadOtherVotes = useMemo(() => {
+  const canReadVoteDetails = useMemo(() => {
     if (!poll) return false;
     return canViewOtherVotesForUser({
       voteVisibility: resolveVoteVisibility(poll.voteVisibility),
@@ -161,6 +165,14 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
       isFinalized: (poll?.status || BASIC_POLL_STATUSES.OPEN) === BASIC_POLL_STATUSES.FINALIZED,
     });
   }, [isPollCreator, myVote, poll]);
+  const canReadVoterIdentities = useMemo(() => {
+    if (!poll) return false;
+    return canViewVoterIdentities({
+      isCreator: isPollCreator,
+      hideVoterIdentities: poll.hideVoterIdentities,
+    });
+  }, [isPollCreator, poll]);
+  const canReadVoteProgress = canReadVoteDetails || canReadVoterIdentities;
   const nudgeCooldownRemaining = useMemo(
     () => getNudgeCooldownRemaining(pollDiscord?.nudgeLastSentAt),
     [pollDiscord?.nudgeLastSentAt]
@@ -188,15 +200,15 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
       basicPollMissingNudgeUserIds.length > 0
   );
   const cardBusy = submittingVote || clearingVote;
-  const voteVisibilityHint = !canReadOtherVotes
+  const voteVisibilityHint = !canReadVoteDetails
     ? resolveVoteVisibility(poll?.voteVisibility) === "hidden_while_voting"
-      ? "Vote progress unlocks after you submit your vote."
+      ? "Vote details unlock after you submit your vote."
       : resolveVoteVisibility(poll?.voteVisibility) === "hidden_until_all_voted"
-        ? "Vote progress unlocks once all participants have voted."
+        ? "Vote details unlock once all participants have voted."
         : resolveVoteVisibility(poll?.voteVisibility) === "hidden_until_finalized"
-          ? "Vote progress unlocks once this poll is finalized."
+          ? "Vote details unlock once this poll is finalized."
           : resolveVoteVisibility(poll?.voteVisibility) === "hidden"
-            ? "Only the poll creator can view participant vote progress."
+            ? "Only the poll creator can view participant vote details."
             : null
     : null;
 
@@ -233,7 +245,7 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
       return;
     }
 
-    if (!canReadOtherVotes) {
+    if (!canReadVoteProgress) {
       const ownVotes =
         user?.uid && hasSubmittedVoteForPoll(poll, myVote)
           ? [{ id: user.uid, ...(myVote || {}) }]
@@ -258,7 +270,7 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
       }
     );
     return () => unsubscribe();
-  }, [canReadOtherVotes, groupId, isGroupMember, myVote, poll, pollId, user?.uid]);
+  }, [canReadVoteProgress, groupId, isGroupMember, myVote, poll, pollId, user?.uid]);
 
   useEffect(() => {
     if (!groupId || !pollId || !isGroupMember || !user?.uid) {
@@ -617,7 +629,8 @@ export function GroupBasicPollModal({ groupId, pollId, onClose, onEditPoll }) {
                 eligibleUsers={participantUsers}
                 votedUsers={votedUsers}
                 pendingUsers={pendingUsers}
-                showVoteProgress={canReadOtherVotes}
+                showVoteProgress={canReadVoteProgress}
+                showVoterIdentities={canReadVoterIdentities}
                 voteVisibilityHint={voteVisibilityHint}
                 onViewOptionNote={(pollTitle, option) =>
                   setOptionNoteViewer({

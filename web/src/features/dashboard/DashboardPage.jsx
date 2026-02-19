@@ -17,6 +17,7 @@ import { useUserProfiles, useUserProfilesByIds } from "../../hooks/useUserProfil
 import { useSchedulerAttendance } from "./hooks/useSchedulerAttendance";
 import { normalizeEmail } from "../../lib/utils";
 import { coerceDate, resolveDisplayTimeZone, shouldShowTimeZone } from "../../lib/time";
+import { canViewVoterIdentities } from "../../lib/vote-visibility";
 import { useDashboardBasicPollSource } from "./hooks/use-dashboard-basic-poll-source";
 import { useDashboardBasicPollActions } from "./hooks/use-dashboard-basic-poll-actions";
 import { useDashboardGeneralPollModals } from "./hooks/use-dashboard-general-poll-modals";
@@ -850,8 +851,12 @@ export default function DashboardPage({
         eligibleUsers: buildUsersFromIds(poll.eligibleIds, pollCardProfilesById),
         votedUsers: buildUsersFromIds(poll.voterIds, pollCardProfilesById),
         pendingUsers: buildUsersFromIds(poll.pendingIds, pollCardProfilesById),
+        showVoterIdentities: canViewVoterIdentities({
+          isCreator: String(poll?.creatorId || "").trim() === String(user?.uid || "").trim(),
+          hideVoterIdentities: poll?.hideVoterIdentities,
+        }),
       })),
-    [basicPollBuckets, basicPollTab, pollCardProfilesById]
+    [basicPollBuckets, basicPollTab, pollCardProfilesById, user?.uid]
   );
 
   const handleOpenInvite = (inviteId) => {
@@ -1024,12 +1029,18 @@ export default function DashboardPage({
                           ? getGroupColor(scheduler.questingGroupId)
                             : null
                         }
-                        participants={scheduler.effectiveParticipants || []}
-                        voters={scheduler.voters || []}
-                        questingGroup={
-                          scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null
-                        }
-                      />
+                      participants={scheduler.effectiveParticipants || []}
+                      voters={scheduler.voters || []}
+                      showVoterIdentities={canViewVoterIdentities({
+                        isCreator:
+                          String(scheduler?.creatorId || "").trim() ===
+                          String(user?.uid || "").trim(),
+                        hideVoterIdentities: scheduler?.hideVoterIdentities,
+                      })}
+                      questingGroup={
+                        scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null
+                      }
+                    />
                     ))}
                 </div>
                 <div className="space-y-3">
@@ -1058,6 +1069,12 @@ export default function DashboardPage({
                       participants={scheduler.effectiveParticipants || []}
                       voters={scheduler.voters || []}
                       votedCount={scheduler.votedCount}
+                      showVoterIdentities={canViewVoterIdentities({
+                        isCreator:
+                          String(scheduler?.creatorId || "").trim() ===
+                          String(user?.uid || "").trim(),
+                        hideVoterIdentities: scheduler?.hideVoterIdentities,
+                      })}
                       questingGroup={
                         scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null
                       }
@@ -1145,6 +1162,12 @@ export default function DashboardPage({
                     attendanceSummary={enriched?.attendanceSummary}
                     participants={enriched?.effectiveParticipants || []}
                     voters={enriched?.voters || []}
+                    showVoterIdentities={canViewVoterIdentities({
+                      isCreator:
+                        String(scheduler?.creatorId || "").trim() ===
+                        String(user?.uid || "").trim(),
+                      hideVoterIdentities: scheduler?.hideVoterIdentities,
+                    })}
                     questingGroup={scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null}
                   />
                 );
@@ -1165,6 +1188,7 @@ export default function DashboardPage({
             archivedSessions={archivedSessions}
             getGroupColor={getGroupColor}
             groupsById={groupsById}
+            currentUserId={user?.uid || null}
           />
         </div>
       </div>

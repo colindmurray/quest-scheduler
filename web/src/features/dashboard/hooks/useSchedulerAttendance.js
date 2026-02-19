@@ -5,7 +5,11 @@ import {
   fetchUserSchedulerVote,
 } from "../../../lib/data/schedulers";
 import { hasSubmittedSchedulerVote } from "../../../lib/vote-utils";
-import { canViewOtherVotesForUser, resolveVoteVisibility } from "../../../lib/vote-visibility";
+import {
+  canViewOtherVotesForUser,
+  canViewVoterIdentities,
+  resolveVoteVisibility,
+} from "../../../lib/vote-visibility";
 
 export function useSchedulerAttendance(participatingSchedulers, currentUserId = null) {
   const [slotsByScheduler, setSlotsByScheduler] = useState({});
@@ -38,27 +42,33 @@ export function useSchedulerAttendance(participatingSchedulers, currentUserId = 
             let ownVoteDoc = null;
             let hasVoted = false;
 
-            let canReadOtherVotes = canViewOtherVotesForUser({
+            const canReadVoteDetails = canViewOtherVotesForUser({
               voteVisibility,
               isCreator,
               hasVoted: false,
               allParticipantsVoted: scheduler?.votesAllSubmitted === true,
               isFinalized: String(scheduler?.status || "").toUpperCase() === "FINALIZED",
             });
+            const canReadVoterIdentities = canViewVoterIdentities({
+              isCreator,
+              hideVoterIdentities: scheduler?.hideVoterIdentities,
+            });
+            let canReadVoteProgress = canReadVoteDetails || canReadVoterIdentities;
 
-            if (!canReadOtherVotes && currentUserId) {
+            if (!canReadVoteProgress && currentUserId) {
               ownVoteDoc = await fetchUserSchedulerVote(scheduler.id, currentUserId);
               hasVoted = hasSubmittedSchedulerVote(ownVoteDoc);
-              canReadOtherVotes = canViewOtherVotesForUser({
+              const hasVoteDetailAccessAfterVote = canViewOtherVotesForUser({
                 voteVisibility,
                 isCreator,
                 hasVoted,
                 allParticipantsVoted: scheduler?.votesAllSubmitted === true,
                 isFinalized: String(scheduler?.status || "").toUpperCase() === "FINALIZED",
               });
+              canReadVoteProgress = hasVoteDetailAccessAfterVote || canReadVoterIdentities;
             }
 
-            if (!canReadOtherVotes) {
+            if (!canReadVoteProgress) {
               const ownSubmittedVotes = hasVoted && ownVoteDoc ? [ownVoteDoc] : [];
               votesMap[scheduler.id] = ownSubmittedVotes;
               votersMap[scheduler.id] = ownSubmittedVotes

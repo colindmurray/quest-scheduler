@@ -35,6 +35,20 @@ describe("PollParticipantSummary", () => {
     expect(screen.getByText("All voted!")).toBeTruthy();
   });
 
+  test("shows anonymized counts when voter identities are hidden", () => {
+    render(
+      <PollParticipantSummary
+        eligibleUsers={USERS}
+        votedUsers={USERS.slice(0, 1)}
+        pendingUsers={USERS.slice(1)}
+        showVoterIdentities={false}
+      />
+    );
+
+    expect(screen.getByText("1/3 voted:")).toBeTruthy();
+    expect(screen.getByText("2/3 pending:")).toBeTruthy();
+  });
+
   test("returns nothing when there are no invitees", () => {
     const { container } = render(
       <PollParticipantSummary eligibleUsers={[]} votedUsers={[]} pendingUsers={[]} />

@@ -21,7 +21,7 @@ import { computeInstantRunoffResults } from "../basic-polls/irv";
 import { computeMultipleChoiceTallies } from "../basic-polls/multiple-choice";
 import { hasSubmittedVote } from "../basic-polls/vote-submission";
 import { coerceDate } from "../time";
-import { resolveVoteVisibility } from "../vote-visibility";
+import { resolveHideVoterIdentities, resolveVoteVisibility } from "../vote-visibility";
 
 const DELETE_BATCH_SIZE = 450;
 const PARENT_TYPE_COLLECTIONS = {
@@ -73,19 +73,29 @@ function sanitizePollCreateData(pollData = {}) {
   return {
     ...pollData,
     voteVisibility: resolveVoteVisibility(pollData?.voteVisibility),
+    hideVoterIdentities: resolveHideVoterIdentities(pollData?.hideVoterIdentities),
     votesAllSubmitted: false,
   };
 }
 
 function sanitizePollUpdateData(updates = {}) {
-  if (!Object.prototype.hasOwnProperty.call(updates || {}, "voteVisibility")) {
+  const hasVoteVisibility = Object.prototype.hasOwnProperty.call(updates || {}, "voteVisibility");
+  const hasHideVoterIdentities = Object.prototype.hasOwnProperty.call(
+    updates || {},
+    "hideVoterIdentities"
+  );
+  if (!hasVoteVisibility && !hasHideVoterIdentities) {
     return updates;
   }
 
-  return {
-    ...updates,
-    voteVisibility: resolveVoteVisibility(updates?.voteVisibility),
-  };
+  const normalized = { ...updates };
+  if (hasVoteVisibility) {
+    normalized.voteVisibility = resolveVoteVisibility(updates?.voteVisibility);
+  }
+  if (hasHideVoterIdentities) {
+    normalized.hideVoterIdentities = resolveHideVoterIdentities(updates?.hideVoterIdentities);
+  }
+  return normalized;
 }
 
 function resolvePollDeadline(pollData = {}) {
@@ -95,6 +105,11 @@ function resolvePollDeadline(pollData = {}) {
 function isPollDeadlineOpen(pollData = {}) {
   const deadlineAt = resolvePollDeadline(pollData);
   return !deadlineAt || deadlineAt.getTime() > Date.now();
+}
+
+function isPermissionDeniedError(error) {
+  const code = String(error?.code || "").toLowerCase();
+  return code.includes("permission-denied");
 }
 
 async function callBasicPollServerAction(actionName, payload) {
@@ -278,8 +293,20 @@ async function buildDashboardPollSummary(parentType, parentId, pollData, userId)
   const voteType = resolveBasicPollVoteType(settings.voteType);
   const allowWriteIn =
     voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && settings.allowWriteIn === true;
-  const votesSnapshot = await getDocs(basicPollVotesRef(parentType, parentId, pollData.id));
-  const voteDocs = mapSnapshotDocs(votesSnapshot);
+  let voteDocs = [];
+  try {
+    const votesSnapshot = await getDocs(basicPollVotesRef(parentType, parentId, pollData.id));
+    voteDocs = mapSnapshotDocs(votesSnapshot);
+  } catch (error) {
+    if (!isPermissionDeniedError(error)) {
+      throw error;
+    }
+    const ownVoteReference = basicPollVoteRef(parentType, parentId, pollData.id, userId);
+    if (ownVoteReference) {
+      const ownVoteSnapshot = await getDoc(ownVoteReference);
+      voteDocs = ownVoteSnapshot.exists() ? [{ id: ownVoteSnapshot.id, ...ownVoteSnapshot.data() }] : [];
+    }
+  }
   const submittedVotes = voteDocs.filter((voteDoc) => hasSubmittedVote(voteType, allowWriteIn, voteDoc));
   const voterIds = submittedVotes.map((voteDoc) => voteDoc.id).filter(Boolean);
 

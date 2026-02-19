@@ -21,6 +21,7 @@ export function SessionCard({
   questingGroup = null,
   displayTimeZone = null,
   showTimeZone = true,
+  showVoterIdentities = true,
 }) {
   const safeNavigate = useSafeNavigate();
   const participantEmails = participants.map((p) => (typeof p === "string" ? p : p.email));
@@ -133,12 +134,14 @@ export function SessionCard({
             {/* Invitees section */}
             <div className="flex items-center gap-1.5">
               <span className="font-medium">{participantUsers.length} invitee{participantUsers.length !== 1 ? "s" : ""}:</span>
-              <AvatarStack
-                users={participantUsers}
-                max={10}
-                size={18}
-                colorMap={colorMap}
-              />
+              {showVoterIdentities ? (
+                <AvatarStack
+                  users={participantUsers}
+                  max={10}
+                  size={18}
+                  colorMap={colorMap}
+                />
+              ) : null}
             </div>
 
             {/* Pending votes section - only show for open polls */}
@@ -149,7 +152,9 @@ export function SessionCard({
                     <span className="font-medium text-amber-600 dark:text-amber-400">
                       {pendingVoters.length}/{totalParticipants} pending:
                     </span>
-                    <VotingAvatarStack users={pendingVoters} size={18} colorMap={colorMap} />
+                    {showVoterIdentities ? (
+                      <VotingAvatarStack users={pendingVoters} size={18} colorMap={colorMap} />
+                    ) : null}
                   </>
                 ) : (
                   <span className="text-emerald-600 dark:text-emerald-400">All voted!</span>

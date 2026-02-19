@@ -201,6 +201,7 @@ export default function CreateSchedulerPage() {
   const [draftDuration, setDraftDuration] = useState(240);
   const [allowLinkSharing, setAllowLinkSharing] = useState(false);
   const [voteVisibility, setVoteVisibility] = useState(DEFAULT_VOTE_VISIBILITY);
+  const [hideVoterIdentities, setHideVoterIdentities] = useState(false);
   const [selectedTimezone, setSelectedTimezone] = useState(
     Intl.DateTimeFormat().resolvedOptions().timeZone
   );
@@ -375,6 +376,7 @@ export default function CreateSchedulerPage() {
     setDescription(scheduler.data.description || "");
     setAllowLinkSharing(Boolean(scheduler.data.allowLinkSharing));
     setVoteVisibility(resolveVoteVisibility(scheduler.data.voteVisibility));
+    setHideVoterIdentities(scheduler.data.hideVoterIdentities === true);
     const creatorEmail = scheduler.data.creatorEmail || user?.email;
     setInvites(explicitParticipantEmails.filter((email) => email && email !== creatorEmail));
     const pendingList = (scheduler.data.pendingInvites || [])
@@ -749,6 +751,7 @@ export default function CreateSchedulerPage() {
       pollDescription,
       timezoneModeForScheduler,
       voteVisibility: resolveVoteVisibility(voteVisibility),
+      hideVoterIdentities: hideVoterIdentities === true,
     };
   };
 
@@ -772,6 +775,7 @@ export default function CreateSchedulerPage() {
         pollDescription,
         timezoneModeForScheduler,
         voteVisibility: nextVoteVisibility,
+        hideVoterIdentities: nextHideVoterIdentities,
       } = getPollInputs();
       const inviteRecipients = Array.from(
         new Set([...explicitParticipants, ...pendingList].filter(Boolean))
@@ -831,6 +835,7 @@ export default function CreateSchedulerPage() {
         questingGroupId: selectedGroup?.id || null,
         questingGroupName: selectedGroup?.name || null,
         voteVisibility: nextVoteVisibility,
+        hideVoterIdentities: nextHideVoterIdentities,
         votesAllSubmitted,
         participants: deleteField(),
         updatedAt: serverTimestamp(),
@@ -968,6 +973,7 @@ export default function CreateSchedulerPage() {
         pollDescription,
         timezoneModeForScheduler,
         voteVisibility: nextVoteVisibility,
+        hideVoterIdentities: nextHideVoterIdentities,
       } = getPollInputs();
       const inviteRecipients = Array.from(
         new Set([...explicitParticipants, ...pendingList].filter(Boolean))
@@ -1003,6 +1009,7 @@ export default function CreateSchedulerPage() {
         winningSlotId: null,
         googleEventId: null,
         voteVisibility: nextVoteVisibility,
+        hideVoterIdentities: nextHideVoterIdentities,
         votesAllSubmitted: false,
         questingGroupId: selectedGroup?.id || null,
         questingGroupName: selectedGroup?.name || null,
@@ -1297,6 +1304,23 @@ export default function CreateSchedulerPage() {
                   )?.description
                 }
               </p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200/70 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/60">
+              <label className="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={hideVoterIdentities}
+                  onChange={(event) => setHideVoterIdentities(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-semibold">Hide who has/hasn't voted</span>
+                  <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                    When enabled, only show vote counts without revealing who voted.
+                  </span>
+                </span>
+              </label>
             </div>
 
             {/* Questing Group Selector */}

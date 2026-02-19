@@ -10,7 +10,11 @@ import {
   normalizeVoteRankings,
 } from "../../../lib/basic-polls/vote-submission";
 import { BASIC_POLL_STATUSES, BASIC_POLL_VOTE_TYPES } from "../../../lib/basic-polls/constants";
-import { canViewOtherVotesForUser, resolveVoteVisibility } from "../../../lib/vote-visibility";
+import {
+  canViewOtherVotesForUser,
+  canViewVoterIdentities,
+  resolveVoteVisibility,
+} from "../../../lib/vote-visibility";
 
 export function useSchedulerEmbeddedPollVotes({ schedulerId, userId, isCreator = false }) {
   const [embeddedPolls, setEmbeddedPolls] = useState([]);
@@ -49,7 +53,7 @@ export function useSchedulerEmbeddedPollVotes({ schedulerId, userId, isCreator =
       {
         const myVote = embeddedMyVotes[poll.id] || null;
         const hasVoted = hasSubmittedVoteForPoll(poll, myVote);
-        const canReadOtherVotes = canViewOtherVotesForUser({
+        const canReadVoteDetails = canViewOtherVotesForUser({
           voteVisibility: resolveVoteVisibility(poll?.voteVisibility),
           isCreator,
           hasVoted,
@@ -58,8 +62,13 @@ export function useSchedulerEmbeddedPollVotes({ schedulerId, userId, isCreator =
             String(poll?.status || BASIC_POLL_STATUSES.OPEN).toUpperCase() ===
             BASIC_POLL_STATUSES.FINALIZED,
         });
+        const canReadVoterIdentities = canViewVoterIdentities({
+          isCreator,
+          hideVoterIdentities: poll?.hideVoterIdentities,
+        });
+        const canReadVoteProgress = canReadVoteDetails || canReadVoterIdentities;
 
-        if (!canReadOtherVotes) {
+        if (!canReadVoteProgress) {
           const ownVotes = hasVoted && myVote ? [{ id: userId, ...myVote }] : [];
           setEmbeddedVotesByPoll((previous) => ({ ...previous, [poll.id]: ownVotes }));
           setEmbeddedPollVoteCounts((previous) => ({ ...previous, [poll.id]: ownVotes.length }));

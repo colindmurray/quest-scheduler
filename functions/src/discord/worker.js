@@ -1009,6 +1009,7 @@ async function handlePollCreate(interaction) {
       deadlineAt: deadlineResult.deadlineAt,
     },
     voteVisibility: pollVoteVisibility,
+    hideVoterIdentities: false,
     votesAllSubmitted: false,
     source: "discord",
   };

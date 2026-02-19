@@ -93,6 +93,7 @@ function buildInitialState(selectedGroupId = null, initialPoll = null) {
     maxSelections,
     allowWriteIn,
     voteVisibility,
+    hideVoterIdentities: initialPoll?.hideVoterIdentities === true,
     deadlineAtLocal,
     options: normalizeInitialOptions(initialPoll),
     noteEditor: { optionId: null, tab: "write", value: "" },
@@ -322,6 +323,7 @@ export function CreateGroupPollModal({
         description: String(state.description || "").trim(),
         options: normalizedOptions,
         voteVisibility: resolveVoteVisibility(state.voteVisibility),
+        hideVoterIdentities: state.hideVoterIdentities === true,
         settings: {
           voteType: state.voteType,
           allowMultiple: state.voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && state.allowMultiple,
@@ -627,6 +629,26 @@ export function CreateGroupPollModal({
                   ) : null}
                 </div>
               </div>
+              <label className="mt-3 flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={state.hideVoterIdentities}
+                  onChange={(event) =>
+                    setState((previous) => ({
+                      ...previous,
+                      hideVoterIdentities: event.target.checked,
+                    }))
+                  }
+                />
+                <span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    Hide who has/hasn't voted
+                  </span>
+                  <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
+                    When enabled, only show vote counts without revealing who voted.
+                  </span>
+                </span>
+              </label>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 {state.voteType === BASIC_POLL_VOTE_TYPES.MULTIPLE_CHOICE && state.allowMultiple ? (
                   <div className="group relative">

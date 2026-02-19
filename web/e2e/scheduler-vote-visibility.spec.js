@@ -63,7 +63,7 @@ test.describe("Scheduler vote visibility", () => {
       hiddenWhileSchedulerId,
       "E2E Visibility Hidden While Voting"
     );
-    await expect(page.getByText(/2 total\s*·\s*vote progress hidden/i)).toBeVisible({
+    await expect(page.getByText(/2 total\s*·\s*\d+ voted/i)).toBeVisible({
       timeout: 15000,
     });
     await expect(page.getByText("Vote details unlock after you submit your vote.")).toBeVisible({
@@ -75,7 +75,7 @@ test.describe("Scheduler vote visibility", () => {
       hiddenUntilFinalizedSchedulerId,
       "E2E Visibility Hidden Until Finalized"
     );
-    await expect(page.getByText(/2 total\s*·\s*vote progress hidden/i)).toBeVisible({
+    await expect(page.getByText(/2 total\s*·\s*\d+ voted/i)).toBeVisible({
       timeout: 15000,
     });
     await expect(page.getByText("Vote details unlock once the poll is finalized.")).toBeVisible({

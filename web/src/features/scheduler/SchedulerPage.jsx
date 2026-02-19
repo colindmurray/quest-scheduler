@@ -121,7 +121,11 @@ import {
   getNextCycleVoteValue,
 } from "./utils/calendar-month-vote-controls";
 import { hasSubmittedSchedulerVote, isAttendingVote } from "../../lib/vote-utils";
-import { canViewOtherVotesForUser, resolveVoteVisibility } from "../../lib/vote-visibility";
+import {
+  canViewOtherVotesForUser,
+  canViewVoterIdentities,
+  resolveVoteVisibility,
+} from "../../lib/vote-visibility";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "./calendar-styles.css";
 
@@ -149,6 +153,8 @@ export default function SchedulerPage() {
     slots,
     allVotes,
     canReadAllVotes,
+    canReadVoteProgress,
+    canViewVoterIdentitiesForUser,
     userVote,
     userVoteRef,
   } = useSchedulerData({ schedulerId: id, user });
@@ -561,6 +567,8 @@ export default function SchedulerPage() {
     return allVotes.data;
   }, [allVotes.data, user?.uid, userVote.data]);
   const showSchedulerVoteDetails = canReadAllVotes;
+  const showSchedulerVoteProgress = canReadVoteProgress;
+  const showSchedulerVoterIdentities = canViewVoterIdentitiesForUser;
 
   const { infoBySlotId: userBlockersBySlotId } = useMemo(() => {
     return buildUserBlockInfo({
@@ -867,7 +875,7 @@ export default function SchedulerPage() {
   }, [embeddedPolls, embeddedVotesByPoll, nudgeEligibleParticipantIds]);
   const participantCount = participantIdSet.size;
   const knownVoteCount = submittedVoteDocs.length;
-  const voteCount = showSchedulerVoteDetails
+  const voteCount = showSchedulerVoteProgress
     ? knownVoteCount
     : hasSubmittedSchedulerVote(userVote.data)
       ? 1
@@ -876,13 +884,13 @@ export default function SchedulerPage() {
     if (scheduler.data?.status !== "OPEN") return false;
     if (!participantCount) return false;
     if (scheduler.data?.votesAllSubmitted === true) return true;
-    return showSchedulerVoteDetails && knownVoteCount >= participantCount;
+    return showSchedulerVoteProgress && knownVoteCount >= participantCount;
   }, [
     knownVoteCount,
     participantCount,
     scheduler.data?.status,
     scheduler.data?.votesAllSubmitted,
-    showSchedulerVoteDetails,
+    showSchedulerVoteProgress,
   ]);
   const winningSlot = useMemo(() => {
     const winningId = scheduler.data?.winningSlotId;
@@ -2245,6 +2253,7 @@ export default function SchedulerPage() {
         timezone: scheduler.data.timezone,
         timezoneMode: scheduler.data.timezoneMode,
         voteVisibility: resolveVoteVisibility(scheduler.data?.voteVisibility),
+        hideVoterIdentities: scheduler.data?.hideVoterIdentities === true,
         votesAllSubmitted: false,
         winningSlotId: null,
         googleEventId: null,
@@ -2641,13 +2650,6 @@ export default function SchedulerPage() {
     );
   }
 
-  const isCurrentUserParticipant = (participant) => {
-    const participantId = String(participant?.id || "").trim();
-    if (participantId && participantId === String(user?.uid || "")) return true;
-    const participantEmail = normalizeEmail(participant?.email);
-    return Boolean(participantEmail && participantEmail === normalizedUserEmail);
-  };
-
   return (
     <>
       <div className="rounded-3xl bg-white p-8 shadow-xl shadow-slate-200 dark:bg-slate-800 dark:shadow-slate-900/50">
@@ -2807,7 +2809,7 @@ export default function SchedulerPage() {
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Participants</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   {participantCount} total
-                  {showSchedulerVoteDetails ? ` · ${voteCount} voted` : " · vote progress hidden"}
+                  {showSchedulerVoteProgress ? ` · ${voteCount} voted` : " · vote progress hidden"}
                 </p>
               </div>
               <AvatarStackWithColors
@@ -2858,14 +2860,14 @@ export default function SchedulerPage() {
                       <UserIdentity user={member} className="text-xs" />
                       <span
                         className={`ml-auto text-[10px] font-semibold ${
-                          !showSchedulerVoteDetails && !isCurrentUserParticipant(member)
+                          !showSchedulerVoterIdentities
                             ? "text-slate-400 dark:text-slate-500"
                             : member.hasVoted
                             ? "text-emerald-600 dark:text-emerald-300"
                             : "text-slate-400 dark:text-slate-500"
                         }`}
                       >
-                        {!showSchedulerVoteDetails && !isCurrentUserParticipant(member)
+                        {!showSchedulerVoterIdentities
                           ? "Hidden"
                           : member.hasVoted
                             ? "Voted"
@@ -2893,7 +2895,7 @@ export default function SchedulerPage() {
                     className={`text-[10px] font-semibold ${
                       participant.isPendingInvite
                         ? "text-amber-600 dark:text-amber-300"
-                        : !showSchedulerVoteDetails && !isCurrentUserParticipant(participant)
+                        : !showSchedulerVoterIdentities
                           ? "text-slate-400 dark:text-slate-500"
                         : participant.hasVoted
                           ? "text-emerald-600 dark:text-emerald-300"
@@ -2902,7 +2904,7 @@ export default function SchedulerPage() {
                   >
                     {participant.isPendingInvite
                       ? "Pending invite"
-                      : !showSchedulerVoteDetails && !isCurrentUserParticipant(participant)
+                      : !showSchedulerVoterIdentities
                         ? "Hidden"
                       : participant.hasVoted
                         ? "Voted"
@@ -3430,25 +3432,31 @@ export default function SchedulerPage() {
                             : "Slot"}
                         </p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Preferred {slot.counts.preferred} · Feasible {slot.counts.feasible}
+                          {showSchedulerVoteDetails
+                            ? `Preferred ${slot.counts.preferred} · Feasible ${slot.counts.feasible}`
+                            : "Vote details hidden"}
                         </p>
                         {isPast && (
                           <p className="mt-1 text-xs font-semibold text-red-500 dark:text-red-400">
                             This slot is in the past.
                           </p>
                         )}
-                        {expandedSlots[slot.id] && (
+                        {showSchedulerVoteDetails && expandedSlots[slot.id] && (
                           <div className="mt-2 flex flex-col gap-2">
                             <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                               <span className="font-semibold">★ Preferred</span>
-                              <AvatarStackWithColors users={voters.preferred} max={8} size={22} />
+                              {showSchedulerVoterIdentities ? (
+                                <AvatarStackWithColors users={voters.preferred} max={8} size={22} />
+                              ) : null}
                               <span className="text-slate-400 dark:text-slate-500">
                                 {slot.counts.preferred}
                               </span>
                             </div>
                             <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                               <span className="font-semibold">✓ Feasible</span>
-                              <AvatarStackWithColors users={voters.feasible} max={8} size={22} />
+                              {showSchedulerVoterIdentities ? (
+                                <AvatarStackWithColors users={voters.feasible} max={8} size={22} />
+                              ) : null}
                               <span className="text-slate-400 dark:text-slate-500">
                                 {slot.counts.feasible}
                               </span>
@@ -3457,13 +3465,15 @@ export default function SchedulerPage() {
                         )}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => toggleExpanded(slot.id)}
-                          className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
-                        >
-                          {expandedSlots[slot.id] ? "Hide details" : "Details"}
-                        </button>
+                        {showSchedulerVoteDetails ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleExpanded(slot.id)}
+                            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold transition-colors hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
+                          >
+                            {expandedSlots[slot.id] ? "Hide details" : "Details"}
+                          </button>
+                        ) : null}
                         {isCreator && (
                           <span
                             title={
@@ -3486,14 +3496,16 @@ export default function SchedulerPage() {
                         )}
                       </div>
                     </div>
-                    {expandedSlots[slot.id] && (
+                    {showSchedulerVoteDetails && expandedSlots[slot.id] && (
                       <div className="mt-4 grid gap-3 md:grid-cols-2">
                         <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
                           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                             ★ Preferred voters
                           </p>
                           <div className="mt-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                            <AvatarStackWithColors users={voters.preferred} max={8} size={22} />
+                            {showSchedulerVoterIdentities ? (
+                              <AvatarStackWithColors users={voters.preferred} max={8} size={22} />
+                            ) : null}
                             <span className="text-slate-400 dark:text-slate-500">
                               {slot.counts.preferred}
                             </span>
@@ -3502,7 +3514,7 @@ export default function SchedulerPage() {
                             <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
                               No preferred votes yet.
                             </p>
-                          ) : (
+                          ) : showSchedulerVoterIdentities ? (
                             <div className="mt-2 flex flex-wrap gap-2">
                               {voters.preferred.map((voter) => (
                                 <div
@@ -3524,6 +3536,11 @@ export default function SchedulerPage() {
                                 </div>
                               ))}
                             </div>
+                          ) : (
+                            <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                              {slot.counts.preferred} preferred vote
+                              {slot.counts.preferred === 1 ? "" : "s"} recorded.
+                            </p>
                           )}
                         </div>
                         <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
@@ -3531,7 +3548,9 @@ export default function SchedulerPage() {
                             ✓ Feasible voters
                           </p>
                           <div className="mt-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                            <AvatarStackWithColors users={voters.feasible} max={8} size={22} />
+                            {showSchedulerVoterIdentities ? (
+                              <AvatarStackWithColors users={voters.feasible} max={8} size={22} />
+                            ) : null}
                             <span className="text-slate-400 dark:text-slate-500">
                               {slot.counts.feasible}
                             </span>
@@ -3540,7 +3559,7 @@ export default function SchedulerPage() {
                             <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
                               No feasible votes yet.
                             </p>
-                          ) : (
+                          ) : showSchedulerVoterIdentities ? (
                             <div className="mt-2 flex flex-wrap gap-2">
                               {voters.feasible.map((voter) => (
                                 <div
@@ -3562,6 +3581,11 @@ export default function SchedulerPage() {
                                 </div>
                               ))}
                             </div>
+                          ) : (
+                            <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                              {slot.counts.feasible} feasible vote
+                              {slot.counts.feasible === 1 ? "" : "s"} recorded.
+                            </p>
                           )}
                         </div>
                       </div>
@@ -3618,13 +3642,19 @@ export default function SchedulerPage() {
                   const pollSubmittedVotes = pollVotes.filter((voteDoc) =>
                     hasSubmittedEmbeddedVote(poll, voteDoc)
                   );
-                  const canReadEmbeddedVoteProgress = canViewOtherVotesForUser({
+                  const canReadEmbeddedVoteDetails = canViewOtherVotesForUser({
                     voteVisibility: resolveVoteVisibility(poll?.voteVisibility),
                     isCreator,
                     hasVoted: hasSubmitted,
                     allParticipantsVoted: poll?.votesAllSubmitted === true,
                     isFinalized: (poll?.status || "OPEN") === "FINALIZED",
                   });
+                  const canViewEmbeddedVoterIdentities = canViewVoterIdentities({
+                    isCreator,
+                    hideVoterIdentities: poll?.hideVoterIdentities,
+                  });
+                  const canReadEmbeddedVoteProgress =
+                    canReadEmbeddedVoteDetails || canViewEmbeddedVoterIdentities;
                   const embeddedFinalResults = poll?.finalResults || null;
                   const canVoteEmbedded = canVoteEmbeddedPoll(poll);
                   const lifecycleBusy = embeddedLifecycleBusyByPoll[poll.id] === true;
@@ -3648,15 +3678,15 @@ export default function SchedulerPage() {
                   const pendingUsers = eligibleUsers.filter(
                     (participant) => !votedIdSet.has(String(participant.id || ""))
                   );
-                  const embeddedVoteVisibilityHint = !canReadEmbeddedVoteProgress
+                  const embeddedVoteVisibilityHint = !canReadEmbeddedVoteDetails
                     ? resolveVoteVisibility(poll?.voteVisibility) === "hidden_while_voting"
-                      ? "Vote progress unlocks after you submit your vote."
+                      ? "Vote details unlock after you submit your vote."
                       : resolveVoteVisibility(poll?.voteVisibility) === "hidden_until_all_voted"
-                        ? "Vote progress unlocks once all participants have voted."
+                        ? "Vote details unlock once all participants have voted."
                         : resolveVoteVisibility(poll?.voteVisibility) === "hidden_until_finalized"
-                          ? "Vote progress unlocks once this poll is finalized."
+                          ? "Vote details unlock once this poll is finalized."
                           : resolveVoteVisibility(poll?.voteVisibility) === "hidden"
-                            ? "Only the poll creator can view participant vote progress."
+                            ? "Only the poll creator can view participant vote details."
                             : null
                     : null;
 
@@ -3701,6 +3731,7 @@ export default function SchedulerPage() {
                       votedUsers={votedUsers}
                       pendingUsers={pendingUsers}
                       showVoteProgress={canReadEmbeddedVoteProgress}
+                      showVoterIdentities={canViewEmbeddedVoterIdentities}
                       voteVisibilityHint={embeddedVoteVisibilityHint}
                       onFinalizePoll={() => finalizeEmbeddedPollIndividually(poll)}
                       onReopenPoll={() => reopenEmbeddedPollIndividually(poll)}

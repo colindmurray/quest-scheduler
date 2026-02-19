@@ -10,7 +10,11 @@ import {
 import { userRef } from "../../../lib/data/users";
 import { questingGroupRef } from "../../../lib/data/questingGroups";
 import { hasSubmittedSchedulerVote } from "../../../lib/vote-utils";
-import { canViewOtherVotesForUser, resolveVoteVisibility } from "../../../lib/vote-visibility";
+import {
+  canViewOtherVotesForUser,
+  canViewVoterIdentities,
+  resolveVoteVisibility,
+} from "../../../lib/vote-visibility";
 
 export function useSchedulerData({ schedulerId, user }) {
   const schedulerDocRef = useMemo(
@@ -54,9 +58,18 @@ export function useSchedulerData({ schedulerId, user }) {
       isFinalized: schedulerData.status === "FINALIZED",
     });
   }, [scheduler.data, schedulerId, user, userVote.data]);
+  const canViewVoterIdentitiesForUser = useMemo(() => {
+    const schedulerData = scheduler.data || null;
+    if (!schedulerId || !user || !schedulerData) return false;
+    return canViewVoterIdentities({
+      isCreator: schedulerData.creatorId === user.uid,
+      hideVoterIdentities: schedulerData.hideVoterIdentities,
+    });
+  }, [scheduler.data, schedulerId, user]);
+  const canReadVoteProgress = canReadAllVotes || canViewVoterIdentitiesForUser;
   const votesRef = useMemo(
-    () => (schedulerId && canReadAllVotes ? schedulerVotesRef(schedulerId) : null),
-    [canReadAllVotes, schedulerId]
+    () => (schedulerId && canReadVoteProgress ? schedulerVotesRef(schedulerId) : null),
+    [canReadVoteProgress, schedulerId]
   );
   const allVotes = useFirestoreCollection(votesRef);
 
@@ -68,6 +81,8 @@ export function useSchedulerData({ schedulerId, user }) {
     slots,
     allVotes,
     canReadAllVotes,
+    canReadVoteProgress,
+    canViewVoterIdentitiesForUser,
     userVote,
     userVoteRef,
   };

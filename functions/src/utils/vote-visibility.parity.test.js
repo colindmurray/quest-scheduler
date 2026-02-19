@@ -1,10 +1,12 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  DEFAULT_HIDE_VOTER_IDENTITIES as functionHideDefault,
   DEFAULT_VOTE_VISIBILITY as functionDefault,
   VOTE_VISIBILITY as functionModes,
 } from "./vote-visibility";
 import {
+  DEFAULT_HIDE_VOTER_IDENTITIES as webHideDefault,
   DEFAULT_VOTE_VISIBILITY as webDefault,
   VOTE_VISIBILITY as webModes,
 } from "../../../web/src/lib/vote-visibility.js";
@@ -19,5 +21,6 @@ describe("vote visibility constant parity", () => {
       expect(functionModes[key]).toBe(webModes[key]);
     });
     expect(functionDefault).toBe(webDefault);
+    expect(functionHideDefault).toBe(webHideDefault);
   });
 });

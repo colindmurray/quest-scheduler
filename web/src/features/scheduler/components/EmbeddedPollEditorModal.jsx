@@ -31,6 +31,7 @@ function createInitialDraft(initialPoll) {
       allowWriteIn: false,
       required: false,
       voteVisibility: DEFAULT_VOTE_VISIBILITY,
+      hideVoterIdentities: false,
       deadlineAtLocal: "",
       options: buildDefaultOptions(),
       descriptionTab: "write",
@@ -80,6 +81,7 @@ function createInitialDraft(initialPoll) {
     allowWriteIn: voteType === "MULTIPLE_CHOICE" && settings.allowWriteIn === true,
     required: initialPoll.required === true,
     voteVisibility: resolveVoteVisibility(initialPoll?.voteVisibility),
+    hideVoterIdentities: initialPoll?.hideVoterIdentities === true,
     deadlineAtLocal,
     options: normalizedOptions,
     descriptionTab: "write",
@@ -193,6 +195,7 @@ export function EmbeddedPollEditorModal({
         options: normalizedOptions,
         required: draft.required,
         voteVisibility: resolveVoteVisibility(draft.voteVisibility),
+        hideVoterIdentities: draft.hideVoterIdentities === true,
         settings: {
           voteType: draft.voteType,
           allowMultiple: draft.voteType === "MULTIPLE_CHOICE" && draft.allowMultiple,
@@ -350,6 +353,24 @@ export function EmbeddedPollEditorModal({
                     )?.description
                   }
                 </p>
+                <label className="mt-3 flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={draft.hideVoterIdentities}
+                    onChange={(event) =>
+                      setDraft((previous) => ({
+                        ...previous,
+                        hideVoterIdentities: event.target.checked,
+                      }))
+                    }
+                  />
+                  <span>
+                    <span className="font-medium">Hide who has/hasn't voted</span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400">
+                      When enabled, only show vote counts without revealing who voted.
+                    </span>
+                  </span>
+                </label>
               </div>
             </div>
 

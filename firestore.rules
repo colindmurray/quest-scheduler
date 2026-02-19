@@ -369,6 +369,14 @@ service cloud.firestore {
               : "full_visibility";
           }
 
+          function pollHideVoterIdentities(data) {
+            return data != null && data.hideVoterIdentities == true;
+          }
+
+          function canReadVoterIdentities(data) {
+            return data != null && !pollHideVoterIdentities(data);
+          }
+
           function canReadVotesByVisibility(data) {
             return data != null && (
               pollVoteVisibility(data) == "full_visibility"
@@ -391,6 +399,7 @@ service cloud.firestore {
             && (
               isRequester(userId)
               || isGroupManager(groupData())
+              || canReadVoterIdentities(pollData())
               || canReadVotesByVisibility(pollData())
             );
 
@@ -589,6 +598,14 @@ service cloud.firestore {
               : "full_visibility";
           }
 
+          function pollHideVoterIdentities(data) {
+            return data != null && data.hideVoterIdentities == true;
+          }
+
+          function canReadVoterIdentities(data) {
+            return data != null && !pollHideVoterIdentities(data);
+          }
+
           function canReadVotesByVisibility(data) {
             return data != null && (
               pollVoteVisibility(data) == "full_visibility"
@@ -611,6 +628,7 @@ service cloud.firestore {
             && (
               isCreator(schedulerData())
               || isRequester(userId)
+              || canReadVoterIdentities(pollData())
               || canReadVotesByVisibility(pollData())
             );
 
@@ -665,6 +683,14 @@ service cloud.firestore {
             : "full_visibility";
         }
 
+        function schedulerHideVoterIdentities(data) {
+          return data != null && data.hideVoterIdentities == true;
+        }
+
+        function canReadSchedulerVoterIdentities(data) {
+          return data != null && !schedulerHideVoterIdentities(data);
+        }
+
         function canReadSchedulerVotesByVisibility(data) {
           return data != null && (
             schedulerVoteVisibility(data) == "full_visibility"
@@ -687,6 +713,7 @@ service cloud.firestore {
           && (
             isCreator(schedulerData())
             || isRequester(userId)
+            || canReadSchedulerVoterIdentities(schedulerData())
             || canReadSchedulerVotesByVisibility(schedulerData())
           );
         function creatorVoteUpdateAllowed(voteData) {

@@ -70,6 +70,7 @@ export function BasicPollCard({
     votedCount = 0,
     eligibleCount = 0,
     parentType,
+    showVoterIdentities = true,
     isArchived,
     pollStatus = "OPEN",
     accentColor = null,
@@ -222,6 +223,7 @@ export function BasicPollCard({
         eligibleCount={eligibleCount}
         votedCount={votedCount}
         showPending={isOpen}
+        showVoterIdentities={showVoterIdentities}
       />
     </article>
   );

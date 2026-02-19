@@ -21,6 +21,7 @@ export function PollParticipantSummary({
   votedCount = null,
   showPending = true,
   showVoteProgress = true,
+  showVoterIdentities = true,
   className = "",
 }) {
   const effectiveEligibleCount = toCount(eligibleCount, eligibleUsers.length);
@@ -43,7 +44,11 @@ export function PollParticipantSummary({
         <span className="font-medium">
           {effectiveEligibleCount} invitee{effectiveEligibleCount !== 1 ? "s" : ""}:
         </span>
-        <AvatarStack users={eligibleUsers} max={10} size={18} colorMap={colorMap} />
+        {showVoterIdentities ? (
+          <AvatarStack users={eligibleUsers} max={10} size={18} colorMap={colorMap} />
+        ) : (
+          <span>{effectiveEligibleCount}</span>
+        )}
       </div>
       {!showVoteProgress ? (
         <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
@@ -56,7 +61,9 @@ export function PollParticipantSummary({
           <span className="font-medium text-emerald-600 dark:text-emerald-400">
             {effectiveVotedCount}/{effectiveEligibleCount} voted:
           </span>
-          <VotingAvatarStack users={votedUsers} max={10} size={18} colorMap={colorMap} />
+          {showVoterIdentities ? (
+            <VotingAvatarStack users={votedUsers} max={10} size={18} colorMap={colorMap} />
+          ) : null}
         </div>
         {showPending ? (
           <div className="flex items-center gap-1.5">
@@ -65,7 +72,9 @@ export function PollParticipantSummary({
                 <span className="font-medium text-amber-600 dark:text-amber-400">
                   {pendingCount}/{effectiveEligibleCount} pending:
                 </span>
-                <VotingAvatarStack users={pendingUsers} max={10} size={18} colorMap={colorMap} />
+                {showVoterIdentities ? (
+                  <VotingAvatarStack users={pendingUsers} max={10} size={18} colorMap={colorMap} />
+                ) : null}
               </>
             ) : (
               <span className="text-emerald-600 dark:text-emerald-400">All voted!</span>

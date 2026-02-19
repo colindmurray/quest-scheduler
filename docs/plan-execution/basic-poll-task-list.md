@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Active plan execution tracker synchronized with docs/task-list.md."
 changelog:
+  - "2026-02-19: Added `hideVoterIdentities` support across scheduler/basic-poll data models, vote visibility helpers, UI toggles, dashboard/session rendering, Firestore rules, and Discord defaults with targeted validation gates."
   - "2026-02-19: Finalized vote-visibility rollout by enforcing Discord basic-poll card vote-count gating, aligning scheduler vote-submission semantics across rules/runtime, and re-running full unit/rules/integration/e2e validation gates."
   - "2026-02-12: Removed legacy `/poll-create` flat payload fallback; worker now enforces `multiple`/`ranked` subcommands only."
   - "2026-02-12: Fixed Discord basic poll card web-link usability by adding a clickable embed link field (`View on web`) and deployed updated Discord card handlers to prod/staging."
@@ -39,9 +40,9 @@ changelog:
 - Last Generated: 2026-02-11
 
 ## Execution Checkpoint
-- Last Completed: Finalized Vote Visibility Settings for scheduler/basic-poll flows, including Discord card visibility enforcement and full validation-gate reruns.
-- Next Step: Push `feature/vote-visibility-settings` for review and run manual QA for all five visibility modes across web + Discord surfaces.
-- Open Issues: Emulator-backed notification triggers still emit expected `NOT_FOUND` noise during integration/e2e runs.
+- Last Completed: Implemented voter identity visibility toggle (`hideVoterIdentities`) across scheduler/basic-poll web + functions + rules, including creator override behavior and voter identity/count rendering updates.
+- Next Step: Push `feature/vote-visibility-settings` and complete manual QA for creator/non-creator behavior across all vote visibility modes and identity toggle states.
+- Open Issues: Emulator-backed integration runs continue to emit known background-trigger `NOT_FOUND` noise (`notificationEvents`) despite passing results.
 - Last Updated (YYYY-MM-DD): 2026-02-19
 
 ## Ordered Task Checklist
@@ -126,6 +127,23 @@ changelog:
 - [ ] `P3` `13.8` Inline banner: unvoted required embedded polls (Section: Phase 13: Nice-to-Have Enhancements)
 
 ## Progress Notes
+
+- 2026-02-19: Voter identity visibility toggle rollout (`hideVoterIdentities`).
+  - Implementation updates:
+    - Added defaults/helper logic in:
+      - `web/src/lib/vote-visibility.js`
+      - `functions/src/utils/vote-visibility.js`
+    - Persisted and normalized `hideVoterIdentities` in scheduler/basic-poll create/edit/clone/callable flows.
+    - Added the `Hide who has/hasn't voted` checkbox to scheduler and basic-poll creation/edit surfaces.
+    - Updated scheduler/dashboard/session/basic-poll displays so creators always see identities and non-creators follow `hideVoterIdentities` + `voteVisibility`.
+    - Updated `firestore.rules` and rules tests to control vote-doc read access for identity visibility.
+  - Validation:
+    - `npm --prefix functions run test -- --run src/utils/vote-visibility.test.js src/utils/vote-visibility.parity.test.js src/basic-polls/callables.test.js src/discord/worker.poll-create.test.js` (pass: `4 files`, `32 tests`)
+    - `npm --prefix web run test -- --run src/lib/vote-visibility.test.js src/lib/data/basicPolls.test.js src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx src/components/polls/poll-participant-summary.test.jsx src/features/dashboard/hooks/useSchedulerAttendance.test.js src/features/scheduler/hooks/useSchedulerEmbeddedPollVotes.test.js` (pass: `7 files`, `55 tests`)
+    - `npm --prefix web run test:rules` (pass: `25 tests`)
+    - `npm --prefix web run test:integration` (pass: `4 files`, `14 tests`)
+    - `npm --prefix web run test:e2e -- e2e/scheduler-vote-visibility.spec.js` (fail in unseeded local mode: auth redirect to `/auth`)
+    - `firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT "node ./functions/scripts/seed-e2e-scheduler.js && npm --prefix ./web run test:e2e -- e2e/scheduler-vote-visibility.spec.js"` (pass: `4 passed`)
 
 - 2026-02-19: Vote visibility finalization pass:
   - Closed remaining Discord/basic-poll visibility gaps:

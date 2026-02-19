@@ -2,6 +2,7 @@ import { Archive } from "lucide-react";
 import { SessionCard } from "./SessionCard";
 import { SectionHeader } from "./section-header";
 import { TabButton } from "./tab-button";
+import { canViewVoterIdentities } from "../../../lib/vote-visibility";
 
 export function PastSessionsSection({
   pastSessionsTab,
@@ -11,6 +12,7 @@ export function PastSessionsSection({
   archivedSessions = [],
   getGroupColor,
   groupsById = {},
+  currentUserId = null,
 }) {
   return (
     <section className="rounded-3xl bg-white p-6 shadow-xl shadow-slate-200 dark:bg-slate-800 dark:shadow-slate-900/50">
@@ -62,6 +64,12 @@ export function PastSessionsSection({
                 attendanceSummary={scheduler.attendanceSummary}
                 participants={scheduler.effectiveParticipants || []}
                 voters={scheduler.voters || []}
+                showVoterIdentities={canViewVoterIdentities({
+                  isCreator:
+                    String(scheduler?.creatorId || "").trim() ===
+                    String(currentUserId || "").trim(),
+                  hideVoterIdentities: scheduler?.hideVoterIdentities,
+                })}
                 questingGroup={
                   scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null
                 }
@@ -92,6 +100,12 @@ export function PastSessionsSection({
                 attendanceSummary={scheduler.attendanceSummary}
                 participants={scheduler.effectiveParticipants || []}
                 voters={scheduler.voters || []}
+                showVoterIdentities={canViewVoterIdentities({
+                  isCreator:
+                    String(scheduler?.creatorId || "").trim() ===
+                    String(currentUserId || "").trim(),
+                  hideVoterIdentities: scheduler?.hideVoterIdentities,
+                })}
                 questingGroup={
                   scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null
                 }
@@ -121,6 +135,12 @@ export function PastSessionsSection({
                 attendanceSummary={scheduler.attendanceSummary}
                 participants={scheduler.effectiveParticipants || []}
                 voters={scheduler.voters || []}
+                showVoterIdentities={canViewVoterIdentities({
+                  isCreator:
+                    String(scheduler?.creatorId || "").trim() ===
+                    String(currentUserId || "").trim(),
+                  hideVoterIdentities: scheduler?.hideVoterIdentities,
+                })}
                 questingGroup={
                   scheduler.questingGroupId ? groupsById[scheduler.questingGroupId] : null
                 }

@@ -495,7 +495,7 @@ describe('Firestore rules', () => {
     await assertFails(deleteDoc(doc(manager.firestore(), finalizedVoteRef.path)));
   });
 
-  test('group basic polls: hidden visibility keeps own votes readable and creator can always read all votes', async () => {
+  test('group basic polls: hideVoterIdentities controls whether members can read others under hidden mode', async () => {
     const manager = testEnv.authenticatedContext('manager', {
       email: 'manager@example.com',
       email_verified: true,
@@ -521,6 +521,19 @@ describe('Firestore rules', () => {
           title: 'Hidden poll',
           creatorId: 'manager',
           voteVisibility: 'hidden',
+          hideVoterIdentities: false,
+          status: 'OPEN',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }
+      );
+      await setDoc(
+        doc(context.firestore(), 'questingGroups', 'group-polls-hidden', 'basicPolls', 'poll-2'),
+        {
+          title: 'Hidden identities poll',
+          creatorId: 'manager',
+          voteVisibility: 'hidden',
+          hideVoterIdentities: true,
           status: 'OPEN',
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -535,6 +548,20 @@ describe('Firestore rules', () => {
       );
       await setDoc(
         doc(context.firestore(), 'questingGroups', 'group-polls-hidden', 'basicPolls', 'poll-1', 'votes', 'other-member'),
+        {
+          optionIds: ['opt-b'],
+          updatedAt: new Date(),
+        }
+      );
+      await setDoc(
+        doc(context.firestore(), 'questingGroups', 'group-polls-hidden', 'basicPolls', 'poll-2', 'votes', 'member'),
+        {
+          optionIds: ['opt-a'],
+          updatedAt: new Date(),
+        }
+      );
+      await setDoc(
+        doc(context.firestore(), 'questingGroups', 'group-polls-hidden', 'basicPolls', 'poll-2', 'votes', 'other-member'),
         {
           optionIds: ['opt-b'],
           updatedAt: new Date(),
@@ -562,9 +589,22 @@ describe('Firestore rules', () => {
     );
 
     await assertSucceeds(getDoc(ownVoteRef));
-    await assertFails(getDoc(otherVoteRef));
+    await assertSucceeds(getDoc(otherVoteRef));
     await assertSucceeds(getDoc(doc(manager.firestore(), otherVoteRef.path)));
     await assertSucceeds(getDoc(doc(otherMember.firestore(), otherVoteRef.path)));
+
+    const hiddenOtherVoteRef = doc(
+      member.firestore(),
+      'questingGroups',
+      'group-polls-hidden',
+      'basicPolls',
+      'poll-2',
+      'votes',
+      'other-member'
+    );
+
+    await assertFails(getDoc(hiddenOtherVoteRef));
+    await assertSucceeds(getDoc(doc(manager.firestore(), hiddenOtherVoteRef.path)));
   });
 
   test('schedulers: custom provider can create with unverified email', async () => {
@@ -666,7 +706,7 @@ describe('Firestore rules', () => {
     );
   });
 
-  test('schedulers: hidden_while_voting unlocks after submitted vote while preserving own/creator access', async () => {
+  test('schedulers: hidden_while_voting with hidden identities unlocks after submitted vote while preserving own/creator access', async () => {
     const creator = testEnv.authenticatedContext('creator', {
       email: 'creator@example.com',
       email_verified: true,
@@ -682,6 +722,7 @@ describe('Firestore rules', () => {
         creatorEmail: 'creator@example.com',
         status: 'OPEN',
         voteVisibility: 'hidden_while_voting',
+        hideVoterIdentities: true,
         participantIds: ['participant', 'other-participant'],
         pendingInvites: [],
         allowLinkSharing: false,
@@ -745,6 +786,53 @@ describe('Firestore rules', () => {
     await assertSucceeds(getDoc(participantOtherVoteRef));
   });
 
+  test('schedulers: hidden_while_voting still exposes voter identity docs when identities are visible', async () => {
+    const participant = testEnv.authenticatedContext('participant', {
+      email: 'participant@example.com',
+      email_verified: true,
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'schedulers', 'sched-hidden-while-visible-identities'), {
+        creatorId: 'creator',
+        creatorEmail: 'creator@example.com',
+        status: 'OPEN',
+        voteVisibility: 'hidden_while_voting',
+        hideVoterIdentities: false,
+        participantIds: ['participant', 'other-participant'],
+        pendingInvites: [],
+        allowLinkSharing: false,
+      });
+      await setDoc(
+        doc(
+          context.firestore(),
+          'schedulers',
+          'sched-hidden-while-visible-identities',
+          'votes',
+          'other-participant'
+        ),
+        {
+          voterId: 'other-participant',
+          noTimesWork: true,
+          votes: {},
+          updatedAt: new Date(),
+        }
+      );
+    });
+
+    await assertSucceeds(
+      getDoc(
+        doc(
+          participant.firestore(),
+          'schedulers',
+          'sched-hidden-while-visible-identities',
+          'votes',
+          'other-participant'
+        )
+      )
+    );
+  });
+
   test('schedulers: hidden_until_all_voted and hidden_until_finalized unlock at the expected lifecycle stage', async () => {
     const participant = testEnv.authenticatedContext('participant', {
       email: 'participant@example.com',
@@ -757,6 +845,7 @@ describe('Firestore rules', () => {
         creatorEmail: 'creator@example.com',
         status: 'OPEN',
         voteVisibility: 'hidden_until_all_voted',
+        hideVoterIdentities: true,
         votesAllSubmitted: false,
         participantIds: ['participant', 'other-participant'],
         pendingInvites: [],
@@ -783,6 +872,7 @@ describe('Firestore rules', () => {
         creatorEmail: 'creator@example.com',
         status: 'OPEN',
         voteVisibility: 'hidden_until_finalized',
+        hideVoterIdentities: true,
         participantIds: ['participant', 'other-participant'],
         pendingInvites: [],
         allowLinkSharing: false,

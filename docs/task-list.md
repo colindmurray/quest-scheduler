@@ -7,6 +7,7 @@ status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-19: Implemented hide-voter-identities controls (`hideVoterIdentities`) across scheduler/basic-poll web + functions + Firestore rules, updated visibility helpers/UI, and validated via targeted unit/rules/integration/e2e emulator runs."
   - "2026-02-19: Closed final vote-visibility gaps by enforcing hidden vote counts on Discord basic-poll cards, aligning scheduler rule submission semantics with runtime helpers, and re-running full validation gates."
   - "2026-02-19: Completed Vote Visibility Settings across web/functions/rules/dashboard/Discord, stabilized flaky WebKit scheduler e2e loading assertions, and re-ran full unit/rules/integration/e2e validation gates."
   - "2026-02-17: Deployed latest calendar-voting and Discord repost refresh updates to staging and production (`hosting,functions`) after unit/integration/e2e validation pass."
@@ -81,12 +82,33 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Completed Vote Visibility Settings for schedulers/basic polls, enforced vote visibility in Firestore rules + dashboard attendance hooks, and closed validation gates including full emulator e2e reruns.
-- Next Step: Push feature branch for review and run product QA on each visibility mode (`full_visibility`, `hidden_while_voting`, `hidden_until_all_voted`, `hidden_until_finalized`, `hidden`) across web + Discord cards.
-- Open Issues: Emulator-backed integration/e2e runs still log expected notification trigger `NOT_FOUND` noise (`notificationEvents`) even when suites pass.
+- Last Completed: Implemented `hideVoterIdentities` end-to-end (data model defaults, create/edit UI toggles, helper/runtime gating, dashboard/session/poll rendering, Discord payload defaults, Firestore rules, and regression coverage) with validation across unit/rules/integration/e2e.
+- Next Step: Push `feature/vote-visibility-settings`, then run manual QA for creator-vs-participant identity visibility combinations across all vote-visibility modes.
+- Open Issues: Emulator-backed integration runs still emit known `notificationEvents` `NOT_FOUND` noise from background triggers despite passing suites.
 - Last Updated (YYYY-MM-DD): 2026-02-19
 
 ## Progress Notes
+
+- 2026-02-19: Voter Identity Visibility Toggle (`hideVoterIdentities`) implementation.
+  - Implementation:
+    - Added shared identity visibility helpers + defaults in:
+      - `web/src/lib/vote-visibility.js`
+      - `functions/src/utils/vote-visibility.js`
+    - Persisted `hideVoterIdentities` in scheduler/basic-poll create/edit/clone paths and callable/Discord poll-create defaults.
+    - Added checkbox UI (`Hide who has/hasn't voted`) to:
+      - `web/src/features/scheduler/CreateSchedulerPage.jsx`
+      - `web/src/features/scheduler/components/EmbeddedPollEditorModal.jsx`
+      - `web/src/features/basic-polls/components/CreateGroupPollModal.jsx`
+    - Updated scheduler, dashboard, and shared poll/session cards so creators always see identities while non-creators follow `hideVoterIdentities`; counts remain available when allowed by `voteVisibility`.
+    - Updated Firestore rules to allow/deny vote-doc reads for identity visibility according to `hideVoterIdentities` while preserving creator/own-vote behavior.
+    - Updated Discord/basic-poll worker defaults and frontend data fallbacks used by dashboard poll summaries.
+  - Validation:
+    - `npm --prefix functions run test -- --run src/utils/vote-visibility.test.js src/utils/vote-visibility.parity.test.js src/basic-polls/callables.test.js src/discord/worker.poll-create.test.js` (pass: `4 files`, `32 tests`)
+    - `npm --prefix web run test -- --run src/lib/vote-visibility.test.js src/lib/data/basicPolls.test.js src/features/basic-polls/components/CreateGroupPollModal.test.jsx src/features/scheduler/components/EmbeddedPollEditorModal.test.jsx src/components/polls/poll-participant-summary.test.jsx src/features/dashboard/hooks/useSchedulerAttendance.test.js src/features/scheduler/hooks/useSchedulerEmbeddedPollVotes.test.js` (pass: `7 files`, `55 tests`)
+    - `npm --prefix web run test:rules` (pass: `25 tests`)
+    - `npm --prefix web run test:integration` (pass: `4 files`, `14 tests`; known emulator trigger noise persisted)
+    - `npm --prefix web run test:e2e -- e2e/scheduler-vote-visibility.spec.js` (fail: auth redirect in local non-seeded mode)
+    - `firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT "node ./functions/scripts/seed-e2e-scheduler.js && npm --prefix ./web run test:e2e -- e2e/scheduler-vote-visibility.spec.js"` (pass: `4 passed`)
 
 - 2026-02-19: Vote Visibility Settings completion + validation gate reruns.
   - Implementation completion:

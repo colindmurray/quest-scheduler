@@ -28,6 +28,7 @@ describe("EmbeddedPollEditorModal", () => {
     const payload = onSave.mock.calls[0][0];
     expect(payload.title).toBe("Food poll");
     expect(payload.required).toBe(true);
+    expect(payload.hideVoterIdentities).toBe(false);
     expect(payload.options).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: "Pizza", order: 0 }),
@@ -60,6 +61,7 @@ describe("EmbeddedPollEditorModal", () => {
             { id: "opt-2", label: "Two", order: 1, note: "" },
           ],
           settings: { voteType: "RANKED_CHOICE" },
+          hideVoterIdentities: true,
         }}
       />
     );
@@ -68,6 +70,9 @@ describe("EmbeddedPollEditorModal", () => {
     expect(screen.getByDisplayValue("Existing description")).toBeTruthy();
     expect(screen.getAllByRole("combobox")[0].value).toBe("RANKED_CHOICE");
     expect(screen.getByRole("checkbox", { name: "Required poll" }).checked).toBe(true);
+    expect(screen.getByRole("checkbox", { name: /Hide who has\/hasn't voted/i }).checked).toBe(
+      true
+    );
     expect(screen.getByRole("button", { name: "Save poll" })).toBeTruthy();
   });
 });

@@ -107,4 +107,31 @@ describe("useSchedulerEmbeddedPollVotes", () => {
       "poll-ranked": { rankings: ["opt-2"] },
     });
   });
+
+  test("does not subscribe to all votes when identities are hidden and visibility blocks details", () => {
+    const embeddedPollCallbacks = {};
+    subscribeToEmbeddedBasicPollsMock.mockImplementation((schedulerId, onData) => {
+      embeddedPollCallbacks.onData = onData;
+      return () => {};
+    });
+
+    const { result } = renderHook(() =>
+      useSchedulerEmbeddedPollVotes({ schedulerId: "sched-1", userId: "user-1" })
+    );
+
+    act(() => {
+      embeddedPollCallbacks.onData([
+        {
+          id: "poll-hidden",
+          voteVisibility: "hidden",
+          hideVoterIdentities: true,
+          settings: { voteType: "MULTIPLE_CHOICE" },
+        },
+      ]);
+    });
+
+    expect(subscribeToBasicPollVotesMock).not.toHaveBeenCalled();
+    expect(result.current.embeddedPollVoteCounts["poll-hidden"]).toBe(0);
+    expect(result.current.embeddedVotesByPoll["poll-hidden"]).toEqual([]);
+  });
 });

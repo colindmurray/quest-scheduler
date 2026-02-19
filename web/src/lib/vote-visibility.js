@@ -7,6 +7,7 @@ export const VOTE_VISIBILITY = Object.freeze({
 });
 
 export const DEFAULT_VOTE_VISIBILITY = VOTE_VISIBILITY.FULL;
+export const DEFAULT_HIDE_VOTER_IDENTITIES = false;
 
 export const VOTE_VISIBILITY_OPTIONS = Object.freeze([
   {
@@ -40,6 +41,15 @@ const VOTE_VISIBILITY_SET = new Set(VOTE_VISIBILITY_OPTIONS.map((option) => opti
 
 export function resolveVoteVisibility(value) {
   return VOTE_VISIBILITY_SET.has(value) ? value : DEFAULT_VOTE_VISIBILITY;
+}
+
+export function resolveHideVoterIdentities(value) {
+  return value === true;
+}
+
+export function canViewVoterIdentities({ isCreator = false, hideVoterIdentities = false } = {}) {
+  if (isCreator) return true;
+  return resolveHideVoterIdentities(hideVoterIdentities) !== true;
 }
 
 export function canViewOtherVotesForUser({

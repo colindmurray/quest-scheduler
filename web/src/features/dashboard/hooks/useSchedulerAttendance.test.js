@@ -65,6 +65,7 @@ describe("useSchedulerAttendance", () => {
           {
             id: "sched-hidden",
             voteVisibility: "hidden",
+            hideVoterIdentities: true,
             status: "OPEN",
           },
         ],
@@ -80,6 +81,39 @@ describe("useSchedulerAttendance", () => {
     expect(result.current.votesByScheduler["sched-hidden"].map((entry) => entry.id)).toEqual([
       "viewer-1",
     ]);
+  });
+
+  it("reads vote docs for identity summaries when hideVoterIdentities is disabled", async () => {
+    mockFetchSchedulerSlots.mockResolvedValue([
+      { id: "slot-1", start: "2026-02-20T18:00:00.000Z", end: "2026-02-20T20:00:00.000Z" },
+    ]);
+    mockFetchSchedulerVotes.mockResolvedValue([
+      { id: "viewer-1", userEmail: "viewer@example.com", votes: {}, noTimesWork: true },
+      { id: "other-1", userEmail: "other@example.com", votes: {}, noTimesWork: true },
+    ]);
+
+    const { result } = renderHook(() =>
+      useSchedulerAttendance(
+        [
+          {
+            id: "sched-hidden-identities-visible",
+            voteVisibility: "hidden",
+            hideVoterIdentities: false,
+            status: "OPEN",
+          },
+        ],
+        "viewer-1"
+      )
+    );
+
+    await waitFor(() => {
+      expect(result.current.votesByScheduler["sched-hidden-identities-visible"]).toBeDefined();
+    });
+
+    expect(mockFetchSchedulerVotes).toHaveBeenCalledWith("sched-hidden-identities-visible");
+    expect(
+      result.current.votesByScheduler["sched-hidden-identities-visible"].map((entry) => entry.id).sort()
+    ).toEqual(["other-1", "viewer-1"].sort());
   });
 
   it("unlocks hidden_while_voting once the viewer has submitted", async () => {
