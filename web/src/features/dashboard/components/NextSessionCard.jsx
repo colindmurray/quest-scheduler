@@ -4,6 +4,7 @@ import { AvatarStack } from "../../../components/ui/voter-avatars";
 import { buildColorMap } from "../../../components/ui/voter-avatar-utils";
 import { useSafeNavigate } from "../../../hooks/useSafeNavigate";
 import { useUserProfiles } from "../../../hooks/useUserProfiles";
+import { buildGoogleCalendarEventUrl } from "../../../lib/google-calendar";
 import { formatZonedDate, formatZonedTimeRange } from "../../../lib/time";
 
 export function NextSessionCard({
@@ -28,9 +29,10 @@ export function NextSessionCard({
   const slotEnd = winningSlot.end ? new Date(winningSlot.end) : null;
   const relativeTime = formatDistanceToNow(slotDate, { addSuffix: true });
 
-  const googleCalendarUrl = scheduler.googleEventId
-    ? `https://calendar.google.com/calendar/event?eid=${btoa(scheduler.googleEventId)}`
-    : null;
+  const googleCalendarUrl = buildGoogleCalendarEventUrl({
+    calendarId: scheduler.googleCalendarId,
+    eventId: scheduler.googleEventId,
+  });
 
   const handleOpen = () => {
     const target = `/scheduler/${scheduler.id}`;

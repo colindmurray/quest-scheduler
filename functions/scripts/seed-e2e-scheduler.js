@@ -55,6 +55,8 @@ async function seed() {
   const notifierId = process.env.E2E_NOTIFICATION_UID || "test-notifier";
   const notifierEmail = process.env.E2E_NOTIFICATION_EMAIL || "notifier@example.com";
   const notifierPassword = process.env.E2E_NOTIFICATION_PASSWORD || "password";
+  const calendarLinkCalendarId =
+    process.env.E2E_CALENDAR_LINK_CALENDAR_ID || participantEmail.toLowerCase();
   const copySourceId = process.env.E2E_COPY_SOURCE_ID || "e2e-copy-source";
   const copyDestinationId = process.env.E2E_COPY_DEST_ID || "e2e-copy-destination";
   const copyPendingDestId = process.env.E2E_COPY_PENDING_DEST_ID || "e2e-copy-destination-pending";
@@ -77,6 +79,14 @@ async function seed() {
     process.env.E2E_EMBEDDED_EDITOR_SCHEDULER_ID || "e2e-embedded-editor-scheduler";
   const embeddedEditorPollId =
     process.env.E2E_EMBEDDED_EDITOR_POLL_ID || "e2e-embedded-editor-existing-poll";
+  const calendarLinkOpenId =
+    process.env.E2E_CALENDAR_LINK_OPEN_ID || "e2e-calendar-link-open";
+  const calendarLinkFinalizedId =
+    process.env.E2E_CALENDAR_LINK_FINALIZED_ID || "e2e-calendar-link-finalized";
+  const calendarLinkCancelledId =
+    process.env.E2E_CALENDAR_LINK_CANCELLED_ID || "e2e-calendar-link-cancelled";
+  const calendarLinkNoEventId =
+    process.env.E2E_CALENDAR_LINK_NO_EVENT_ID || "e2e-calendar-link-no-event";
 
   const auth = admin.auth();
   const ensureUser = async ({ uid, email, password, displayName }) => {
@@ -296,6 +306,8 @@ async function seed() {
     seedDefaultSlots = true,
     questingGroupId = null,
     questingGroupName = null,
+    googleCalendarId = null,
+    googleEventId = null,
   }) => {
     const pendingInviteMeta = {};
     pendingEmails.forEach((email) => {
@@ -320,7 +332,8 @@ async function seed() {
       winningSlotId,
       ...(finalizedAtMs ? { finalizedAtMs } : {}),
       ...(finalizedSlotPriorityAtMs ? { finalizedSlotPriorityAtMs } : {}),
-      googleEventId: null,
+      googleCalendarId,
+      googleEventId,
       questingGroupId,
       questingGroupName,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -563,6 +576,44 @@ async function seed() {
     title: "Auto Poll Cancelled",
     pendingEmails: [notifierEmailLower],
     participantIds: [participantId, notifierId],
+  });
+  const finalizedCalendarPriorityAtMs = Date.now() - 5_000;
+  await seedScheduler({
+    id: calendarLinkOpenId,
+    title: "E2E Calendar Link Open Poll",
+    pendingEmails: [],
+    participantIds: [participantId, inviteeId],
+    googleCalendarId: calendarLinkCalendarId,
+    googleEventId: "e2e-open-event-123",
+  });
+  await seedScheduler({
+    id: calendarLinkFinalizedId,
+    title: "E2E Calendar Link Finalized Poll",
+    pendingEmails: [],
+    participantIds: [participantId, inviteeId],
+    status: "FINALIZED",
+    winningSlotId: "slot-1",
+    finalizedAtMs: finalizedCalendarPriorityAtMs,
+    finalizedSlotPriorityAtMs: { "slot-1": finalizedCalendarPriorityAtMs },
+    googleCalendarId: calendarLinkCalendarId,
+    googleEventId: "e2e-finalized-event-456",
+  });
+  await seedScheduler({
+    id: calendarLinkCancelledId,
+    title: "E2E Calendar Link Cancelled Poll",
+    pendingEmails: [],
+    participantIds: [participantId, inviteeId],
+    status: "CANCELLED",
+    googleCalendarId: calendarLinkCalendarId,
+    googleEventId: "e2e-cancelled-event-789",
+  });
+  await seedScheduler({
+    id: calendarLinkNoEventId,
+    title: "E2E Calendar Link No Event Poll",
+    pendingEmails: [],
+    participantIds: [participantId, inviteeId],
+    googleCalendarId: calendarLinkCalendarId,
+    googleEventId: null,
   });
 
   // Seed Copy Votes scenarios
