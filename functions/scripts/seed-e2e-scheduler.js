@@ -729,16 +729,25 @@ async function seed() {
 
   // Wait for functions triggers to populate busy windows for the owner.
   const waitForBusyWindow = async () => {
-    const maxTries = 40;
+    const pollMs = 250;
+    const configuredTimeoutMs = Number.parseInt(
+      process.env.E2E_BUSY_WINDOW_WAIT_MS ||
+        (process.env.CI ? "45000" : "8000"),
+      10
+    );
+    const timeoutMs = Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
+      ? configuredTimeoutMs
+      : 8000;
+    const maxTries = Math.ceil(timeoutMs / pollMs);
     for (let i = 0; i < maxTries; i++) {
       const snap = await db.doc(`usersPublic/${participantId}`).get();
       const windows = snap.exists ? snap.data()?.busyWindows || [] : [];
       if (windows.some((win) => win?.sourceSchedulerId === busyFinalizedId)) {
         return;
       }
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, pollMs));
     }
-    throw new Error("Timed out waiting for busy window trigger");
+    throw new Error(`Timed out waiting for busy window trigger after ${timeoutMs}ms`);
   };
   await waitForBusyWindow();
 
