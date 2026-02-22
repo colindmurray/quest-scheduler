@@ -17,7 +17,7 @@
     "test:e2e:debug": "playwright test -c e2e/playwright.config.js --debug",
     "test:e2e:emulators": "../scripts/run-e2e.sh",
     "test:rules": "firebase emulators:exec --only firestore,storage 'vitest run --config vitest.rules.config.js'",
-    "test:integration": "firebase emulators:exec 'vitest run --config vitest.integration.config.js'",
+    "test:integration": "firebase emulators:exec --only auth,firestore,functions,storage 'vitest run --config vitest.integration.config.js'",
     "test:all": "npm run test && npm run test:rules && npm run test:e2e",
     "emulators": "firebase emulators:start",
     "emulators:test": "firebase emulators:start --only firestore,auth,storage",
