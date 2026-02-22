@@ -135,15 +135,11 @@ jobs:
           - ubuntu-latest
         node:
           - 22.x
-        include:
-          - project: chromium
-            install_browser: chromium
-          - project: firefox
-            install_browser: firefox
-          - project: webkit
-            install_browser: webkit
-          - project: mobile
-            install_browser: chromium
+        project:
+          - chromium
+          - firefox
+          - webkit
+          - mobile
         shard:
           - 1/1
     steps:
@@ -183,7 +179,13 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install Playwright browser + OS deps
-        run: npx playwright install --with-deps ${{ matrix.install_browser }}
+        run: |
+          set -euo pipefail
+          browser="${{ matrix.project }}"
+          if [[ "$browser" == "mobile" ]]; then
+            browser="chromium"
+          fi
+          npx playwright install --with-deps "$browser"
         working-directory: web
 
       - name: Prepare E2E environment
