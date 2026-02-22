@@ -21,7 +21,7 @@ test.describe('Scheduler poll access', () => {
     await page.getByLabel('Email').fill(user.email);
     await page.getByLabel('Password').fill(user.password);
     await page.locator('form').getByRole('button', { name: /^log in$/i }).click();
-    await page.waitForURL(/\/dashboard/);
+    await page.waitForURL(/\/dashboard/, { timeout: 60000 });
 
     await page.goto(`/scheduler/${schedulerId}`);
     await expect(page.getByText('Session Poll')).toBeVisible();

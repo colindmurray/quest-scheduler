@@ -194,10 +194,10 @@ jobs:
           cat > web/.env.e2e.local <<ENV
           E2E_USER_UID=test-owner
           E2E_USER_EMAIL=owner@example.com
-          E2E_USER_PASSWORD=password123
+          E2E_USER_PASSWORD=password
           E2E_PARTICIPANT_UID=test-participant
           E2E_PARTICIPANT_EMAIL=participant@example.com
-          E2E_PARTICIPANT_PASSWORD=password123
+          E2E_PARTICIPANT_PASSWORD=password
           VITE_EMULATOR_HOST=127.0.0.1
           VITE_GOOGLE_OAUTH_CLIENT_ID=${VITE_GOOGLE_OAUTH_CLIENT_ID:-}
           ENV

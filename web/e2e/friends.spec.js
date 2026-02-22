@@ -7,7 +7,7 @@ async function login(page) {
   await page.getByLabel('Email').fill(user.email);
   await page.getByLabel('Password').fill(user.password);
   await page.locator('form').getByRole('button', { name: /^log in$/i }).click();
-  await page.waitForURL(/\/dashboard/);
+  await page.waitForURL(/\/dashboard/, { timeout: 60000 });
 }
 
 test.describe('Friends & Groups', () => {

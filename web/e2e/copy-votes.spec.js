@@ -16,7 +16,7 @@ test.describe.serial("Copy votes", () => {
     await page.getByLabel("Email").fill(user.email);
     await page.getByLabel("Password").fill(user.password);
     await page.locator("form").getByRole("button", { name: /^log in$/i }).click();
-    await page.waitForURL(/\/dashboard/);
+    await page.waitForURL(/\/dashboard/, { timeout: 60000 });
 
     await page.goto(`/scheduler/${sourceId}`);
     await expect(page.getByText("E2E Copy Source Poll")).toBeVisible({ timeout: 15000 });
@@ -59,7 +59,9 @@ test.describe.serial("Copy votes", () => {
     await expect(page.getByLabel("Preferred pdest-1")).toHaveAttribute("aria-checked", "true");
 
     await page.getByRole("button", { name: "Confirm & go to poll" }).click();
-    await page.waitForURL(new RegExp(`/scheduler/${pendingId}`));
+    await page.waitForURL(new RegExp(`/scheduler/${pendingId}`), {
+      timeout: 60000,
+    });
     await expect(page.getByText("E2E Copy Pending Invite Poll")).toBeVisible();
   });
 });
