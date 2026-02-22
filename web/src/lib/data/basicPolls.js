@@ -355,6 +355,16 @@ export async function reopenBasicPollForParent(parentType, parentId, pollId) {
   });
 }
 
+export async function breakBasicPollTieForParent(parentType, parentId, pollId, method) {
+  if (!parentType || !parentId || !pollId || !method) return null;
+  return callBasicPollServerAction("breakBasicPollTie", {
+    parentType,
+    parentId,
+    pollId,
+    method,
+  });
+}
+
 export async function finalizeEmbeddedBasicPoll(schedulerId, pollId) {
   return finalizeBasicPollForParent("scheduler", schedulerId, pollId);
 }

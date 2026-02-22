@@ -142,6 +142,22 @@ describe('discord oauth callback', () => {
     expect(res.send).toHaveBeenCalledWith('Invalid state');
   });
 
+  test('returns 400 when state provider is not discord', async () => {
+    stateGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        provider: 'google',
+        intent: 'link',
+        expiresAt: { toDate: () => new Date(Date.now() + 1000) },
+      }),
+    });
+    const res = makeRes();
+    await oauth.discordOAuthCallback({ query: { code: 'code', state: 'state1' } }, res);
+    expect(stateDeleteMock).toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.send).toHaveBeenCalledWith('Invalid state');
+  });
+
   test('expires invalid state', async () => {
     stateGetMock.mockResolvedValueOnce({
       exists: true,
@@ -244,6 +260,74 @@ describe('discord oauth callback', () => {
     expect(res.redirect).toHaveBeenCalledWith('https://app.example.com/settings?discord=linked');
   });
 
+  test('returns 400 when link intent state does not include a uid', async () => {
+    stateGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        provider: 'discord',
+        intent: 'link',
+        expiresAt: { toDate: () => new Date(Date.now() + 1000) },
+      }),
+    });
+    linkGetMock.mockResolvedValueOnce({ exists: false });
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: 'token' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 'discord1',
+          username: 'Tester',
+          global_name: 'Test User',
+          avatar: 'hash',
+        }),
+      });
+
+    const res = makeRes();
+    await oauth.discordOAuthCallback({ query: { code: 'code', state: 'state1' } }, res);
+    expect(stateDeleteMock).toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.send).toHaveBeenCalledWith('Invalid state');
+  });
+
+  test('returns 409 when link intent finds discord account already linked to another user', async () => {
+    stateGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        provider: 'discord',
+        intent: 'link',
+        uid: 'owner-user',
+        expiresAt: { toDate: () => new Date(Date.now() + 1000) },
+      }),
+    });
+    linkGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ qsUserId: 'other-user' }),
+    });
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: 'token' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 'discord1',
+          username: 'Tester',
+          global_name: 'Test User',
+          avatar: 'hash',
+        }),
+      });
+
+    const res = makeRes();
+    await oauth.discordOAuthCallback({ query: { code: 'code', state: 'state1' } }, res);
+    expect(stateDeleteMock).toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.send).toHaveBeenCalledWith('Discord account already linked to another user');
+  });
+
   test('login intent creates custom token and redirects', async () => {
     stateGetMock.mockResolvedValueOnce({
       exists: true,
@@ -292,5 +376,43 @@ describe('discord oauth callback', () => {
     expect(res.redirect).toHaveBeenCalledWith(
       'https://app.example.com/auth/discord/finish?token=token123&returnTo=%2Fdashboard'
     );
+  });
+
+  test('redirects login intent to auth failure when callback throws unexpectedly', async () => {
+    stateGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        provider: 'discord',
+        intent: 'login',
+        returnTo: '/dashboard',
+        expiresAt: { toDate: () => new Date(Date.now() + 1000) },
+      }),
+    });
+    fetchMock.mockRejectedValueOnce(new Error('network-down'));
+    const res = makeRes();
+
+    await oauth.discordOAuthCallback({ query: { code: 'code', state: 'state1' } }, res);
+
+    expect(stateDeleteMock).toHaveBeenCalled();
+    expect(res.redirect).toHaveBeenCalledWith('https://app.example.com/auth?error=discord_failed');
+  });
+
+  test('redirects link intent to settings failure when callback throws unexpectedly', async () => {
+    stateGetMock.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        provider: 'discord',
+        intent: 'link',
+        uid: 'user1',
+        expiresAt: { toDate: () => new Date(Date.now() + 1000) },
+      }),
+    });
+    fetchMock.mockRejectedValueOnce(new Error('network-down'));
+    const res = makeRes();
+
+    await oauth.discordOAuthCallback({ query: { code: 'code', state: 'state1' } }, res);
+
+    expect(stateDeleteMock).toHaveBeenCalled();
+    expect(res.redirect).toHaveBeenCalledWith('https://app.example.com/settings?discord=failed');
   });
 });
