@@ -4,6 +4,7 @@ import { AvatarStack, VotingAvatarStack } from "../../../components/ui/voter-ava
 import { buildColorMap } from "../../../components/ui/voter-avatar-utils";
 import { useUserProfiles } from "../../../hooks/useUserProfiles";
 import { useSafeNavigate } from "../../../hooks/useSafeNavigate";
+import { buildGoogleCalendarEventUrl } from "../../../lib/google-calendar";
 import { normalizeEmail } from "../../../lib/utils";
 import { PollStatusMeta } from "../../../components/poll-status-meta";
 
@@ -66,6 +67,11 @@ export function SessionCard({
         scheduler?.calendarSync?.cancelledAt ||
         scheduler?.cancelled?.at
     );
+  const googleCalendarUrl = buildGoogleCalendarEventUrl({
+    calendarId: scheduler.googleCalendarId,
+    eventId: scheduler.googleEventId,
+  });
+
   const handleOpen = () => {
     const target = `/scheduler/${scheduler.id}`;
     safeNavigate(target);
@@ -120,10 +126,24 @@ export function SessionCard({
           </div>
 
           {/* Google Calendar indicator */}
-          {scheduler.googleEventId && (
-            <div className="flex-shrink-0" title="Synced to Google Calendar">
+          {googleCalendarUrl ? (
+            <a
+              href={googleCalendarUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(event) => event.stopPropagation()}
+              title="Open in Google Calendar"
+              aria-label={`Open ${scheduler.title || "session"} in Google Calendar`}
+              className="flex-shrink-0 rounded-full p-1 transition-colors hover:bg-slate-100 dark:hover:bg-slate-700"
+            >
               <ExternalLink className="h-4 w-4 text-slate-400 dark:text-slate-500" />
-            </div>
+            </a>
+          ) : (
+            scheduler.googleEventId && (
+              <div className="flex-shrink-0" title="Synced to Google Calendar">
+                <ExternalLink className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+              </div>
+            )
           )}
         </div>
 

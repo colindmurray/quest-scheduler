@@ -1,12 +1,13 @@
 ---
 created: 2026-01-06
-lastUpdated: 2026-02-17
+lastUpdated: 2026-02-22
 summary: "Primary global execution tracker for current long-running work, checkpoints, and validation notes."
 category: TASK_TRACKER
 status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-22: Fixed Google Calendar dashboard link encoding to use `base64(calendarId/eventId)`, added unit/integration/e2e coverage files, and recorded local validation blockers (Node version mismatch + missing Java for emulators)."
   - "2026-02-17: Deployed latest calendar-voting and Discord repost refresh updates to staging and production (`hosting,functions`) after unit/integration/e2e validation pass."
   - "2026-02-17: Added Discord repost submitted-vote-count regression coverage (`votes: {}` treated as pending) and re-ran unit + integration + e2e validation gates across calendar voting and repost features."
   - "2026-02-17: Added Discord poll repost recovery coverage and creator-only poll-options visibility checks (new seeded e2e scenario + callable fallback test) to support manual panel refresh workflows."
@@ -79,12 +80,38 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Deployed latest calendar inline voting + Discord repost refresh updates to staging and production after full targeted unit/integration/e2e validation.
-- Next Step: Manually sanity-check the poll-options repost action and month-calendar inline voting in production against a live Discord-linked poll.
-- Open Issues: Integration suite still emits expected noisy notification trigger errors under emulators (`notificationEvents` NOT_FOUND); test command exits are passing.
-- Last Updated (YYYY-MM-DD): 2026-02-17
+- Last Completed: Implemented Google Calendar dashboard link fix (`eid=base64(calendarId/eventId)`), added new unit/integration/e2e calendar-link tests, and seeded dedicated e2e scheduler states (open/finalized/cancelled/no-event).
+- Next Step: Re-run full integration + e2e validation in an environment with Java installed and Node >= 20.19, then push branch and open PR.
+- Open Issues: Local environment blocks full validation gates (`npm run test`/`test:all` fail on Node 20.15.1 + jsdom/vite engine mismatch; Firebase emulators cannot start because Java is missing).
+- Last Updated (YYYY-MM-DD): 2026-02-22
 
 ## Progress Notes
+
+- 2026-02-22: Google Calendar link 404 fix (dashboard cards + tests).
+  - Web behavior updates:
+    - `web/src/lib/google-calendar.js`
+      - Added `buildGoogleCalendarEventUrl({ calendarId, eventId })` to construct `https://calendar.google.com/calendar/event?eid=base64(calendarId/eventId)` with null-safe handling.
+    - `web/src/features/dashboard/components/NextSessionCard.jsx`
+      - Replaced `btoa(googleEventId)` URL logic with shared helper using both `scheduler.googleCalendarId` and `scheduler.googleEventId`.
+    - `web/src/features/dashboard/components/SessionCard.jsx`
+      - Added helper-backed Google Calendar deep link icon when both IDs exist.
+      - Preserved non-clickable sync indicator for legacy records that still have only `googleEventId`.
+  - Test additions:
+    - Unit: `web/src/features/dashboard/components/NextSessionCard.test.jsx`
+      - Added URL-construction coverage for valid IDs and null/missing edge cases.
+      - Added rendered-link coverage verifying decoded `eid` equals `calendarId/eventId`.
+    - Integration: `web/src/__tests__/integration/calendar-link.integration.test.js`
+      - Added emulator-backed data flow checks asserting scheduler `googleCalendarId`/`googleEventId` retrieval and URL derivation.
+    - E2E: `web/e2e/calendar-link.spec.js`
+      - Added dashboard coverage for link visibility and encoded targets across open/finalized/cancelled/no-event scenarios, including click-to-popup verification.
+    - Seed data: `functions/scripts/seed-e2e-scheduler.js`
+      - Added dedicated seeded scheduler fixtures for calendar-link e2e scenarios and included `googleCalendarId` support in shared seed helper.
+  - Validation:
+    - `npm run test -- src/features/dashboard/components/NextSessionCard.test.jsx` (pass, `4 passed`)
+    - `npx playwright test -c e2e/playwright.config.js e2e/calendar-link.spec.js --list` (pass, spec discovered across projects)
+    - `npm run test:all` (fail: Node 20.15.1 environment incompatibility with jsdom/vite dependencies; repeated `ERR_REQUIRE_ESM` from `html-encoding-sniffer`)
+    - `firebase emulators:exec --only auth,firestore,functions,storage "..."` (fail: Java not available in local environment)
+    - `npx vitest run --config vitest.integration.config.js src/__tests__/integration/calendar-link.integration.test.js` (fail: Firestore emulator not running)
 
 - 2026-02-17: Discord poll repost refresh workflow validation + coverage.
   - Existing implementation confirmation:
