@@ -296,6 +296,7 @@ async function seed() {
     seedDefaultSlots = true,
     questingGroupId = null,
     questingGroupName = null,
+    googleEventId = null,
   }) => {
     const pendingInviteMeta = {};
     pendingEmails.forEach((email) => {
@@ -320,7 +321,7 @@ async function seed() {
       winningSlotId,
       ...(finalizedAtMs ? { finalizedAtMs } : {}),
       ...(finalizedSlotPriorityAtMs ? { finalizedSlotPriorityAtMs } : {}),
-      googleEventId: null,
+      googleEventId,
       questingGroupId,
       questingGroupName,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -480,7 +481,11 @@ async function seed() {
     });
   };
 
-  await seedScheduler({ id: schedulerId, title: "E2E Scheduler Poll" });
+  await seedScheduler({
+    id: schedulerId,
+    title: "E2E Scheduler Poll",
+    googleEventId: "e2e-scheduler-event-id",
+  });
   await seedScheduler({ id: schedulerDeclineId, title: "E2E Scheduler Poll Decline" });
   await seedScheduler({ id: schedulerNotificationId, title: "E2E Scheduler Poll Notification" });
   await seedScheduler({
