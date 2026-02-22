@@ -1,0 +1,248 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+  XDG_CONFIG_HOME: /tmp/firebase-config
+
+jobs:
+  lint-and-unit:
+    name: Lint + Unit (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      matrix:
+        node:
+          - 22.x
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            functions/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci --prefix web
+
+      - name: Install functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Toolchain health check
+        run: |
+          node --version
+          npm --version
+
+      - name: Run web lint (non-blocking while backlog is addressed)
+        continue-on-error: true
+        run: npm --prefix web run lint
+
+      - name: Run web unit tests
+        run: npm --prefix web run test
+
+      - name: Run functions unit tests
+        run: npm --prefix functions run test
+
+  integration:
+    name: Integration + Rules (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    needs: lint-and-unit
+    timeout-minutes: 35
+    strategy:
+      matrix:
+        node:
+          - 22.x
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            functions/package-lock.json
+
+      - name: Setup Java (required by Firebase emulators)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Install web dependencies
+        run: npm ci --prefix web
+
+      - name: Install functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Emulator health check
+        run: |
+          mkdir -p "$XDG_CONFIG_HOME"
+          java -version
+          firebase --version
+
+      - name: Run rules and integration tests
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          npm --prefix web run test:rules 2>&1 | tee artifacts/rules-tests.log
+          npm --prefix web run test:integration 2>&1 | tee artifacts/integration-tests.log
+
+      - name: Upload integration artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-artifacts
+          if-no-files-found: ignore
+          path: |
+            artifacts/rules-tests.log
+            artifacts/integration-tests.log
+            firebase-debug.log
+
+  e2e:
+    name: E2E (${{ matrix.browser }} on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: integration
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+        node:
+          - 22.x
+        browser:
+          - chromium
+          - firefox
+          - webkit
+        shard:
+          - 1/1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            functions/package-lock.json
+
+      - name: Setup Java (required by Firebase emulators)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Install web dependencies
+        run: npm ci --prefix web
+
+      - name: Install functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Restore Playwright browsers cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('web/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright browser + OS deps
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+        working-directory: web
+
+      - name: Prepare E2E environment
+        env:
+          DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
+          DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
+          VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_ID }}
+          QS_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.QS_GOOGLE_OAUTH_CLIENT_JSON }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$XDG_CONFIG_HOME" artifacts functions/credentials
+
+          cat > web/.env.e2e.local <<ENV
+          E2E_USER_UID=test-owner
+          E2E_USER_EMAIL=owner@example.com
+          E2E_USER_PASSWORD=password123
+          E2E_PARTICIPANT_UID=test-participant
+          E2E_PARTICIPANT_EMAIL=participant@example.com
+          E2E_PARTICIPANT_PASSWORD=password123
+          VITE_EMULATOR_HOST=127.0.0.1
+          VITE_GOOGLE_OAUTH_CLIENT_ID=${VITE_GOOGLE_OAUTH_CLIENT_ID:-}
+          ENV
+
+          cat > functions/.env <<ENV
+          QS_APP_URL=http://localhost:5173
+          DISCORD_OAUTH_REDIRECT_URI=http://127.0.0.1:5001/studio-473406021-87ead/us-central1/discordOAuthCallback
+          DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID:-test-client-id}
+          DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET:-test-client-secret}
+          QS_GOOGLE_OAUTH_CLIENT_SECRET_FILE=functions/credentials/quest_scheduler_test_oauth_client.json
+          ENV
+
+          if [[ -n "${QS_GOOGLE_OAUTH_CLIENT_JSON:-}" ]]; then
+            printf '%s' "$QS_GOOGLE_OAUTH_CLIENT_JSON" > functions/credentials/quest_scheduler_test_oauth_client.json
+          else
+            cat > functions/credentials/quest_scheduler_test_oauth_client.json <<'JSON'
+          {
+            "installed": {
+              "client_id": "test-client-id.apps.googleusercontent.com",
+              "project_id": "quest-scheduler-ci",
+              "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+              "token_uri": "https://oauth2.googleapis.com/token",
+              "client_secret": "test-client-secret",
+              "redirect_uris": ["http://localhost"]
+            }
+          }
+          JSON
+          fi
+
+      - name: Run E2E tests on ${{ matrix.browser }} (shard ${{ matrix.shard }})
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT \
+            "node functions/scripts/seed-e2e-scheduler.js && npm --prefix web run test:e2e -- --project=${{ matrix.browser }} --shard=${{ matrix.shard }}" \
+            2>&1 | tee "artifacts/e2e-${{ matrix.browser }}.log"
+
+      - name: Upload E2E artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-${{ matrix.browser }}-artifacts
+          if-no-files-found: ignore
+          path: |
+            artifacts/e2e-${{ matrix.browser }}.log
+            web/playwright-report
+            web/test-results
+            firebase-debug.log

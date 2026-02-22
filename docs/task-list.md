@@ -1,12 +1,13 @@
 ---
 created: 2026-01-06
-lastUpdated: 2026-02-17
+lastUpdated: 2026-02-22
 summary: "Primary global execution tracker for current long-running work, checkpoints, and validation notes."
 category: TASK_TRACKER
 status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-22: Replaced legacy test workflow with comprehensive CI matrix (`.github/workflows/ci.yml`), added CI docs (`docs/ci.md`), and added root README CI badge."
   - "2026-02-17: Deployed latest calendar-voting and Discord repost refresh updates to staging and production (`hosting,functions`) after unit/integration/e2e validation pass."
   - "2026-02-17: Added Discord repost submitted-vote-count regression coverage (`votes: {}` treated as pending) and re-ran unit + integration + e2e validation gates across calendar voting and repost features."
   - "2026-02-17: Added Discord poll repost recovery coverage and creator-only poll-options visibility checks (new seeded e2e scenario + callable fallback test) to support manual panel refresh workflows."
@@ -79,12 +80,33 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Deployed latest calendar inline voting + Discord repost refresh updates to staging and production after full targeted unit/integration/e2e validation.
-- Next Step: Manually sanity-check the poll-options repost action and month-calendar inline voting in production against a live Discord-linked poll.
-- Open Issues: Integration suite still emits expected noisy notification trigger errors under emulators (`notificationEvents` NOT_FOUND); test command exits are passing.
-- Last Updated (YYYY-MM-DD): 2026-02-17
+- Last Completed: Added comprehensive GitHub Actions CI workflow (`.github/workflows/ci.yml`) with unit/integration/rules coverage and Playwright multi-browser matrix (`chromium`, `firefox`, `webkit`), plus CI docs and README badge updates.
+- Next Step: Push `ci/comprehensive-testing`, open a draft PR, and verify the first hosted CI run across all jobs/matrix entries.
+- Open Issues: Local CLI validation is partially blocked by environment prerequisites (Node runtime below required 22 baseline and missing Java for emulator suites); final pass/fail must be confirmed in GitHub Actions runners.
+- Last Updated (YYYY-MM-DD): 2026-02-22
 
 ## Progress Notes
+
+- 2026-02-22: Comprehensive GitHub Actions CI/CD workflow setup (PR + main push coverage).
+  - Workflow changes:
+    - Added `.github/workflows/ci.yml` with:
+      - triggers on all `pull_request` branches + pushes to `main`/`master`
+      - `lint-and-unit`, `integration`, and `e2e` jobs
+      - `e2e` matrix over `browser: chromium|firefox|webkit`, `node: 22.x`, `os: ubuntu-latest`, with `fail-fast: false`
+      - Firebase emulator prerequisites (Java 21 + Firebase CLI), npm cache, Playwright browser cache, and artifact upload on failure
+      - deterministic CI-generated env files for E2E with optional secret overrides
+    - Removed `.github/workflows/test.yml` to avoid duplicate/competing CI workflows.
+  - Documentation:
+    - Added `docs/ci.md` (workflow behavior, cache strategy, secrets policy, local parity commands, and CI debugging guidance).
+    - Added root `README.md` with a CI status badge and link to `docs/ci.md`.
+  - Local validation:
+    - `npm ci --prefix web` (pass)
+    - `npm_config_cache=/tmp/quest-scheduler-ci/.npm-cache npm ci --prefix functions` (pass)
+    - `node -e "const fs=require('fs'); const YAML=require('./web/node_modules/yaml'); YAML.parse(fs.readFileSync('.github/workflows/ci.yml','utf8')); console.log('ci.yml parse: ok');"` (pass)
+    - `npm --prefix web run lint` (fails in current branch due pre-existing lint backlog unrelated to this CI change)
+    - `npm --prefix web run test -- src/lib/identity.test.js` (fails locally with `ERR_REQUIRE_ESM`; local Node runtime is `20.15.1`, below repo/CI Node 22 baseline)
+    - `npm --prefix functions run test -- src/auth.test.js` (fails locally with `ERR_REQUIRE_ESM`; same Node runtime mismatch)
+    - `XDG_CONFIG_HOME=/tmp/firebase-config npm --prefix web run test:rules` (fails locally: Java not installed, emulator suite cannot start)
 
 - 2026-02-17: Discord poll repost refresh workflow validation + coverage.
   - Existing implementation confirmation:
