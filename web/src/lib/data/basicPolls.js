@@ -363,6 +363,56 @@ export async function reopenEmbeddedBasicPoll(schedulerId, pollId) {
   return reopenBasicPollForParent("scheduler", schedulerId, pollId);
 }
 
+function selectTieWinner(tiedIds = [], method) {
+  if (!Array.isArray(tiedIds) || tiedIds.length === 0) return null;
+  if (method === "random") {
+    return tiedIds[Math.floor(Math.random() * tiedIds.length)] || tiedIds[0];
+  }
+  if (typeof method === "string" && tiedIds.includes(method)) {
+    return method;
+  }
+  return tiedIds[0];
+}
+
+export async function breakBasicPollTieForParent(parentType, parentId, pollId, method) {
+  if (!parentType || !parentId || !pollId) return null;
+  const pollRef = basicPollRef(parentType, parentId, pollId);
+  if (!pollRef) return null;
+
+  const response = await callBasicPollServerAction("breakBasicPollTie", {
+    parentType,
+    parentId,
+    pollId,
+    method,
+  });
+  if (response?.winnerId || response?.winnerIds) return response;
+
+  const pollSnap = await getDoc(pollRef);
+  if (!pollSnap.exists()) return null;
+  const pollData = pollSnap.data() || {};
+  const finalResults = pollData.finalResults || {};
+  const tiedIds = Array.isArray(finalResults.tiedIds) ? finalResults.tiedIds.filter(Boolean) : [];
+  const winnerId = selectTieWinner(tiedIds, method);
+  if (!winnerId) return null;
+
+  const winnerIds = [winnerId];
+  await updateDoc(pollRef, {
+    finalResults: {
+      ...finalResults,
+      winnerIds,
+      tiedIds: [],
+      tieBreak: {
+        method: typeof method === "string" && method ? method : "first",
+        winnerId,
+        appliedAt: serverTimestamp(),
+      },
+    },
+    updatedAt: serverTimestamp(),
+  });
+
+  return { winnerId, winnerIds };
+}
+
 export async function deleteBasicPoll(groupId, pollId, options = {}) {
   const useServer = options.useServer === true;
   if (useServer) {

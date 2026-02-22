@@ -19,3 +19,9 @@ export function isAttendingVote(value) {
   return normalized === VOTE_VALUES.FEASIBLE || normalized === VOTE_VALUES.PREFERRED;
 }
 
+export function hasSubmittedSchedulerVote(voteDoc) {
+  if (!voteDoc || typeof voteDoc !== "object") return false;
+  if (voteDoc.noTimesWork === true) return true;
+  if (!voteDoc.votes || typeof voteDoc.votes !== "object") return false;
+  return Object.values(voteDoc.votes).some((value) => isAttendingVote(value));
+}

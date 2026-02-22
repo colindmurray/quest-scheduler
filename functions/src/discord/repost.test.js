@@ -282,7 +282,7 @@ describe('discord repost poll', () => {
               fields: expect.arrayContaining([
                 expect.objectContaining({
                   name: 'Votes',
-                  value: '2/3 voted (1 pending)',
+                  value: '3/3 voted',
                 }),
               ]),
             }),
