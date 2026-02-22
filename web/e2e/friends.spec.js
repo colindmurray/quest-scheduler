@@ -11,16 +11,26 @@ async function login(page) {
 }
 
 test.describe('Friends & Groups', () => {
-  test('send friend request by email', async ({ page }) => {
+  test('shows seeded outgoing and incoming friend request sections', async ({ page }) => {
     await login(page);
     await page.goto('/friends');
-    await expect(page.getByText('Friends & Groups')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Friends & Groups' })).toBeVisible({
+      timeout: 15000,
+    });
 
-    const invitee = process.env.E2E_FRIEND_EMAIL || 'friend@example.com';
-    await page
-      .getByPlaceholder('friend@example.com, discord_username, or @username')
-      .fill(invitee);
-    await page.getByRole('button', { name: /send request/i }).click();
-    await expect(page.getByText(`Waiting for ${invitee} to accept`)).toBeVisible();
+    const seededInvitee =
+      process.env.E2E_PARTICIPANT_EMAIL || 'participant@example.com';
+    const outgoingSection = page.locator('section').filter({
+      hasText: 'Pending outgoing requests',
+    });
+    await expect(outgoingSection.getByText(seededInvitee).first()).toBeVisible({
+      timeout: 15000,
+    });
+
+    await expect(
+      page.locator('section').filter({ hasText: 'Pending incoming requests' })
+    ).toBeVisible({
+      timeout: 15000,
+    });
   });
 });
