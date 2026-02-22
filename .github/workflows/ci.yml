@@ -215,15 +215,15 @@ jobs:
           else
             cat > functions/credentials/quest_scheduler_test_oauth_client.json <<'JSON'
           {
-  "web": {
-    "client_id": "test-client-id.apps.googleusercontent.com",
-    "project_id": "quest-scheduler-ci",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "client_secret": "test-client-secret",
-    "redirect_uris": ["http://localhost/googleCalendarOAuthCallback"]
-  }
-}
+            "web": {
+              "client_id": "test-client-id.apps.googleusercontent.com",
+              "project_id": "quest-scheduler-ci",
+              "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+              "token_uri": "https://oauth2.googleapis.com/token",
+              "client_secret": "test-client-secret",
+              "redirect_uris": ["http://localhost/googleCalendarOAuthCallback"]
+            }
+          }
           JSON
           fi
 
