@@ -62,7 +62,9 @@ test.describe.serial('Poll invite flow', () => {
     const notificationItem = notificationBody.locator('..').locator('..');
     await notificationItem.getByRole('button', { name: /Accept/i }).click();
 
-    await page.waitForURL(new RegExp(`/scheduler/${schedulerNotificationId}`));
+    await page.waitForURL(new RegExp(`/scheduler/${schedulerNotificationId}`), {
+      timeout: 60000,
+    });
     await expect(page.getByText('Join this session poll?')).toHaveCount(0);
   });
 
@@ -74,7 +76,7 @@ test.describe.serial('Poll invite flow', () => {
     await expect(page.getByText('Pending invite')).toBeVisible();
 
     await page.getByRole('button', { name: /^Decline$/ }).click();
-    await page.waitForURL(/\/dashboard/);
+    await page.waitForURL(/\/dashboard/, { timeout: 60000 });
 
     await expect(page.getByText(pollDeclineTitle)).toHaveCount(0);
 

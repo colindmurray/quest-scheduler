@@ -67,6 +67,13 @@ const waitForEmulatorReady = (proc, timeoutMs = 30000) =>
 
     proc.stdout?.on('data', handleOutput);
     proc.stderr?.on('data', handleOutput);
+    proc.once('error', () => {
+      if (!resolved) {
+        clearTimeout(timeout);
+        resolved = true;
+        resolve(false);
+      }
+    });
     proc.once('exit', () => {
       if (!resolved) {
         clearTimeout(timeout);

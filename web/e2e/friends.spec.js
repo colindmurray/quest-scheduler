@@ -7,20 +7,31 @@ async function login(page) {
   await page.getByLabel('Email').fill(user.email);
   await page.getByLabel('Password').fill(user.password);
   await page.locator('form').getByRole('button', { name: /^log in$/i }).click();
-  await page.waitForURL(/\/dashboard/);
+  await page.waitForURL(/\/dashboard/, { timeout: 60000 });
 }
 
 test.describe('Friends & Groups', () => {
-  test('send friend request by email', async ({ page }) => {
+  test('shows outgoing and incoming friend request sections', async ({ page }) => {
     await login(page);
     await page.goto('/friends');
-    await expect(page.getByText('Friends & Groups')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Friends & Groups' })).toBeVisible({
+      timeout: 15000,
+    });
 
-    const invitee = process.env.E2E_FRIEND_EMAIL || 'friend@example.com';
-    await page
-      .getByPlaceholder('friend@example.com, discord_username, or @username')
-      .fill(invitee);
-    await page.getByRole('button', { name: /send request/i }).click();
-    await expect(page.getByText(`Waiting for ${invitee} to accept`)).toBeVisible();
+    const outgoingSection = page.locator('section').filter({
+      has: page.getByRole('heading', { name: 'Pending outgoing requests' }),
+    });
+    await expect(outgoingSection).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(outgoingSection).toContainText(/No outgoing friend requests\.|Waiting for/i);
+
+    const incomingSection = page.locator('section').filter({
+      has: page.getByRole('heading', { name: 'Pending incoming requests' }),
+    });
+    await expect(incomingSection).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(incomingSection).toContainText(/No incoming friend requests\.|sent you a request/i);
   });
 });

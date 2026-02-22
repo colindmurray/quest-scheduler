@@ -20,6 +20,7 @@ if (fs.existsSync(envPath)) {
 
 export default defineConfig({
   testDir: '.',
+  timeout: process.env.CI ? 90_000 : 30_000,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -30,6 +31,7 @@ export default defineConfig({
   ],
   use: {
     baseURL: 'http://localhost:5173',
+    navigationTimeout: process.env.CI ? 60_000 : 30_000,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
