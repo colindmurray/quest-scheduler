@@ -124,7 +124,7 @@ jobs:
             firebase-debug.log
 
   e2e:
-    name: E2E (${{ matrix.browser }} on ${{ matrix.os }})
+    name: E2E (${{ matrix.project }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     needs: integration
     timeout-minutes: 60
@@ -135,10 +135,15 @@ jobs:
           - ubuntu-latest
         node:
           - 22.x
-        browser:
-          - chromium
-          - firefox
-          - webkit
+        include:
+          - project: chromium
+            install_browser: chromium
+          - project: firefox
+            install_browser: firefox
+          - project: webkit
+            install_browser: webkit
+          - project: mobile
+            install_browser: chromium
         shard:
           - 1/1
     steps:
@@ -178,7 +183,7 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install Playwright browser + OS deps
-        run: npx playwright install --with-deps ${{ matrix.browser }}
+        run: npx playwright install --with-deps ${{ matrix.install_browser }}
         working-directory: web
 
       - name: Prepare E2E environment
@@ -227,22 +232,22 @@ jobs:
           JSON
           fi
 
-      - name: Run E2E tests on ${{ matrix.browser }} (shard ${{ matrix.shard }})
+      - name: Run E2E tests on ${{ matrix.project }} (shard ${{ matrix.shard }})
         run: |
           set -euo pipefail
           mkdir -p artifacts
           firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT \
-            "node functions/scripts/seed-e2e-scheduler.js && npm --prefix web run test:e2e -- --project=${{ matrix.browser }} --shard=${{ matrix.shard }}" \
-            2>&1 | tee "artifacts/e2e-${{ matrix.browser }}.log"
+            "node functions/scripts/seed-e2e-scheduler.js && npm --prefix web run test:e2e -- --project=${{ matrix.project }} --shard=${{ matrix.shard }}" \
+            2>&1 | tee "artifacts/e2e-${{ matrix.project }}.log"
 
       - name: Upload E2E artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-${{ matrix.browser }}-artifacts
+          name: e2e-${{ matrix.project }}-artifacts
           if-no-files-found: ignore
           path: |
-            artifacts/e2e-${{ matrix.browser }}.log
+            artifacts/e2e-${{ matrix.project }}.log
             web/playwright-report
             web/test-results
             firebase-debug.log
