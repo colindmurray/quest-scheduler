@@ -1,12 +1,13 @@
 ---
 created: 2026-01-06
-lastUpdated: 2026-02-17
+lastUpdated: 2026-02-22
 summary: "Primary global execution tracker for current long-running work, checkpoints, and validation notes."
 category: TASK_TRACKER
 status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-22: Fixed dashboard SessionCard Google Calendar interaction (click + keyboard accessibility), added unit/integration/e2e coverage, and documented local validation blockers (Node/jsdom engine mismatch, missing Java for emulators)."
   - "2026-02-17: Deployed latest calendar-voting and Discord repost refresh updates to staging and production (`hosting,functions`) after unit/integration/e2e validation pass."
   - "2026-02-17: Added Discord repost submitted-vote-count regression coverage (`votes: {}` treated as pending) and re-ran unit + integration + e2e validation gates across calendar voting and repost features."
   - "2026-02-17: Added Discord poll repost recovery coverage and creator-only poll-options visibility checks (new seeded e2e scenario + callable fallback test) to support manual panel refresh workflows."
@@ -79,12 +80,30 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Deployed latest calendar inline voting + Discord repost refresh updates to staging and production after full targeted unit/integration/e2e validation.
-- Next Step: Manually sanity-check the poll-options repost action and month-calendar inline voting in production against a live Discord-linked poll.
-- Open Issues: Integration suite still emits expected noisy notification trigger errors under emulators (`notificationEvents` NOT_FOUND); test command exits are passing.
-- Last Updated (YYYY-MM-DD): 2026-02-17
+- Last Completed: Fixed dashboard SessionCard calendar control so it is an actual clickable Google Calendar link with keyboard-accessible card interaction and added unit/integration/e2e coverage files for the regression.
+- Next Step: Re-run full validation once local runtime prerequisites are restored (Node >= 20.19.x for jsdom/vitest and Java installed for Firebase emulators/e2e).
+- Open Issues: Local validation is currently blocked by runtime/tooling prerequisites: Vitest fails on Node v20.15.1 with `ERR_REQUIRE_ESM` in `html-encoding-sniffer` -> `@exodus/bytes/encoding-lite.js`, and emulator-backed e2e cannot start because Java is unavailable (`Could not spawn java -version`).
+- Last Updated (YYYY-MM-DD): 2026-02-22
 
 ## Progress Notes
+
+- 2026-02-22: Dashboard SessionCard calendar click + accessibility fix.
+  - Web behavior updates:
+    - `web/src/features/dashboard/components/SessionCard.jsx`
+      - Replaced the outer card shell from `<button>` to keyboard-accessible `article[role="button"]` (`tabIndex`, `Enter`/`Space` activation, focus ring) to avoid nested interactive-element conflicts.
+      - Added an explicit Google Calendar link control (with `target="_blank"`, `rel="noopener noreferrer"`, pointer cursor, `aria-label`, and propagation guard) so calendar actions do not trigger card navigation.
+      - Added stable card/calendar `data-testid` hooks for integration/e2e assertions.
+  - Test coverage additions:
+    - `web/src/features/dashboard/components/SessionCard.test.jsx` (unit coverage for click, keyboard activation, calendar link attrs, no-link fallback).
+    - `web/src/__tests__/integration/session-card-calendar.integration.test.js` (SessionCard behavior in `PastSessionsSection` context and link presence changes by scheduler data).
+    - `web/e2e/calendar-button-click.spec.js` (dashboard calendar-link click behavior, pointer cursor, new-tab URL open, no-link state, keyboard navigation; desktop projects).
+    - `functions/scripts/seed-e2e-scheduler.js` now supports a per-scheduler `googleEventId` seed and seeds `E2E_SCHEDULER_ID` with `e2e-scheduler-event-id` for deterministic e2e coverage.
+  - Validation:
+    - `npm --prefix web run test -- src/features/dashboard/components/SessionCard.test.jsx` (blocked: `ERR_REQUIRE_ESM` in `html-encoding-sniffer` requiring `@exodus/bytes/encoding-lite.js` on local Node `v20.15.1`).
+    - `npx vitest run --config vitest.integration.config.js src/__tests__/integration/session-card-calendar.integration.test.js` (blocked by same Node/jsdom runtime mismatch).
+    - `bash -lc 'set -euo pipefail; ROOT_DIR="$(cd .. && pwd)"; ENV_FILE="$ROOT_DIR/web/.env.e2e.local"; if [[ -f "$ENV_FILE" ]]; then set -a; source "$ENV_FILE"; set +a; fi; NODE_OPTIONS="${NODE_OPTIONS:-}"; if [[ "$NODE_OPTIONS" != *"--no-deprecation"* ]]; then export NODE_OPTIONS="${NODE_OPTIONS} --no-deprecation"; fi; export NODE_NO_WARNINGS=1; firebase emulators:exec --only auth,firestore,functions,storage --log-verbosity SILENT "node $ROOT_DIR/functions/scripts/seed-e2e-scheduler.js && npm --prefix $ROOT_DIR/web run test:e2e -- e2e/calendar-button-click.spec.js"'` (blocked: Java missing; `Could not spawn java -version`).
+    - `npm --prefix web run test:all` (blocked at `npm run test` by same `ERR_REQUIRE_ESM` runtime issue).
+    - `npx eslint src/features/dashboard/components/SessionCard.jsx src/features/dashboard/components/SessionCard.test.jsx src/__tests__/integration/session-card-calendar.integration.test.js e2e/calendar-button-click.spec.js` (pass, exit code `0`).
 
 - 2026-02-17: Discord poll repost refresh workflow validation + coverage.
   - Existing implementation confirmation:

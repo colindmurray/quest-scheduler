@@ -23,6 +23,7 @@ export function SessionCard({
   showTimeZone = true,
 }) {
   const safeNavigate = useSafeNavigate();
+  const cardTitle = scheduler?.title || "Untitled poll";
   const participantEmails = participants.map((p) => (typeof p === "string" ? p : p.email));
   const voterEmails = voters.map((v) => normalizeEmail(v.email)).filter(Boolean);
   const colorMap = buildColorMap(participantEmails);
@@ -57,25 +58,36 @@ export function SessionCard({
   const totalParticipants = participantUsers.length;
   const hasParticipants = totalParticipants > 0;
   const allVotesIn = scheduler.status === "OPEN" && hasParticipants && pendingVoters.length === 0;
-  const isCancelled =
-    scheduler?.status === "CANCELLED" ||
-    scheduler?.calendarSync?.state === "CANCELLED" ||
-    Boolean(
-      scheduler?.cancelledAt ||
-        scheduler?.calendarSync?.cancelled?.at ||
-        scheduler?.calendarSync?.cancelledAt ||
-        scheduler?.cancelled?.at
-    );
+  const googleEventId = scheduler?.googleEventId || null;
+  const googleCalendarUrl = useMemo(() => {
+    if (!googleEventId || typeof globalThis.btoa !== "function") return null;
+    try {
+      return `https://calendar.google.com/calendar/event?eid=${globalThis.btoa(googleEventId)}`;
+    } catch {
+      return null;
+    }
+  }, [googleEventId]);
+
   const handleOpen = () => {
     const target = `/scheduler/${scheduler.id}`;
     safeNavigate(target);
   };
 
+  const handleCardKeyDown = (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    handleOpen();
+  };
+
   return (
-      <button
-        type="button"
+      <article
+        role="button"
+        tabIndex={0}
+        onKeyDown={handleCardKeyDown}
         onClick={handleOpen}
-        className="relative flex w-full flex-col gap-2 rounded-2xl border border-slate-200/70 bg-white px-4 py-3 text-left transition-all duration-150 hover:scale-[1.02] hover:shadow-lg dark:border-slate-700 dark:bg-slate-800"
+        aria-label={`Open session poll ${cardTitle}`}
+        data-testid={`session-card-${scheduler?.id || "unknown"}`}
+        className="relative flex w-full cursor-pointer flex-col gap-2 rounded-2xl border border-slate-200/70 bg-white px-4 py-3 text-left transition-all duration-150 hover:scale-[1.02] hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/60 dark:border-slate-700 dark:bg-slate-800"
         style={{
           borderLeftWidth: groupColor ? "4px" : undefined,
           borderLeftColor: groupColor || undefined,
@@ -86,7 +98,7 @@ export function SessionCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
-                {scheduler.title || "Untitled poll"}
+                {cardTitle}
               </p>
               {showVoteNeeded && (
                 <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
@@ -120,11 +132,27 @@ export function SessionCard({
           </div>
 
           {/* Google Calendar indicator */}
-          {scheduler.googleEventId && (
-            <div className="flex-shrink-0" title="Synced to Google Calendar">
-              <ExternalLink className="h-4 w-4 text-slate-400 dark:text-slate-500" />
-            </div>
-          )}
+          {googleEventId &&
+            (googleCalendarUrl ? (
+              <a
+                href={googleCalendarUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Open in Google Calendar"
+                aria-label={`Open ${cardTitle} in Google Calendar`}
+                data-testid={`session-card-calendar-link-${scheduler?.id || "unknown"}`}
+                className="relative z-10 flex flex-shrink-0 cursor-pointer items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/60 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                <span className="sr-only">Google Calendar</span>
+              </a>
+            ) : (
+              <div className="flex-shrink-0" title="Google Calendar link unavailable">
+                <ExternalLink className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+              </div>
+            ))}
         </div>
 
         {/* Participants Row - only show if we have participants */}
@@ -190,6 +218,6 @@ export function SessionCard({
             </div>
           </div>
         )}
-      </button>
+      </article>
   );
 }
