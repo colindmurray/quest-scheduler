@@ -55,6 +55,14 @@ async function seed() {
   const notifierId = process.env.E2E_NOTIFICATION_UID || "test-notifier";
   const notifierEmail = process.env.E2E_NOTIFICATION_EMAIL || "notifier@example.com";
   const notifierPassword = process.env.E2E_NOTIFICATION_PASSWORD || "password";
+  const discordOnlyId = process.env.E2E_DISCORD_ONLY_UID || "test-discord-only";
+  const discordOnlyEmail =
+    process.env.E2E_DISCORD_ONLY_EMAIL || "discord-only@example.com";
+  const discordOnlyDisplayName = "Discord Only";
+  const discordOnlyDiscordUserId =
+    process.env.E2E_DISCORD_ONLY_DISCORD_USER_ID || "e2e-discord-only-user";
+  const discordOnlyDiscordUsername =
+    process.env.E2E_DISCORD_ONLY_USERNAME || "discord_only_user";
   const copySourceId = process.env.E2E_COPY_SOURCE_ID || "e2e-copy-source";
   const copyDestinationId = process.env.E2E_COPY_DEST_ID || "e2e-copy-destination";
   const copyPendingDestId = process.env.E2E_COPY_PENDING_DEST_ID || "e2e-copy-destination-pending";
@@ -103,6 +111,24 @@ async function seed() {
     }
   };
 
+  const ensureEmailOnlyUser = async ({ uid, email, displayName }) => {
+    try {
+      await auth.getUser(uid);
+      await auth.deleteUser(uid);
+    } catch (err) {
+      if (err?.code !== "auth/user-not-found") {
+        throw err;
+      }
+    }
+
+    await auth.createUser({
+      uid,
+      email,
+      displayName,
+      emailVerified: true,
+    });
+  };
+
   await ensureUser({
     uid: participantId,
     email: participantEmail,
@@ -132,6 +158,11 @@ async function seed() {
     email: notifierEmail,
     password: notifierPassword,
     displayName: "Notifier",
+  });
+  await ensureEmailOnlyUser({
+    uid: discordOnlyId,
+    email: discordOnlyEmail,
+    displayName: discordOnlyDisplayName,
   });
 
   const now = new Date();
@@ -195,6 +226,20 @@ async function seed() {
     {
       email: notifierEmail.toLowerCase(),
       displayName: "Notifier",
+      emailNotifications: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  await db.doc(`usersPublic/${discordOnlyId}`).set(
+    {
+      email: discordOnlyEmail.toLowerCase(),
+      displayName: discordOnlyDisplayName,
+      discordUsername: discordOnlyDiscordUsername,
+      discordUsernameLower: discordOnlyDiscordUsername.toLowerCase(),
+      publicIdentifierType: "discordUsername",
+      publicIdentifier: discordOnlyDiscordUsername,
       emailNotifications: true,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     },
@@ -267,11 +312,41 @@ async function seed() {
     displayName: "Notifier",
   });
 
+  await db.doc(`users/${discordOnlyId}`).set(
+    {
+      email: discordOnlyEmail.toLowerCase(),
+      displayName: discordOnlyDisplayName,
+      discord: {
+        userId: discordOnlyDiscordUserId,
+        username: discordOnlyDiscordUsername,
+        globalName: discordOnlyDisplayName,
+        linkSource: "oauth",
+      },
+      publicIdentifierType: "discordUsername",
+      settings: {
+        notificationMode: "advanced",
+        notificationPreferences: buildNotificationPreferences(),
+        emailNotifications: true,
+        autoBlockConflicts: false,
+      },
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
   const ownerEmailLower = participantEmail.toLowerCase();
   const inviteeEmailLower = inviteeEmail.toLowerCase();
   const revokeeEmailLower = revokeeEmail.toLowerCase();
   const blockedEmailLower = blockedEmail.toLowerCase();
   const notifierEmailLower = notifierEmail.toLowerCase();
+
+  await db.doc(`discordUserLinks/${discordOnlyDiscordUserId}`).set(
+    {
+      qsUserId: discordOnlyId,
+      linkedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
 
   await db
     .doc(

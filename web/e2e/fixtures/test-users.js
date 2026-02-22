@@ -29,4 +29,9 @@ export const testUsers = {
     password: process.env.E2E_NOTIFICATION_PASSWORD || 'password',
     displayName: 'Notifier',
   },
+  discordOnly: {
+    uid: process.env.E2E_DISCORD_ONLY_UID || 'test-discord-only',
+    email: process.env.E2E_DISCORD_ONLY_EMAIL || 'discord-only@example.com',
+    displayName: 'Discord Only',
+  },
 };

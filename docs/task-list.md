@@ -1,12 +1,14 @@
 ---
 created: 2026-01-06
-lastUpdated: 2026-02-17
+lastUpdated: 2026-02-22
 summary: "Primary global execution tracker for current long-running work, checkpoints, and validation notes."
 category: TASK_TRACKER
 status: CURRENT
 implementationStatus: ONGOING
 note: "Canonical global tracker for active work and progress logging."
 changelog:
+  - "2026-02-22: Unblocked web unit tests by pinning jsdom 26.1.0, expanded Discord OAuth callback branch coverage to 98%+ lines, and revalidated auth unit/integration suites while documenting Playwright OS-library blockers."
+  - "2026-02-22: Added comprehensive Discord/email auth unit + integration + Playwright suites, introduced lightweight auth-only emulator seeding, and fixed missing scheduler auth exports discovered while enabling E2E."
   - "2026-02-17: Deployed latest calendar-voting and Discord repost refresh updates to staging and production (`hosting,functions`) after unit/integration/e2e validation pass."
   - "2026-02-17: Added Discord repost submitted-vote-count regression coverage (`votes: {}` treated as pending) and re-ran unit + integration + e2e validation gates across calendar voting and repost features."
   - "2026-02-17: Added Discord poll repost recovery coverage and creator-only poll-options visibility checks (new seeded e2e scenario + callable fallback test) to support manual panel refresh workflows."
@@ -79,12 +81,53 @@ changelog:
 # Quest Scheduler — Task List
 
 ## Plan Execution Checkpoint
-- Last Completed: Deployed latest calendar inline voting + Discord repost refresh updates to staging and production after full targeted unit/integration/e2e validation.
-- Next Step: Manually sanity-check the poll-options repost action and month-calendar inline voting in production against a live Discord-linked poll.
-- Open Issues: Integration suite still emits expected noisy notification trigger errors under emulators (`notificationEvents` NOT_FOUND); test command exits are passing.
-- Last Updated (YYYY-MM-DD): 2026-02-17
+- Last Completed: Unblocked web auth unit tests via `jsdom` downgrade, increased `functions/src/discord/oauth.js` line coverage to `98.47%`, and re-ran auth-focused unit/integration suites plus `web` unit/rules gates.
+- Next Step: Install Playwright system dependencies (`libatk-1.0.so.0` and related GTK libs) and rerun auth E2E specs and full `npm run test:all`; then rerun under Node `20.19+` to remove Vite engine warnings.
+- Open Issues: Chromium still cannot launch in this environment due missing `libatk-1.0.so.0`; Node runtime remains `20.15.1` (below Vite’s declared `20.19+` requirement), though unit/rules tests now execute.
+- Last Updated (YYYY-MM-DD): 2026-02-22
 
 ## Progress Notes
+
+- 2026-02-22: Auth testing follow-up (coverage expansion + gate reruns).
+  - Additional test coverage:
+    - Expanded `functions/src/auth/discord-auth.test.js` to cover `discordOAuthStart` auth guards/state writes, redirect URI sanitization/warnings, login `server_error`, new-user creation path, and `emailVerified` update failure fallback.
+    - Expanded `functions/src/discord/oauth-callback.test.js` to cover invalid provider state, missing-link-uid handling, link conflict `409`, and both callback catch-path redirects.
+  - Tooling/runtime fix:
+    - Pinned `web` dev dependency `jsdom` to `26.1.0` in `web/package.json` (and lockfile) to resolve `ERR_REQUIRE_ESM` from `html-encoding-sniffer` on current local Node.
+  - Validation:
+    - `npm --prefix functions run test -- src/auth/discord-auth.test.js src/discord/oauth-callback.test.js src/auth/email-auth.test.js` (pass, `27 passed`, exit code `0`).
+    - `npx vitest run --coverage --coverage.reporter=text --coverage.include=src/auth.js --coverage.include=src/discord/oauth.js src/auth/discord-auth.test.js src/auth/email-auth.test.js src/discord/oauth-callback.test.js src/auth.test.js` (pass, `32 passed`, exit code `0`; coverage: `src/auth.js` lines `100%`, `src/discord/oauth.js` lines `98.47%`).
+    - `npm --prefix web run test -- --run src/lib/data/basicPolls.test.js src/features/auth/AuthPage.test.jsx` (pass, `29 passed`, exit code `0`).
+    - `HOME=/tmp/firebase-home XDG_CACHE_HOME=/tmp/firebase-home/.cache XDG_CONFIG_HOME=/tmp/firebase-home/.config PATH="/tmp/local-jdk/jdk-21.0.10+7/bin:$PATH" npm --prefix web run test:all` (partial pass: unit `397 passed` and rules `21 passed`; failed when E2E started due missing Playwright browser cache in this HOME context).
+    - `HOME=/tmp/firebase-home XDG_CACHE_HOME=/tmp/firebase-home/.cache XDG_CONFIG_HOME=/tmp/firebase-home/.config PATH="/tmp/local-jdk/jdk-21.0.10+7/bin:$PATH" firebase emulators:exec --project studio-473406021-87ead --only auth,firestore,functions,storage "npx vitest run --config vitest.integration.config.js src/__tests__/integration/auth-email.integration.test.js src/__tests__/integration/auth-discord.integration.test.js"` (pass, `9 passed`, exit code `0`).
+    - `HOME=/tmp/firebase-home XDG_CACHE_HOME=/tmp/firebase-home/.cache XDG_CONFIG_HOME=/tmp/firebase-home/.config PATH="/tmp/local-jdk/jdk-21.0.10+7/bin:$PATH" PLAYWRIGHT_BROWSERS_PATH=/tmp/pw-browsers firebase emulators:exec --project studio-473406021-87ead --only auth,firestore,functions,storage "node ../functions/scripts/seed-e2e-auth.js && npm --prefix web run test:e2e -- e2e/auth-discord.spec.js e2e/auth-email-password.spec.js e2e/auth-cross-auth.spec.js --project=chromium"` (fail, exit code `1`; all `15` auth E2E tests blocked by Chromium dependency error: `libatk-1.0.so.0` missing).
+
+- 2026-02-22: Comprehensive auth-flow testing implementation (Discord + email/password + cross-auth).
+  - Test additions:
+    - Functions unit tests:
+      - `functions/src/auth/discord-auth.test.js` (Discord OAuth login start sanitization, missing verified email, email conflict, discord_in_use conflict, missing access token).
+      - `functions/src/auth/email-auth.test.js` (password-reset lookup error handling, profile creation without email, resilient onUserCreate backfill/reconcile paths).
+    - Web integration tests:
+      - `web/src/__tests__/integration/auth-discord.integration.test.js` (discord login state creation/sanitization, unauthenticated link gate, invalid custom token rejection, linked profile sync).
+      - `web/src/__tests__/integration/auth-email.integration.test.js` (email registration/login flow, weak password + duplicate prevention, Firestore profile rule gates, reset flow).
+    - Playwright E2E tests:
+      - `web/e2e/auth-discord.spec.js`
+      - `web/e2e/auth-email-password.spec.js`
+      - `web/e2e/auth-cross-auth.spec.js`
+  - Supporting fixes/workarounds for test execution:
+    - Added lightweight auth-only seeding script: `functions/scripts/seed-e2e-auth.js` (owner password user + discord-only user + profile/link docs).
+    - Extended existing e2e seed fixture coverage for discord-only identity:
+      - `functions/scripts/seed-e2e-scheduler.js`
+      - `web/e2e/fixtures/test-users.js`
+    - Fixed app compile blockers discovered during Playwright startup:
+      - Added `hasSubmittedSchedulerVote` export in `web/src/lib/vote-utils.js`.
+      - Added `breakBasicPollTieForParent` export wrapper in `web/src/lib/data/basicPolls.js`.
+    - Updated `functions/vitest.config.js` to plain object export so tests run reliably in current local Node runtime.
+  - Validation:
+    - `npm --prefix functions run test -- src/auth/discord-auth.test.js src/auth/email-auth.test.js` (pass, `9 passed`, exit code `0`)
+    - `HOME=/tmp/firebase-home XDG_CACHE_HOME=/tmp/firebase-home/.cache PATH="/tmp/local-jdk/jdk-21.0.10+7/bin:$PATH" firebase emulators:exec --only auth,firestore,functions,storage "npx vitest run --config vitest.integration.config.js src/__tests__/integration/auth-email.integration.test.js src/__tests__/integration/auth-discord.integration.test.js"` (pass, `9 passed`, exit code `0`)
+    - `npm --prefix functions run test -- --coverage src/auth/discord-auth.test.js src/auth/email-auth.test.js src/discord/oauth-callback.test.js src/auth.test.js` (pass, `21 passed`, exit code `0`; notable coverage: `functions/src/auth.js` lines `100%`, `functions/src/discord/oauth.js` lines `78.68%`)
+    - `XDG_CACHE_HOME=/tmp/firebase-home/.cache XDG_CONFIG_HOME=/tmp/firebase-home/.config FIREBASE_EMULATORS_PATH=/tmp/firebase-home/.cache/firebase/emulators PLAYWRIGHT_BROWSERS_PATH=/tmp/pw-browsers PATH="/tmp/local-jdk/jdk-21.0.10+7/bin:$PATH" firebase emulators:exec --only auth,firestore,functions,storage "node functions/scripts/seed-e2e-auth.js && npm --prefix web run test:e2e -- e2e/auth-discord.spec.js e2e/auth-email-password.spec.js e2e/auth-cross-auth.spec.js --project=chromium"` (fail, exit code `1`; Playwright Chromium launch blocked by missing system library `libatk-1.0.so.0`)
 
 - 2026-02-17: Discord poll repost refresh workflow validation + coverage.
   - Existing implementation confirmation:
