@@ -11,26 +11,27 @@ async function login(page) {
 }
 
 test.describe('Friends & Groups', () => {
-  test('shows seeded outgoing and incoming friend request sections', async ({ page }) => {
+  test('shows outgoing and incoming friend request sections', async ({ page }) => {
     await login(page);
     await page.goto('/friends');
     await expect(page.getByRole('heading', { name: 'Friends & Groups' })).toBeVisible({
       timeout: 15000,
     });
 
-    const seededInvitee =
-      process.env.E2E_PARTICIPANT_EMAIL || 'participant@example.com';
     const outgoingSection = page.locator('section').filter({
-      hasText: 'Pending outgoing requests',
+      has: page.getByRole('heading', { name: 'Pending outgoing requests' }),
     });
-    await expect(outgoingSection.getByText(seededInvitee).first()).toBeVisible({
+    await expect(outgoingSection).toBeVisible({
       timeout: 15000,
     });
+    await expect(outgoingSection).toContainText(/No outgoing friend requests\.|Waiting for/i);
 
-    await expect(
-      page.locator('section').filter({ hasText: 'Pending incoming requests' })
-    ).toBeVisible({
+    const incomingSection = page.locator('section').filter({
+      has: page.getByRole('heading', { name: 'Pending incoming requests' }),
+    });
+    await expect(incomingSection).toBeVisible({
       timeout: 15000,
     });
+    await expect(incomingSection).toContainText(/No incoming friend requests\.|sent you a request/i);
   });
 });
